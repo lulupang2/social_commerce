@@ -1,25 +1,27 @@
-# IceGear MVP development guide
+# IceGear MVP 개발 가이드
 
-**Status:** MVP implementation workflow; the client/domain/schema baseline is bootstrapped, while Supabase project and runtime environment setup remain deployment work.
+**상태:** 클라이언트·도메인·스키마 기반은 구현되었고, Supabase 프로젝트와 실행 환경 설정은 배포 작업으로 남아 있습니다.
 
-The repository contains a pnpm workspace, a Next.js web MVP, an Expo Router mobile MVP, shared `packages/domain` contracts, and a Supabase migration plus deterministic seed. The checked-in `.env.example` files contain placeholders only; no Supabase project credentials or service-role key belong in the repository.
+저장소에는 pnpm workspace, Next.js 웹 MVP, Expo Router 모바일 MVP, 공유 `packages/domain` 계약,
+Supabase migration과 결정적인 seed가 있습니다. 커밋된 `.env.example`에는 placeholder만 있으며,
+Supabase credential이나 service-role key는 저장소에 넣지 않습니다.
 
-## Prerequisites
+## 사전 요구사항
 
-Install the versions pinned by the repository toolchain files:
+저장소의 toolchain 파일에 고정된 버전을 사용합니다.
 
-- Node.js 22.13.0 or newer (see `.node-version`).
-- pnpm 10.34.5 (pinned by the root `packageManager` field and activated through Corepack or the team's approved installation).
-- Git.
-- Supabase CLI for local database/auth development.
-- Xcode/iOS Simulator or Android Studio/emulator when working on native targets.
-- A supported browser for the Next.js app.
+- Node.js 22.13.0 이상 (`.node-version` 참고)
+- pnpm 10.34.5 (root `packageManager` 필드로 고정)
+- Git
+- 로컬 database/Auth 개발이 필요할 때 Supabase CLI
+- native 대상 개발 시 Xcode/iOS Simulator 또는 Android Studio/emulator
+- Next.js 앱을 실행할 지원 브라우저
 
-Use the pinned versions when reproducing the validation matrix. Native development additionally requires Xcode/iOS Simulator or Android Studio/emulator.
+검증 매트릭스를 재현할 때는 고정 버전을 사용합니다.
 
-## Workspace setup
+## Workspace 설정
 
-From a clean checkout, install dependencies and run the checks that do not require a Supabase project:
+깨끗한 checkout에서 의존성을 설치하고 Supabase 프로젝트 없이 실행할 수 있는 검사를 수행합니다.
 
 ```sh
 corepack enable
@@ -32,131 +34,140 @@ pnpm format:check
 pnpm export:mobile:web
 ```
 
-These commands are the current monorepo validation baseline. Web and mobile clients intentionally render a setup state when the public Supabase variables are missing. To run connected development, copy the example files, fill in the public project URL and publishable key, configure or link a Supabase project, apply the migration and seed, then run `pnpm dev`.
+공개 Supabase 변수가 없으면 웹과 모바일은 의도적으로 설정 안내 상태를 렌더링합니다.
+연결된 개발을 하려면 예시 파일을 복사하고 공개 project URL/publishable key를 입력한 뒤,
+Supabase 프로젝트를 설정 또는 연결하고 migration/seed를 적용한 다음 `pnpm dev`를 실행합니다.
 
-Current scripts:
+### 현재 스크립트
 
-| Command | Purpose | Status |
+| 명령 | 목적 | 상태 |
 | --- | --- | --- |
-| `pnpm dev` | Start web and mobile development processes in parallel | Available |
-| `pnpm dev:web` | Start the Next.js web app | Available |
-| `pnpm dev:mobile` | Start Expo tooling | Available |
-| `pnpm --dir packages/domain typecheck` | Type-check the shared domain package | Available |
-| `pnpm --dir packages/domain test` | Run domain validation tests | Available |
-| `pnpm --dir packages/domain build` | Build the domain package | Available; writes ignored `dist/` |
-| `pnpm lint` | Run app lint checks across the workspace | Available |
-| `pnpm typecheck` | Type-check all workspace packages | Available |
-| `pnpm test` | Run available package/web tests | Available |
-| `pnpm build` | Build the web and domain packages | Available |
-| `pnpm format:check` | Check Prettier formatting for repository-owned files | Available |
-| `pnpm export:mobile:web` | Export the Expo app for the web platform | Available; writes ignored `apps/mobile/dist/` |
-| `supabase db reset` | Recreate the local database and apply migration plus seed | Requires Supabase CLI project config |
+| `pnpm dev` | 웹과 모바일 개발 프로세스를 병렬 실행 | 사용 가능 |
+| `pnpm dev:web` | Next.js 웹 앱 실행 | 사용 가능 |
+| `pnpm dev:mobile` | Expo 도구 실행 | 사용 가능 |
+| `pnpm --dir packages/domain typecheck` | 공유 domain 패키지 타입 검사 | 사용 가능 |
+| `pnpm --dir packages/domain test` | domain 검증 테스트 실행 | 사용 가능 |
+| `pnpm --dir packages/domain build` | domain 패키지 빌드 | 사용 가능; 무시되는 `dist/` 생성 |
+| `pnpm lint` | workspace 앱 lint 실행 | 사용 가능 |
+| `pnpm typecheck` | 모든 workspace 패키지 타입 검사 | 사용 가능 |
+| `pnpm test` | 사용 가능한 package/web 테스트 실행 | 사용 가능 |
+| `pnpm build` | 웹과 domain 패키지 빌드 | 사용 가능 |
+| `pnpm format:check` | 저장소 파일 Prettier 검사 | 사용 가능 |
+| `pnpm export:mobile:web` | Expo 앱의 web export | 사용 가능; 무시되는 `apps/mobile/dist/` 생성 |
+| `supabase db reset` | 로컬 DB 재생성 후 migration/seed 적용 | Supabase CLI 설정 필요 |
 
-Scripts must fail on errors and be safe to run repeatedly. Avoid adding a script that silently bypasses RLS or uses a production service key locally.
+스크립트는 오류를 숨기지 않고 반복 실행해도 안전해야 합니다. RLS를 우회하거나 운영 service key를
+로컬에서 사용하는 스크립트를 추가하지 않습니다.
 
-## Environment files
+## 환경 파일
 
-Use separate environment values for local, preview/staging, and production. The current mapping is documented in [SSOT.md](SSOT.md#environment-variables).
+local, preview/staging, production은 서로 다른 환경 값을 사용합니다.
+현재 매핑은 [SSOT 환경변수](SSOT.md#환경변수)를 기준으로 합니다.
 
-Suggested local files (names may be adapted to the selected framework conventions):
-
-```text
-apps/web/.env.local       # ignored; web public + server configuration
-apps/mobile/.env          # ignored; Expo public configuration only
-.env.example              # committed names and safe placeholders, never values
-```
-
-Rules:
-
-- Keep the committed `apps/web/.env.example` and `apps/mobile/.env.example` as variable-name references with safe placeholders.
-- Never commit service-role keys, database passwords, auth client secrets, or provider webhooks.
-- Use `NEXT_PUBLIC_` and `EXPO_PUBLIC_` only for values safe to expose to a client bundle.
-- Use `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for web and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for mobile. The web config accepts `NEXT_PUBLIC_SUPABASE_ANON_KEY` only as a legacy compatibility alias.
-- Keep `SUPABASE_SERVICE_ROLE_KEY` server-only and do not pass it into shared modules or client bundles; the current web/mobile clients do not read it.
-- Each environment must point at an isolated Supabase project/database.
-
-## Local Supabase workflow
-
-The migration-first workflow is now represented by `supabase/migrations/0001_init.sql` and `supabase/seed.sql`:
-
-1. Create or update an ordered SQL migration.
-2. Enable RLS and define policies in the same change as a table.
-3. Add constraints and indexes for the documented query paths.
-4. Configure or link the Supabase project, then reset the local database and apply all migrations from zero.
-5. Run the checked-in seed; it inserts only deterministic sports reference data, not Auth-linked profiles or user content.
-6. Test anonymous, authenticated-owner, authenticated-non-owner, and operator access.
-7. Regenerate database types if the project adopts generated types; the current web client keeps a checked-in database type snapshot.
-
-Do not make manual dashboard changes that are absent from migrations. If a dashboard-only setting is unavoidable, document it in the relevant ADR and add a reproducible follow-up.
-
-## Coding conventions
-
-- TypeScript should be strict in shared and application packages.
-- Keep domain contracts in `packages/domain` (or its reviewed successor) rather than copying request/response shapes into each client.
-- Validate all external input at the server boundary. Client validation is for feedback, not trust.
-- Use explicit names from [domain vocabulary](SSOT.md#domain-vocabulary): `listing`, `community_post`, `transaction`, and `profile` have different meanings.
-- Keep server-only modules separate from client modules. Add build-time checks to prevent secret imports in Expo/browser code.
-- Prefer small, composable data-access functions that expose the required authorization context.
-- Make writes idempotent where retries are expected and return documented error codes.
-- Do not add UI layout or design-system rules to domain docs; record approved design decisions separately.
-
-## Testing strategy
-
-The current baseline includes package/domain validation tests and web repository tests:
-
-- Package-level Zod validation tests for sport-discriminated listings and profile/onboarding inputs (currently present in `packages/domain/tests`).
-- Unit tests for shared IDs, pagination, error helpers, and any new contract validators remain useful follow-ups.
-
-- Contract tests for web/server operations using authenticated and anonymous contexts.
-- Database tests for foreign keys, uniqueness, publication state constraints, and RLS policy cases.
-- Smoke checks for a public listing read, sign-in/session restoration, listing create/review, and any approved community/report flow.
-- Web and mobile build/type checks are runnable locally; CI wiring remains a follow-up.
-
-For every RLS policy, test at least:
+권장 로컬 파일명은 다음과 같습니다.
 
 ```text
-anonymous → public active listings/approved content only
-owner     → own profile/listing/content rows
-other user→ cannot read or mutate another user's private rows
-operator  → only approved listing/moderation operations
+apps/web/.env.local       # 무시됨; 웹 공개 + 서버 설정
+apps/mobile/.env          # 무시됨; Expo 공개 설정만
+.env.example              # 커밋되는 이름과 안전한 placeholder
 ```
 
-The committed migration has RLS policies, but anonymous/owner/operator verification against a configured local or hosted Supabase project remains a setup follow-up. Do not treat a successful service-role test as proof that client access is safe.
+규칙:
 
-## Branch and change workflow
+- `apps/web/.env.example`와 `apps/mobile/.env.example`은 변수 이름 참고용으로 유지합니다.
+- service-role key, database password, Auth client secret, provider webhook secret을 커밋하지 않습니다.
+- `NEXT_PUBLIC_`와 `EXPO_PUBLIC_`에는 client bundle에 공개해도 되는 값만 사용합니다.
+- 웹은 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, 모바일은 `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`를 사용합니다.
+  웹 설정은 레거시 호환을 위해 `NEXT_PUBLIC_SUPABASE_ANON_KEY`를 별칭으로 허용합니다.
+- `SUPABASE_SERVICE_ROLE_KEY`는 서버 전용이며 shared module이나 client bundle로 전달하지 않습니다.
+- 각 환경은 분리된 Supabase project/database를 가리켜야 합니다.
 
-Each change should have one clear outcome:
+## 로컬 Supabase workflow
 
-1. Update the relevant contract or ADR when behavior changes.
-2. Add schema migration and tests together for data changes.
-3. Run formatting, lint, typecheck, tests, and the affected app build.
-4. Review generated files and environment references for accidental secrets.
-5. Record unresolved decisions instead of hiding them in code defaults.
+migration 우선 workflow는 `supabase/migrations/0001_init.sql`과 `supabase/seed.sql`에 반영되어 있습니다.
 
-Documentation-only changes may be checked with Markdown link/reference validation and `git diff --check`; they must not modify application source as a side effect.
+1. 순서가 있는 SQL migration을 생성하거나 갱신합니다.
+2. 테이블 변경과 같은 migration에서 RLS와 정책을 함께 정의합니다.
+3. 문서화된 query path에 필요한 constraint와 index를 추가합니다.
+4. Supabase 프로젝트를 설정/연결하고 처음부터 모든 migration을 적용하도록 reset합니다.
+5. 커밋된 seed를 실행합니다. Auth profile이나 사용자 콘텐츠가 아닌 스포츠 기준 데이터만 넣습니다.
+6. anonymous, 인증된 owner, 다른 사용자, operator 권한을 각각 테스트합니다.
+7. 생성된 타입을 채택한다면 database type을 재생성합니다. 현재 웹 앱은 커밋된 타입 snapshot을 사용합니다.
 
-## Release hygiene
+Migration에 없는 Dashboard 수동 변경은 만들지 않습니다. 불가피하다면 관련 ADR에 이유와 재현 방법을 기록합니다.
 
-Before a production release exists, define:
+## 코딩 규칙
 
-- How web and mobile versions are coordinated.
-- How Supabase migrations are promoted and rolled back.
-- How environment values and auth redirect URLs are managed.
-- Who can perform operator actions and how access is revoked.
-- How errors, audit events, privacy requests, and incidents are retained.
-- How deep links and canonical share URLs are tested on both platforms.
+- 공유 패키지와 앱 모두 TypeScript strict 설정을 유지합니다.
+- 도메인 계약은 각 앱에 복사하지 말고 `packages/domain`에 둡니다.
+- 모든 외부 입력은 서버 경계에서 검증합니다. 클라이언트 검증은 사용자 피드백용일 뿐 신뢰 경계가 아닙니다.
+- [도메인 용어](SSOT.md#도메인-용어)의 `listing`, `community_post`, `transaction`, `profile`을 구분합니다.
+- 서버 전용 모듈과 client 모듈을 분리하고 Expo/browser에 secret이 import되지 않도록 build-time 검사를 추가합니다.
+- 필요한 authorization context를 노출하는 작고 조합 가능한 data-access 함수를 선호합니다.
+- 재시도가 가능한 write는 idempotent하게 만들고 문서화된 오류 코드를 반환합니다.
+- UI layout이나 design-system 규칙은 domain 문서에 넣지 않고 별도 design 문서에서 결정합니다.
 
-Until those decisions are made, there is no supported production deployment procedure.
+## 테스트 전략
 
-## Troubleshooting checklist
+현재 baseline에는 domain Zod 검증 테스트와 웹 repository 테스트가 있습니다.
 
-- **No data appears:** check the Supabase project URL, environment, publication status, and RLS policy; do not disable RLS to diagnose.
-- **Session disappears:** verify the platform storage/cookie adapter and auth redirect configuration; never copy a service key into the client.
-- **Save repeats/duplicates:** confirm the composite unique key and idempotent mutation contract.
-- **Web/mobile disagree:** compare shared schema/version and environment project IDs before changing client logic.
-- **Migration works locally only:** reset from zero, verify the migration is committed, and check for dashboard-only changes.
-- **Public response leaks fields:** inspect the query/view and server response shaping; RLS alone is not a substitute for a safe public projection.
+- `packages/domain/tests`의 sport별 listing 및 profile/onboarding 입력 검증 테스트
+- 향후 shared ID, pagination, 오류 helper, 계약 validator 단위 테스트
+- 인증/비인증 context를 사용한 웹/서버 계약 테스트
+- foreign key, uniqueness, 공개 상태 constraint, RLS 정책 테스트
+- 공개 listing 조회, 로그인/session 복원, listing 등록/검토, 승인된 community/report flow smoke test
+- 웹·모바일 build/type check는 로컬에서 실행 가능하며 CI 연결은 후속 작업입니다.
 
-## Current status
+모든 RLS 정책은 최소한 다음을 검증해야 합니다.
 
-The repo now has root workspace scripts, web and mobile MVP clients, shared contracts, a Supabase migration with RLS, and a deterministic sports seed. The local validation matrix (`pnpm install`, `pnpm typecheck`, `pnpm test`, `pnpm lint`, `pnpm build`, `pnpm format:check`, and `pnpm export:mobile:web`) is passing. Remaining setup is to create/link a Supabase project, copy and fill the two app env files with public values, apply the migration and seed, configure Auth, and exercise RLS with real identities; payment, fulfillment, deployment, and CI remain outside this MVP baseline.
+```text
+anonymous   -> 공개 active listing/승인된 콘텐츠만
+owner       -> 자신의 profile/listing/content만
+other user  -> 다른 사용자의 private 행을 읽거나 수정할 수 없음
+operator    -> 승인된 listing/moderation 작업만
+```
+
+커밋된 migration에는 RLS 정책이 있지만, 실제 로컬/hosted Supabase에서 anonymous/owner/operator를
+검증하는 작업은 프로젝트 설정 후 진행합니다. service-role 테스트 성공만으로 client 접근이 안전하다고 판단하지 않습니다.
+
+## 변경 workflow
+
+각 변경은 하나의 명확한 결과를 가져야 합니다.
+
+1. 동작이 바뀌면 관련 계약 또는 ADR을 업데이트합니다.
+2. 스키마 변경에는 migration과 테스트를 함께 추가합니다.
+3. format, lint, typecheck, test, 영향받은 앱 build를 실행합니다.
+4. 생성 파일과 환경변수에서 실수로 secret이 포함되지 않았는지 확인합니다.
+5. 미결정 사항은 코드 기본값에 숨기지 말고 기록합니다.
+
+문서만 바꾸는 경우 Markdown 링크/reference와 `git diff --check`를 확인하며 애플리케이션 코드를 수정하지 않습니다.
+
+## Release 위생
+
+production release 전 다음을 결정해야 합니다.
+
+- 웹/모바일 버전 조정 방식
+- Supabase migration 승격 및 rollback 방식
+- 환경 값과 Auth redirect URL 관리
+- operator 작업 권한과 회수 방식
+- 오류, audit event, privacy 요청, incident 보존 정책
+- 두 플랫폼의 deep link와 canonical share URL 테스트
+
+이 결정 전에는 지원되는 production 배포 절차가 없습니다.
+
+## 문제 해결 체크리스트
+
+- **데이터가 보이지 않음:** Supabase URL, 환경, publication 상태, RLS 정책을 확인하고 진단을 위해 RLS를 끄지 않습니다.
+- **세션이 사라짐:** 플랫폼 storage/cookie adapter와 Auth redirect를 확인하고 service key를 client에 넣지 않습니다.
+- **저장이 반복/중복됨:** composite unique key와 idempotent mutation 계약을 확인합니다.
+- **웹/모바일 결과가 다름:** shared schema/version과 환경별 project ID를 비교합니다.
+- **migration이 로컬에서만 동작함:** 처음부터 reset하고 migration 커밋과 Dashboard-only 변경을 확인합니다.
+- **공개 응답이 필드를 누출함:** query/view와 서버 응답 shaping을 확인합니다. RLS만으로 public projection을 대신하지 않습니다.
+
+## 현재 상태
+
+root workspace script, 웹·모바일 MVP client, 공유 계약, RLS migration, 결정적인 스포츠 seed가 구현되어 있습니다.
+로컬 검증 매트릭스(`pnpm install`, `pnpm typecheck`, `pnpm test`, `pnpm lint`, `pnpm build`,
+`pnpm format:check`, `pnpm export:mobile:web`)는 통과합니다.
+남은 작업은 Supabase project 생성/연결, 두 앱 환경 파일 입력, migration/seed 적용, Auth 설정,
+실제 identity를 사용한 RLS 검증입니다. 결제, fulfillment, 배포, CI는 현재 MVP 범위 밖입니다.

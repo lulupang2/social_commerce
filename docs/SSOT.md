@@ -1,258 +1,262 @@
-# IceGear MVP — single source of truth
+# IceGear MVP 단일 기준 문서(SSOT)
 
-**Status:** MVP implementation baseline shipped; Supabase project, environment, and seed setup are still required for end-to-end data flows.
+**상태:** MVP 구현 기준선 완료. Supabase 프로젝트, 환경변수, seed 적용은 연결된 실행 환경에서 추가해야 합니다.
 
-**Last reviewed:** 2026-08-13
+**최종 검토일:** 2026-08-14
 
-This document is the short, durable reference for the IceGear MVP. It records what is known, what is being proposed so the team can build, and what still needs a decision. It intentionally does not prescribe visual design, screen layout, navigation style, copy, or interaction details.
+이 문서는 IceGear MVP의 짧고 오래 유지되는 기준입니다. 확정된 사실, 구현을 위한 제안,
+아직 결정하지 않은 항목을 구분합니다. 시각 디자인, 화면 배치, navigation 방식, 문구, interaction 상세는 정의하지 않습니다.
 
-## How to read this document
+## 문서 읽는 법
 
-- **Confirmed** means it is required by the current repository brief or is an observed repository fact.
-- **Proposed** means a practical working assumption that can be implemented, but needs product validation.
-- **Unresolved** means the team must decide it; downstream docs must not silently turn it into a product promise.
+- **확정(Confirmed):** 현재 제품 요청 또는 저장소에서 확인된 사실입니다.
+- **제안(Proposed):** 구현을 시작하기 위한 실용적 가정이며 제품 검증이 필요합니다.
+- **미결정(Unresolved):** 팀이 결정해야 하며 다른 문서가 이를 조용히 제품 약속으로 바꾸면 안 됩니다.
 
-When a proposal becomes a decision, update this file and the relevant ADR or supporting document in the same change.
+제안이 결정으로 바뀌면 이 문서와 관련 ADR/지원 문서를 같은 변경에서 함께 갱신합니다.
 
-## Product statement and scope
+## 제품 정의와 범위
 
-### Confirmed
+### 확정
 
-IceGear is the working product name for an MVP in the social-commerce space. The implementation uses Expo, Next.js, Supabase, and pnpm. The repository now includes the root workspace and lockfile, a Next.js web MVP, an Expo Router mobile MVP, shared `packages/domain` contracts with Zod validation, Supabase migrations and seed data, and public environment examples. The Supabase project itself and its runtime environment values are intentionally not committed.
+IceGear는 겨울 스포츠 중고거래·커뮤니티 MVP의 작업명입니다. 구현 스택은 Expo, Next.js, Supabase, pnpm입니다.
+저장소에는 root workspace/lockfile, Next.js 웹 MVP, Expo Router 모바일 MVP, Zod를 사용하는
+`packages/domain` 계약, Supabase migration/seed, 공개 환경변수 예시가 있습니다.
+실제 Supabase project와 runtime 값은 커밋하지 않습니다.
 
-### Proposed product job
+### 제안하는 제품 역할
 
-IceGear helps people discover, list, and discuss winter-sports gear. The current domain contract names **ski** and **hockey** as supported sports and models seller listings, profiles/onboarding, community posts/comments/reactions, reports, and a transaction lifecycle. The MVP should make the listing, profile, and community foundations reliable before it takes on payment and fulfillment complexity.
+IceGear는 겨울 스포츠 장비를 발견하고 등록하며 정보를 나누는 서비스입니다.
+현재 domain 계약의 sport는 **ski**와 **hockey**이며 seller listing, profile/onboarding,
+community post/comment/reaction, report, transaction lifecycle을 모델링합니다.
+MVP에서는 listing과 profile 기반을 먼저 안정화하고 결제·fulfillment 복잡도는 뒤로 미룹니다.
 
-The current sports boundary is ski and hockey. The domain package already proposes equipment categories, conditions, currencies, location, media metadata, and seller types, but the product owner still needs to approve which fields and regions are release-critical. Whether all modeled transaction and community states ship in the first release remains unresolved.
+현재 sport 범위는 ski와 hockey입니다. domain package는 equipment category, condition, currency,
+location, media metadata, seller type을 제안하지만 어떤 필드와 지역을 첫 release에 필수로 할지는 제품 승인이 필요합니다.
+모든 transaction/community 상태를 첫 release에 포함할지는 미결정입니다.
 
-### Proposed MVP scope
+### 제안하는 MVP 범위
 
-The following is the smallest useful product slice proposed for validation, based on the current domain contract:
+1. 인증 사용자가 최소 profile/onboarding을 완료하고 선호 sport와 선택적인 skill level을 저장합니다.
+2. 사용자가 active ski/hockey listing을 제목, 설명, condition, price/currency, image, 위치, tag, sport별 상세로 탐색합니다.
+3. 인증 seller가 검증된 계약으로 listing을 제출하고 승인된 operator가 공개 여부를 관리합니다.
+4. moderation/report 정책이 승인된 경우에만 community post/comment/reaction을 공개합니다.
+5. 사용자가 허용된 대상과 사유로 report를 만들고 operator가 처리합니다.
+6. 모든 write는 인증 owner 또는 명시된 operator role을 가지며 Supabase RLS가 저장 데이터를 보호합니다.
 
-1. An authenticated user can complete onboarding and maintain the minimum profile data needed for the product, including preferred sport(s) and optional skill level.
-2. Users can browse and inspect active ski or hockey listings with title, description, condition, price/currency, images, location, tags, and sport-specific details where available.
-3. An authenticated seller can submit a listing through a validated contract; listing review/publication is controlled by an approved operator path.
-4. Users can publish or consume community posts and comments only if the moderation/reporting policy is approved; the domain package currently models discussion, question, guide, review, event, and announcement post types plus reactions.
-5. A user can report an allowed target using a documented reason set; a trusted operator can review the report.
-6. Every write has an authenticated owner or an explicitly documented operator role, and all persisted data is protected by Supabase RLS.
+Transaction은 향후 reservation/handoff를 위해 모델링할 수 있지만 payment provider와 fulfillment 자동화는 MVP에 포함하지 않습니다.
+save/collection, follow, messaging, recommendation feed는 현재 domain package에 표현되지 않았으며 미결정입니다.
 
-Transaction records may be modeled for a later handoff/reservation flow, but no payment provider or fulfillment automation is part of this proposal. Saves/collections, follows, messaging, and recommendation feeds are not currently represented by the domain package and remain unresolved.
+### MVP 밖의 범위
 
-### Non-MVP boundary
+- 결제, checkout, 환불, 세금, 배송, fulfillment, 반품
+- seller payout, commission, identity verification, marketplace dispute
+- 실시간 채팅, direct message, activity feed, push notification campaign
+- moderation/report 정책 없이 공개하는 community content
+- 행동 데이터나 ML이 필요한 recommendation/ranking 모델
+- 승인되지 않은 통화, 지역, inventory 정책
+- 웹 전용 또는 native 전용으로 두 클라이언트를 분리시키는 기능
+- bespoke design system, visual layout, navigation model
 
-The following are explicitly outside the first implementation unless product re-scopes the MVP:
+## 작업 Persona
 
-- Payment capture, checkout, refunds, taxes, shipping, fulfillment, and returns.
-- Seller payouts, commissions, identity verification, and marketplace dispute handling.
-- Real-time chat, direct messaging, activity feeds, and push-notification campaigns.
-- Community content without a moderation/reporting policy and operator workflow.
-- Recommendation or ranking models that require behavioral data or machine learning.
-- Currencies, regions, and inventory behavior beyond the approved first release.
-- Native-only or web-only features that make the two clients behave as separate products.
-- A bespoke design system, visual layout, or navigation model. Those are design decisions and are not specified here.
-
-## Personas
-
-These are working personas, not a claim that research has been completed.
-
-| Persona | Goal | MVP need | Guardrail |
+| Persona | 목표 | MVP 필요 | 보호 장치 |
 | --- | --- | --- | --- |
-| Gear explorer/buyer | Find gear that matches a sport, need, or budget | Public listing discovery and item facts | Do not require an account for public reading unless a later privacy decision requires it |
-| Seller/listing owner | Describe and offer gear accurately | Validated listing creation and listing state visibility | Do not assume seller payouts, shipping, or marketplace guarantees |
-| Enthusiast/community participant | Share knowledge and ask or answer questions | Approved post/comment/reaction flow | Do not ship user-generated content without moderation and report handling |
-| Listing/operator | Keep listing data and publication state accurate | Authenticated review, activate/archive/remove, and correction path | Operator actions must be auditable and server-side/RLS protected |
-| Moderator/support operator | Handle reports or safety issues | Role-restricted report review and resolution | Exact roles, queue, and retention policy are unresolved |
+| 장비 탐색자/구매자 | sport·용도·예산에 맞는 장비 찾기 | 공개 listing 탐색과 item 정보 | privacy 결정 전 public read를 계정 필수로 만들지 않음 |
+| 판매자/listing owner | 장비를 정확히 설명하고 판매 제안 | 검증된 listing 생성과 상태 확인 | payout, 배송, marketplace 보장을 가정하지 않음 |
+| 커뮤니티 참여자 | 지식 공유와 질문/답변 | 승인된 post/comment/reaction | moderation과 report 없이 UGC를 공개하지 않음 |
+| listing/operator | listing과 publication 상태 유지 | 검토·활성화·보관·삭제와 수정 경로 | operator 작업은 audit와 서버/RLS로 보호 |
+| moderator/support | 신고와 안전 이슈 처리 | role 제한 report 검토 | role, queue, 보존 정책은 미결정 |
 
-The first release is primarily for the gear explorer and listing owner. Community participants are conditional on the moderation decision; operator and moderator personas are operational concerns rather than a commitment to an admin application.
+첫 release의 중심은 장비 탐색자와 listing owner입니다. Community 참여자는 moderation 결정에 따라 조건부이며,
+operator/moderator는 별도 admin 앱 약속이 아니라 운영 요구사항입니다.
 
-## User flows
+## 사용자 흐름
 
-The flows describe business outcomes and data boundaries, not screens or layout.
+흐름은 business outcome과 데이터 경계를 설명하며 화면이나 layout을 규정하지 않습니다.
 
-### Browse and inspect an active listing — proposed MVP
+### Active listing 탐색 및 상세 조회(제안)
 
-1. A visitor requests a listing page or sport/category result.
-2. The service returns only active/visible listings and the fields allowed by policy.
-3. The visitor requests a listing by stable ID or slug.
-4. The service returns the listing, its public media metadata, seller summary as approved, and sport-specific detail fields.
-5. If the listing is missing, removed, or not visible in the caller's scope, the service returns the same not-found behavior; it must not disclose private records.
+1. 방문자가 listing 페이지 또는 sport/category 결과를 요청합니다.
+2. 서비스가 active/visible listing과 허용된 필드만 반환합니다.
+3. 방문자가 안정적인 ID로 listing을 요청합니다.
+4. 서비스가 listing, public media, 승인된 seller summary, sport별 상세를 반환합니다.
+5. 없거나 숨겨진 listing은 private record의 존재를 밝히지 않는 동일한 not-found 결과를 사용합니다.
 
-### Create and review a listing — proposed MVP
+### Listing 생성과 검토(제안)
 
-1. A seller signs in through Supabase Auth and completes the minimum profile/onboarding requirements.
-2. The client submits a sport-discriminated listing payload.
-3. Shared validation checks category, condition, price/currency, images, location, and sport-specific details.
-4. The server assigns the seller subject, creates a draft or review-pending listing, and records ownership.
-5. An approved operator reviews and transitions the listing to active, or returns/removes it according to the moderation policy.
+1. seller가 Supabase Auth로 로그인하고 최소 profile/onboarding을 완료합니다.
+2. client가 sport discriminator가 있는 listing payload를 보냅니다.
+3. 공유 검증이 category, condition, price/currency, image, location, sport별 상세를 검사합니다.
+4. 서버가 session subject를 seller로 지정하고 draft 또는 review-pending listing과 ownership을 기록합니다.
+5. 승인된 operator가 active로 전환하거나 moderation 정책에 따라 반려/삭제합니다.
 
-### Complete profile/onboarding — proposed MVP
+### Profile/onboarding 완료(제안)
 
-1. A user authenticates through an enabled Supabase Auth provider.
-2. The client collects display name and at least one preferred sport, with optional username, bio, location, avatar, and skill level subject to privacy review.
-3. The server associates the profile with the authenticated subject and validates self-service changes.
-4. The user can read/update only their permitted profile fields.
+1. 사용자가 활성화된 Supabase Auth provider로 인증합니다.
+2. display name과 하나 이상의 선호 sport를 입력하고, 선택적으로 username, bio, location, avatar, skill level을 입력합니다.
+3. 서버가 profile을 인증 subject와 연결하고 self-service 변경을 검증합니다.
+4. 사용자는 허용된 profile 필드만 읽고 수정합니다.
 
-### Participate in community content — conditional MVP
+### Community 참여(조건부)
 
-1. An authenticated user submits an approved post or comment type.
-2. The service validates ownership, content length, and target visibility.
-3. Reactions and edits/deletes follow an explicit moderation policy.
-4. A user submits a report with a documented reason when content or a listing is unsafe or inappropriate.
-5. A moderator/operator reviews and resolves the report with an auditable action.
+1. 인증 사용자가 승인된 post/comment type을 제출합니다.
+2. 서비스가 소유권, content 길이, 대상 공개 범위를 검증합니다.
+3. reaction과 수정/삭제는 명시된 moderation 정책을 따릅니다.
+4. 사용자가 위험하거나 부적절한 콘텐츠/listing을 report합니다.
+5. moderator/operator가 audit 가능한 방식으로 처리합니다.
 
-### Share a stable listing/community reference — proposed MVP
+### 안정적인 listing/community 공유(제안)
 
-1. A user obtains a canonical listing or post URL/ID from a visible resource.
-2. The platform's native or web sharing mechanism may be used; the implementation must not depend on a particular UI.
-3. A recipient can open the public resource without inheriting the sender's session or private data.
+1. 사용자가 표시된 리소스의 canonical URL/ID를 얻습니다.
+2. 플랫폼 공유 기능을 사용할 수 있으며 특정 UI에 의존하지 않습니다.
+3. 수신자는 보낸 사람의 session이나 private data를 상속하지 않고 public 리소스를 엽니다.
 
-### Operator publication — proposed MVP
+### Operator publication(제안)
 
-1. An operator authenticates with an approved operator role.
-2. A server-side/admin operation validates the listing or community moderation transition.
-3. RLS and server authorization prevent ordinary users from changing catalog/listing or publication fields.
-4. The operation is logged with actor and timestamp information sufficient for support and audit.
+1. operator가 승인된 role로 인증합니다.
+2. 서버 작업이 listing/moderation 전이를 검증합니다.
+3. RLS와 서버 authorization이 일반 사용자의 publication field 변경을 막습니다.
+4. actor와 timestamp를 기록해 지원/감사가 가능하도록 합니다.
 
-### Account lifecycle — proposed MVP
+### 계정 생명주기(제안)
 
-1. A user creates or signs into an account with the enabled Supabase Auth provider(s).
-2. A profile row is created or reconciled from the authenticated subject.
-3. The user can update only fields explicitly allowed for self-service.
-4. Sign-out revokes the local session and removes access to account-only operations.
+1. 사용자가 활성화된 Auth provider로 가입/로그인합니다.
+2. profile 행을 생성하거나 인증 subject와 동기화합니다.
+3. self-service로 허용된 field만 수정합니다.
+4. 로그아웃 시 local session을 폐기하고 계정 전용 작업 접근을 제거합니다.
 
-### Deferred payment/fulfillment flow — explicitly not committed
+### 결제/fulfillment 흐름(명시적 보류)
 
-Listing → offer/reservation → checkout → payment → order → fulfillment is a future flow, not an MVP contract. Do not create payment UI, provider webhooks, payout logic, or shipping automation until the transaction semantics, payment provider, legal requirements, and regional scope are decided.
+`listing → offer/reservation → checkout → payment → order → fulfillment`는 미래 흐름입니다.
+transaction 의미, provider, 법률 조건, 지역 범위가 결정되기 전에는 payment UI, webhook, payout, 배송 자동화를 만들지 않습니다.
 
-## Domain vocabulary
+## 도메인 용어
 
-Use these terms consistently in code, APIs, and support material.
-
-| Term | Meaning | Notes |
+| 용어 | 의미 | 주의 |
 | --- | --- | --- |
-| IceGear | The product and its services | Avoid using it as a table name unless needed |
-| Sport | A supported gear/community domain; currently `ski` or `hockey` in the domain package | Adding sports is a product/schema decision |
-| Listing | A seller-owned offer/record for a piece of gear | Distinct from a future canonical catalog item |
-| Catalog item | A future canonical item independent of a seller offer | Not present in the current domain package; do not assume it exists |
-| Seller | An individual, shop, or brand account associated with a listing | Marketplace verification/payout semantics are unresolved |
-| Active | A listing visible and available under the selected policy | Status transitions are not UI decisions |
-| Save | A future user-owned relation marking a listing for later retrieval | Not present in the current domain package; do not call it a purchase |
-| Community post | A typed user-authored item such as discussion, question, guide, review, event, or announcement | Requires moderation/reporting controls |
-| Reaction | A typed signal on a community post; current domain values are like/helpful/celebrate | Exact counts, uniqueness, and abuse controls are unresolved |
-| Profile | Application-owned, non-auth identity data linked to `auth.users.id` | Authentication credentials remain in Supabase Auth |
-| Operator | Trusted staff/service role allowed to manage catalog data | Exact role claims are unresolved |
-| Moderator | Trusted person/service allowed to review user-generated content or reports | Not needed until social content is enabled |
-| Report | A user/operator submission that flags content or data | Candidate future entity; policy is unresolved |
-| Transaction | A future or provisional record relating a buyer, seller, listing, amount, and lifecycle status | Domain status values exist, but payment/fulfillment behavior is deferred |
-| Public data | Data safe to return without a user session | Must be enforced by query and RLS, not just client behavior |
-| Private data | Data visible only to its owner or an explicitly authorized role | Default for profiles, saves, reports, and operational notes |
+| IceGear | 제품과 서비스 이름 | 필요하지 않으면 테이블명으로 사용하지 않음 |
+| Sport | 지원되는 gear/community 영역; 현재 `ski` 또는 `hockey` | sport 추가는 제품/스키마 결정 |
+| Listing | 판매자가 소유한 장비 판매 제안/record | 미래의 canonical catalog item과 구분 |
+| Catalog item | seller 제안과 독립적인 canonical gear record | 현재 domain에 없음 |
+| Seller | listing에 연결된 개인·shop·brand 계정 | 검증/payout 의미는 미결정 |
+| Active | 선택한 정책에 따라 공개되고 판매 가능한 listing | status 전이는 UI 결정이 아님 |
+| Save | 미래의 사용자 소유 관계 | 구매를 save로 표현하지 않음 |
+| Community post | discussion, question, guide, review, event, announcement 형태의 사용자 콘텐츠 | moderation/report 필요 |
+| Reaction | post에 대한 like/helpful/celebrate 신호 | count·uniqueness·abuse 정책 미결정 |
+| Profile | `auth.users`와 연결된 애플리케이션 identity 정보 | credential은 Supabase Auth 소유 |
+| Operator | catalog/publication을 관리하는 신뢰된 담당자 | role claim은 미결정 |
+| Moderator | UGC/report를 검토하는 담당자 | social content 승인 전에는 필요하지 않음 |
+| Report | 콘텐츠나 데이터를 표시하는 신고 record | 대상/보존 정책 필요 |
+| Transaction | 미래의 buyer/seller/listing/금액/lifecycle 관계 | payment/fulfillment는 보류 |
+| Public data | session 없이 반환해도 안전한 데이터 | query와 RLS 모두로 강제 |
+| Private data | owner 또는 명시된 role만 접근하는 데이터 | profile, save, report 기본값 |
 
-## Architecture decisions
+## 아키텍처 결정
 
-### Confirmed stack
+### 확정 스택
 
-- **pnpm** manages the workspace, dependency graph, and shared scripts.
-- **Expo / React Native** is the target mobile client.
-- **Next.js** is the target web client and server-side web boundary.
-- **Supabase** is the target backend platform: Postgres, Auth, Storage if media is enabled, and server-side functions where appropriate.
+- **pnpm:** workspace, dependency graph, 공통 script
+- **Expo / React Native:** 모바일 client
+- **Next.js:** 웹 client와 서버 실행 경계
+- **Supabase:** Postgres, Auth, RLS, 승인된 경우 Storage/Edge Function
 
-The rationale and consequences are recorded in [ADR 001 — stack](adr/001-stack.md).
+근거와 trade-off는 [ADR 001](adr/001-stack.md)에 기록되어 있습니다.
 
-### Proposed boundaries
+### 경계 원칙
 
 ```text
-Expo mobile ─────┐
-                 ├─ shared types/validation ── Supabase Auth + RLS-protected data
-Next.js web ─────┘             │
-                               └─ Next.js route handlers or Supabase Edge Functions
-                                  for privileged/multi-step operations
+Expo 모바일 ──┐
+              ├── 공유 타입/검증 ── Supabase Auth + RLS 보호 데이터
+Next.js 웹 ───┘                 └── 권한 작업은 서버 route/Edge Function
 ```
 
-Clients may use the Supabase public client for authenticated, RLS-protected reads and simple user-owned writes. Operations that combine records, use secrets, mutate publication state, call third-party services, or need durable idempotency should cross a server-side boundary. The exact split between Next.js route handlers and Supabase Edge Functions is unresolved; whichever is chosen must preserve the same API and authorization rules.
+클라이언트는 단순한 RLS 보호 read와 사용자 소유 write에 public Supabase client를 사용할 수 있습니다.
+여러 record를 결합하거나 secret, publication 상태, 외부 provider, idempotency가 필요한 작업은 서버 경계를 통과합니다.
 
-### Current workspace shape
+### 현재 workspace 구조
 
 ```text
 apps/
-  mobile/       # Expo application
-  web/          # Next.js application
+  mobile/       Expo 앱
+  web/          Next.js 앱
 packages/
-  domain/       # framework-agnostic types/validation contracts
+  domain/       프레임워크 독립 타입/검증 계약
 supabase/
-  migrations/   # ordered SQL migrations and RLS policies
-  seed.sql      # deterministic sports reference data
-docs/
+  migrations/   순서가 있는 SQL migration과 RLS
+  seed.sql      스포츠 기준 데이터
+docs/           제품·엔지니어링 문서
 ```
 
-The web currently reads through a server-scoped public Supabase client, while mobile reads and creates listings through its public client; both rely on RLS. There is no committed Supabase `config.toml`, hosted project link, or service-role client; those belong to local/deployment setup and trusted server tooling.
+현재 웹은 request-scoped public Supabase client로 읽고, 모바일은 public client로 active listing 조회와 draft 생성을 수행합니다.
+Supabase `config.toml`, hosted project link, service-role client는 저장하지 않습니다.
 
-## Security and RLS principles
+## 보안과 RLS 원칙
 
-1. **Default deny.** Enable RLS on every application table and add only policies required by a documented use case.
-2. **Use the database subject.** Owner policies compare ownership to `auth.uid()` (or a narrowly scoped, reviewed role claim), never to a client-provided user ID.
-3. **Public means approved and visible.** Anonymous reads may see only explicitly public fields on active listings and approved community content. Draft, review-pending, removed, deleted, and operational data must not leak through alternate queries, counts, or error messages.
-4. **No service key in clients.** A Supabase service-role key, database password, payment secret, webhook secret, or admin credential may run only in a trusted server environment. It must never be prefixed with a client-exposed variable name or bundled into Expo/Next browser code.
-5. **Authorization is server and database defense in depth.** Route handlers/functions validate the session and role, while RLS remains effective if a client or route is misconfigured.
-6. **Minimize personal data.** Keep authentication in Supabase Auth; store only product-required profile fields. Avoid collecting address, payment, contact, or precise location data until a reviewed requirement exists.
-7. **Validate at the boundary.** Validate shape, length, enum values, IDs, URLs, and state transitions on the server and in database constraints where practical. Treat all client values as untrusted.
-8. **Safe media.** If Supabase Storage is used, keep buckets private by default, use signed URLs for restricted media, validate MIME type/size server-side, and give object paths an ownership or publication policy.
-9. **Auditable privileged actions.** Publication, moderation, and data corrections need actor/timestamp records. Never grant broad admin access to ordinary user sessions.
-10. **Avoid side-channel leaks.** Use consistent not-found behavior for records a caller cannot see, and do not expose internal error details, stack traces, or provider credentials.
+1. **Default deny:** 모든 애플리케이션 테이블에 RLS를 활성화하고 문서화된 사용 사례만 허용합니다.
+2. **Database subject 사용:** ownership policy는 client user ID가 아닌 `auth.uid()`를 기준으로 합니다.
+3. **Public은 승인된 visible 데이터:** active listing과 승인된 community만 anonymous read에 포함합니다.
+4. **Client에 service key 금지:** service-role, DB password, payment/webhook secret은 trusted server에서만 사용합니다.
+5. **이중 방어:** route/server authorization과 RLS를 함께 사용합니다.
+6. **개인정보 최소화:** 인증은 Auth에 두고 제품에 필요한 profile field만 저장합니다.
+7. **입력 경계 검증:** shape, 길이, enum, ID, URL, 상태 전이를 서버와 database에서 검증합니다.
+8. **안전한 media:** Storage를 사용할 때 bucket은 기본 비공개, 제한 media는 signed URL을 사용합니다.
+9. **권한 작업 감사:** publication, moderation, correction에 actor/timestamp를 기록합니다.
+10. **Side-channel 방지:** 접근할 수 없는 record는 일관된 not-found로 처리하고 내부 오류를 노출하지 않습니다.
 
-RLS policies must be tested with anonymous, ordinary authenticated, owner, and operator identities before a migration is considered complete. See [development.md](development.md) and [data-model.md](data-model.md).
+RLS는 anonymous, 일반 인증 사용자, owner, operator identity로 테스트해야 합니다.
+[개발 가이드](development.md)와 [데이터 모델](data-model.md)을 함께 확인합니다.
 
-## Environment variables
+## 환경변수
 
-Names below describe the current environment contract. Only the checked-in example files are present; do not commit runtime values.
+아래 이름만 계약으로 정의하며 실제 값은 커밋하지 않습니다.
 
-| Variable | Consumer | Sensitivity | Purpose |
+| 변수 | 소비자 | 민감도 | 목적 |
 | --- | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Next.js browser/server | Public configuration | Supabase project URL for the web client |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Next.js browser/server | Public configuration | Supabase publishable/anon key; constrained by RLS |
-| `EXPO_PUBLIC_SUPABASE_URL` | Expo | Public configuration | Supabase project URL for mobile |
-| `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Expo | Public configuration | Supabase publishable/anon key; constrained by RLS |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Next.js compatibility alias | Public configuration | Optional legacy web alias; publishable key is preferred and used in the example |
-| `SUPABASE_SERVICE_ROLE_KEY` | Trusted server/CI only | Secret | Privileged operations/migrations where explicitly required; never ship to clients |
-| `SUPABASE_DB_URL` | Local tooling/CI only | Secret | Migration or inspection connection when the Supabase CLI cannot supply it |
-| `NEXT_PUBLIC_SITE_URL` | Next.js | Public configuration | Canonical web origin for links and auth callbacks |
-| `EXPO_PUBLIC_WEB_URL` | Expo | Public configuration | Canonical web origin for share/deep-link fallbacks |
-| `SUPABASE_AUTH_REDIRECT_URL` | Auth setup/server | Configuration | Approved callback origin(s); exact provider setup is unresolved |
-| `SENTRY_DSN` | Optional clients/server | Sensitive configuration | Error reporting, only after privacy review; not required for MVP baseline |
+| `NEXT_PUBLIC_SUPABASE_URL` | Next.js browser/server | 공개 설정 | 웹 Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Next.js browser/server | 공개 설정 | RLS로 제한되는 publishable/anon key |
+| `EXPO_PUBLIC_SUPABASE_URL` | Expo | 공개 설정 | 모바일 Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Expo | 공개 설정 | RLS로 제한되는 모바일 publishable key |
+| `SUPABASE_SERVICE_ROLE_KEY` | trusted server/CI만 | 비밀 | 명시적으로 필요한 권한 작업/마이그레이션 |
 
-Public keys are not authorization. Every environment must point at its own Supabase project, and production values must be injected by the deployment system or local secret manager. The web and mobile client code only reads the public URL and publishable key; no service-role key is read by or bundled into either client. The exact hosting provider, callback URLs, and whether Sentry is used are unresolved.
+Public key는 authorization이 아닙니다. 각 환경은 자신의 Supabase project를 가리켜야 하며,
+production 값은 배포 시스템이나 secret manager가 주입해야 합니다. 웹·모바일 client는 public URL과 publishable key만 읽고,
+service-role key는 읽거나 bundle에 포함하지 않습니다.
 
-## Current implementation status
+## 현재 구현 상태
 
-Observed in the repository at the date above:
+현재 저장소에서 확인되는 내용:
 
-- **Implemented:** Root pnpm workspace metadata and lockfile; the shared `packages/domain` ski/hockey listing and profile contracts with Zod validation/tests; the web MVP for public marketplace listing browse/detail and health routes; the mobile MVP for active-listing browse/detail and validated draft-listing creation; public-key-only Supabase clients for web and mobile; and `supabase/migrations/0001_init.sql` with RLS plus deterministic `supabase/seed.sql` sports data.
-- **Validated:** `pnpm install`, `pnpm typecheck`, `pnpm test`, `pnpm lint`, `pnpm build`, `pnpm format:check`, and `pnpm export:mobile:web` complete successfully. Web and mobile builds render an intentional setup state when public Supabase values are missing.
-- **Still required for a connected environment:** Copy `apps/web/.env.example` to `apps/web/.env.local` and `apps/mobile/.env.example` to `apps/mobile/.env`, fill in each environment's Supabase URL and publishable key, link or start a Supabase project, apply the migration, and run the seed. Auth users/profiles and real listing fixtures are not checked into the repository.
-- **Not in this MVP baseline:** Payment/checkout, fulfillment, payouts, production deployment/CI, analytics, and other future or conditional community/transaction workflows described by the domain and schema contracts.
-- **Implication:** The client/domain/schema integration is shipped, but data availability and authenticated writes remain dependent on Supabase project setup, Auth configuration, and RLS verification in each environment.
+- **구현 완료:** root pnpm workspace/lockfile, ski/hockey domain 계약과 Zod test, 웹 marketplace browse/detail과 health route,
+  모바일 active listing browse/detail과 validated draft 생성, public-key-only Supabase client,
+  `supabase/migrations/0001_init.sql`의 RLS, `supabase/seed.sql`의 스포츠 데이터
+- **검증 완료:** `pnpm install`, `pnpm typecheck`, `pnpm test`, `pnpm lint`, `pnpm build`,
+  `pnpm format:check`, `pnpm export:mobile:web`; 공개 Supabase 값이 없을 때 setup 상태 렌더링
+- **연결 환경에서 필요한 작업:** 두 앱의 `.env.example` 복사/입력, Supabase project 연결 또는 시작,
+  migration/seed 적용, Auth와 실제 listing fixture 생성, anonymous/owner/operator RLS 검증
+- **현재 MVP 밖:** payment/checkout, fulfillment, payout, production 배포/CI, analytics,
+  조건부 community/transaction workflow
+- **의미:** client/domain/schema 통합은 완료됐지만 데이터와 인증 write는 Supabase project/Auth/RLS 설정에 의존합니다.
 
-## Unresolved decisions
+## 미결정 사항
 
-These questions are intentionally visible rather than guessed:
-
-| Area | Decision needed | Why it matters |
+| 영역 | 필요한 결정 | 영향 |
 | --- | --- | --- |
-| Product taxonomy | Ski and hockey are currently modeled; which categories, attributes, conditions, and regions launch? | Determines listing schema, search, validation, and seed data |
-| Commerce model | Is the current seller/listing model a peer marketplace, single seller, or catalog/affiliate experience? | Determines listing ownership, order semantics, payments, payouts, and legal scope |
-| Social feature | Which current post/comment/reaction/report contracts are in MVP, and are saves/collections needed? | Determines moderation, abuse controls, privacy, and product metrics |
-| Identity | Which Supabase Auth providers and account recovery rules are enabled? | Determines client flows, callback URLs, and support procedures |
-| Listing/community operations | Who can create/edit/activate records and how are corrections/reports reviewed? | Determines role claims, audit records, moderation, and operator tooling |
-| Media | Are images required in MVP, and who owns/approves uploads? | Determines Storage buckets, transformations, copyright policy, and RLS |
-| API boundary | Which operations are direct Supabase calls vs Next.js route handlers vs Edge Functions? | Determines deployment, generated clients, secrets, and tests |
-| Search | Postgres search, hosted search, or a later feature? | Determines indexes, ranking, costs, and data synchronization |
-| Environments | Where do web, mobile builds, Supabase projects, and preview deployments run? | Determines variable injection and release process |
-| Privacy/retention | What profile, telemetry, and content-retention rules apply? | Determines schema, consent, deletion, and support procedures |
+| 제품 taxonomy | sport/category/attribute/condition/지역의 첫 release 범위 | listing schema, 검색, 검증, seed |
+| Commerce 모델 | peer marketplace, 단일 seller, catalog/affiliate 중 무엇인지 | ownership, order, payment, legal |
+| Social 기능 | post/comment/reaction/report를 MVP에 포함할지와 save/collection 필요 여부 | moderation, abuse, privacy, metric |
+| Identity | Auth provider와 recovery 규칙 | client flow, callback URL, support |
+| Listing 운영 | 누가 create/edit/activate하고 report를 어떻게 처리하는지 | role, audit, moderation, operator 도구 |
+| Media | image가 MVP 필수인지와 upload 승인 주체 | Storage bucket, 변환, 저작권, RLS |
+| API 경계 | direct Supabase와 Next.js route/Edge Function의 작업별 분할 | 배포, 생성 client, secret, 테스트 |
+| Search | Postgres 검색, hosted search, 후속 기능 중 선택 | index, ranking, 비용, sync |
+| 환경 | 웹/모바일 build와 Supabase/preview 배포 위치 | variable injection, release |
+| Privacy/retention | profile, telemetry, content 보존/삭제 규칙 | schema, consent, support |
 
-## Supporting documents
+## 지원 문서
 
-- [Architecture](architecture.md) — system boundaries, data flow, and operational concerns.
-- [Data model](data-model.md) — proposed entities, constraints, indexes, and RLS ownership.
-- [Development](development.md) — local setup, workflow, checks, and release hygiene.
-- [API contracts](api-contracts.md) — proposed cross-client operations and response/error conventions.
-- [ADR 001 — stack](adr/001-stack.md) — why Expo + Next.js + Supabase + pnpm is the target stack.
+- [아키텍처](architecture.md): 시스템 경계, 데이터 흐름, 운영 원칙
+- [데이터 모델](data-model.md): entity, constraint, index, RLS 소유권
+- [개발 가이드](development.md): 로컬 설정, workflow, 검증, release 위생
+- [API 계약](api-contracts.md): cross-client 작업과 응답/오류 규칙
+- [ADR 001](adr/001-stack.md): Expo + Next.js + Supabase + pnpm 선택 이유
