@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+dist
+build
+.expo
+pnpm-lock.yaml
+**/next-env.d.ts
+
+# Existing product contracts and database/domain sources are owned separately.
+docs
+supabase
+packages/domain

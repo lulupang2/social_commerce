@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "IceGear",
+    "slug": "icegear",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "icegear",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "name": "@icegear/domain",
+  "version": "0.1.0",
+  "description": "Framework-agnostic domain types and validation schemas for IceGear",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./sports": {
+      "types": "./dist/sports.d.ts",
+      "import": "./dist/sports.js",
+      "default": "./dist/sports.js"
+    },
+    "./listings": {
+      "types": "./dist/listings.d.ts",
+      "import": "./dist/listings.js",
+      "default": "./dist/listings.js"
+    },
+    "./actors": {
+      "types": "./dist/actors.d.ts",
+      "import": "./dist/actors.js",
+      "default": "./dist/actors.js"
+    },
+    "./profiles": {
+      "types": "./dist/profiles.d.ts",
+      "import": "./dist/profiles.js",
+      "default": "./dist/profiles.js"
+    },
+    "./schemas": {
+      "types": "./dist/schemas.d.ts",
+      "import": "./dist/schemas.js",
+      "default": "./dist/schemas.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test tests/validation.test.ts"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

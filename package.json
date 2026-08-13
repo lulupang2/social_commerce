@@ -1,0 +1,40 @@
+{
+  "name": "icegear",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @icegear/web --filter @icegear/mobile dev",
+    "dev:web": "pnpm --filter @icegear/web dev",
+    "dev:mobile": "pnpm --filter @icegear/mobile dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "lint": "pnpm -r --if-present lint",
+    "export:mobile:web": "pnpm --filter @icegear/mobile exec expo export --platform web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.9.6",
+    "typescript": "6.0.3"
+  },
+  "description": "IceGear is a TypeScript monorepo shipping a Next.js web MVP and an Expo Router mobile MVP with shared domain contracts and a Supabase schema.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lulupang2/social_commerce.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/lulupang2/social_commerce/issues"
+  },
+  "homepage": "https://github.com/lulupang2/social_commerce#readme"
+}
