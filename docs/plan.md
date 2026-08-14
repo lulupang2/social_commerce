@@ -1,6 +1,6 @@
 # IceGear 모바일 MVP 고도화 작업 계획
 
-- **상태:** 계획 작성 완료, 구현 미착수
+- **상태:** `T00` 결정 게이트 및 문서 동기화 완료; schema/UI 구현 미착수
 - **기준일:** 2026-08-14
 - **주요 범위:** Expo 모바일 앱, 공유 도메인 계약, Supabase Auth/Postgres/RLS/Storage/Realtime
 - **비교 기준:** [FitLoop - Reimagining Circular Fashion](https://www.behance.net/gallery/251515731/FitLoop-Reimagining-Circular-Fashion)
@@ -28,7 +28,7 @@
 - FitLoop의 브랜드 자산이나 화면을 픽셀 단위로 복제
 - 모바일 디자인 고도화와 무관한 Next.js 웹 전면 개편
 
-### AI 표기 원칙
+### 추천 표기 원칙
 
 - 명시적인 사용자 입력과 규칙으로 계산한 결과는 **맞춤 추천** 또는 **추천 이유**로 표시한다.
 - 실제 모델 호출이 없는 mock이나 규칙 기반 결과에 **AI 추천/AI 분석 완료**라는 문구를 사용하지 않는다.
@@ -74,43 +74,48 @@
 - 프로필 통계와 활동 메뉴는 placeholder이고 onboarding 및 선호 sport/skill 저장 흐름이 없다.
 - 판매 등록은 이미지 선택·압축·Storage upload와 sport별 상세 필드가 연결되지 않았다.
 - 커뮤니티 작성이 클라이언트에서 바로 `active`를 요청하므로 moderation 원칙과 정합화가 필요하다.
-- listing repository는 현재 `getPublicUrl`을 사용하지만 문서의 기본 정책은 private Storage이므로 구현 방식 결정이 필요하다.
+- listing repository는 현재 `getPublicUrl`을 사용하며, 확정된 private Storage/signed URL 정책으로 교체되지 않았다.
 
-## 구현 전 결정 게이트
+## 구현 전 결정 게이트 — 완료
 
-아래 항목은 `T00`에서 확정하고 SSOT/데이터 모델/API 문서에 반영한다. 확정 전에는 관련 스키마 작업을 시작하지 않는다.
+아래 항목은 2026-08-14 `T00`에서 모두 확정했으며 [ADR 002](adr/002-mobile-mvp-safety-boundaries.md),
+SSOT, 데이터 모델, API 계약, 아키텍처에 반영했다. 후속 구현은 이 표보다 권한이나 공개 범위를 넓힐 수 없다.
 
-| 게이트 | 권장 기본값 | 영향을 받는 작업 |
-| --- | --- | --- |
-| 인증 provider | 운영 MVP는 email OTP 또는 social provider 1개, anonymous Auth는 개발/시연 전용 | `T22`, `T35` |
-| profile 추천 입력 | `profile_sports(profile_id, sport_id, skill_level)` 관계와 선택적 신체/장비 선호 필드 | `T20`, `T21`, `T40` |
-| reaction 규칙 | MVP는 사용자·게시글당 `like` 1개, 다중 reaction은 후속 migration | `T21`, `T24`, `T33` |
-| listing 공개 정책 | 현재 SSOT 제안대로 일반 판매자는 `draft`로 생성하고 operator가 `active`로 전환할지 확정한다. 현재 RLS의 직접 `active` 생성 허용과 반드시 일치시킨다. | `T21`, `T32`, `T50` |
-| 커뮤니티 공개 정책 | 일반 사용자는 `draft`로 작성, moderator/admin만 `active` 전환 | `T21`, `T24`, `T50` |
-| 상품 이미지 공개 방식 | private `listing-images` bucket + 만료 가능한 signed URL/승인된 projection | `T26`, `T32`, `T50` |
-| 추천 명칭 | 규칙 기반은 `맞춤 추천`, 실제 모델이 연결된 경우에만 `AI 추천` | `T30`, `T40`, `T60` |
-| 영향 지표 | MVP는 검증 가능한 거래/재사용 수만 표시하고 근거 없는 CO₂ 수치는 표시하지 않음 | `T35`, `T40` |
+| 게이트 | 확정 결정 | 상태 | 영향을 받는 작업 |
+| --- | --- | --- | --- |
+| 인증 provider | Production은 email OTP. anonymous Auth는 별도 non-production project에서 `EXPO_PUBLIC_ENABLE_DEMO_AUTH=true`일 때만 허용하며 production에서는 provider와 flag를 모두 비활성화 | 확정 | `T22`, `T35` |
+| profile 추천 입력 | `profile_sports(profile_id, sport_id, skill_level)`이 canonical 관계. `(profile_id, sport_id)` PK, skill/size/preferences는 선택적 sport별 값 | 확정 | `T20`, `T21`, `T40` |
+| reaction 규칙 | MVP는 `(post_id, user_id)`당 `like` 1개. 다중 reaction은 후속 migration | 확정 | `T21`, `T24`, `T33` |
+| listing 공개 정책 | seller는 `draft` 생성과 `pending_review` 요청만 가능. 기존 `moderator`/`admin` operator만 감사 경계에서 `active` 공개 | 확정 | `T21`, `T32`, `T50` |
+| 커뮤니티 공개 정책 | 일반 사용자는 `draft` post만 작성하고 `moderator`/`admin`만 감사 경계에서 `active` 공개 | 확정 | `T21`, `T24`, `T50` |
+| 상품 이미지 공개 방식 | private `listing-images` bucket + 최대 10분 signed URL. public bucket, raw path, `getPublicUrl` fallback 금지 | 확정 | `T26`, `T32`, `T50` |
+| 추천 명칭 | 규칙 기반은 `맞춤 추천`/`추천 이유`이며 AI로 표기하지 않음 | 확정 | `T30`, `T40`, `T60` |
+| 영향 지표 | audit 가능한 완료 거래/재사용 건수만 표시. 기준 데이터가 없으면 숨기고 근거 없는 CO2/CO₂ 환산 금지 | 확정 | `T35`, `T40` |
+
+Gate 해제는 구현 완료를 뜻하지 않는다. 현재 `0001_init.sql`의 owner active insert/update와 모바일 repository의
+`getPublicUrl`은 확정 정책과 다른 알려진 차이이며 `T21`/`T24`/`T26`에서 닫아야 한다. Production Supabase의
+email delivery/redirect/rate limit, anonymous provider off, moderator/admin 계정은 저장소 밖 운영 선행 조건이다.
 
 ## 남은 작업
 
 | 작업 ID | 목표와 주요 산출물 | 선행 작업 | 병렬 실행 |
 | --- | --- | --- | --- |
-| `T00` | 위 결정 게이트 확정, SSOT·ADR·API/데이터 문서 동기화, MVP/후속 범위 고정 | 없음 | 최초 단독 |
+| `T00` | **완료(2026-08-14):** 결정 게이트 확정, SSOT·ADR·API/데이터/아키텍처 문서 동기화, MVP/후속 범위 고정 | 없음 | 완료; `T10`/`T12`/`T20` 시작 가능 |
 | `T10` | IceGear semantic color/spacing/radius/elevation/type/icon token과 공통 UI primitive 구축 | `T00` | `T20`, `T12`와 병렬 |
 | `T12` | 실제 한국어 문구, typography 사용표, 추천 사유 문구, 현실적인 demo listing/community 데이터 작성 | `T00` | `T10`, `T20`과 병렬 |
 | `T20` | profile preference, recommendation reason, community reaction, media 상태에 필요한 공유 타입·Zod 계약 확정 | `T00` | `T10`, `T12`와 병렬 |
-| `T21` | 새 migration으로 profile preference/reaction/index/constraint/RLS 추가 및 listing/community publication 정책 보정 | `T20` | migration 단일 소유자 |
-| `T22` | Auth provider, session 상태, profile/onboarding repository와 계정 경계 구현 | `T21` | `T23`~`T26`과 병렬 |
+| `T21` | 새 migration으로 `profile_sports`, one-like, index/constraint/RLS 추가 및 seller/author의 active 우회 제거 | `T20` | migration 단일 소유자 |
+| `T22` | email OTP, production anonymous 차단, demo flag, session 상태, profile/onboarding repository 구현 | `T21` | `T23`~`T26`과 병렬 |
 | `T23` | favorites repository, optimistic update/rollback, 로그인 유도 경계 구현 | `T21` | `T22`, `T24`~`T26`과 병렬 |
-| `T24` | community comments/reactions/count와 draft publication repository 구현 | `T21` | `T22`, `T23`, `T25`, `T26`과 병렬 |
+| `T24` | community comments, one-like/count, draft 생성과 moderator/admin publication repository 구현 | `T21` | `T22`, `T23`, `T25`, `T26`과 병렬 |
 | `T25` | conversation 생성, Realtime message 구독, `read_at`, unread 집계, 재연결/중복 제거 구현 | `T21` | `T22`~`T24`, `T26`과 병렬 |
-| `T26` | 이미지 선택·압축·private Storage upload·정렬·삭제·signed URL 경계 구현 | `T21`, `T22` | `T23`~`T25`와 병렬 |
+| `T26` | 이미지 선택·압축·private Storage upload·정렬·삭제·최대 10분 signed URL 경계와 public URL fallback 제거 | `T21`, `T22` | `T23`~`T25`와 병렬 |
 | `T30` | FitLoop에서 착안한 editorial 홈, 2열 상품 카드, 가로 추천 rail, 추천 이유, 검색/필터 상태 구현 | `T10`, `T12`, `T20` | `T31`~`T35`와 병렬 |
 | `T31` | 이미지 중심 상품 상세, seller/상태/장비 속성, persisted favorite, 채팅 시작 CTA 구현 | `T10`, `T20`, `T23`, `T25` | `T32`~`T35`와 병렬 |
 | `T32` | 단계형 판매 등록, 스키/하키별 필드, 이미지 순서, 검토 화면, draft 제출 구현 | `T10`, `T20`, `T22`, `T26` | `T31`, `T33`~`T35`와 병렬 |
 | `T33` | 커뮤니티 피드·상세·작성 화면 재설계와 실제 comments/reactions/moderation 상태 연결 | `T10`, `T12`, `T24` | `T31`, `T32`, `T34`, `T35`와 병렬 |
 | `T34` | 채팅 목록·대화 화면 재설계, 실시간 수신, 읽음/전송/오류/재시도 상태 연결 | `T10`, `T25` | `T31`~`T33`, `T35`와 병렬 |
-| `T35` | 로그인·onboarding·프로필·활동/재사용 통계 화면과 실제 session/profile 상태 연결 | `T10`, `T12`, `T22` | `T31`~`T34`와 병렬 |
+| `T35` | 로그인·onboarding·프로필·활동 및 audit 가능한 거래/재사용 통계 화면과 실제 session/profile 상태 연결 | `T10`, `T12`, `T22` | `T31`~`T34`와 병렬 |
 | `T40` | 명시적 선호 sport·skill·사이즈와 listing details를 사용하는 결정론적 추천 및 설명 생성 | `T20`, `T22`, `T30`, `T35` | 화면 작업 뒤 단독 통합 권장 |
 | `T50` | 신고·차단 진입점, media/content moderation 상태, 운영자 publication 경계와 감사 가능성 보완 | `T21`, `T22`, `T24`, `T26` | `T40`과 일부 병렬 |
 | `T60` | 실제 이미지 분석·가격 제안·개인화 추천 Edge Function 계약과 provider adapter 구현 | `T26`, `T40`, `T50` | **후속 단계**, MVP 완료를 막지 않음 |
@@ -196,11 +201,11 @@
 
 | 파일 | 변경 계획 |
 | --- | --- |
-| `docs/SSOT.md` | 승인된 MVP 범위, 추천 명칭, Auth/media/moderation 결정을 확정 상태로 반영한다. |
+| `docs/SSOT.md` | 승인된 MVP 범위, 맞춤 추천 명칭, Auth/media/publication/지표 결정을 확정 상태로 유지한다. |
 | `docs/mobile-mvp.md` | 새 정보 구조, 화면 상태, typography/icon/추천 원칙, demo와 production 경계를 기록한다. |
 | `docs/architecture.md` | direct Supabase, signed media 경계, Realtime, Edge Function의 책임을 갱신한다. |
-| `docs/data-model.md` | 실제 migration과 동일한 profile preference/reaction/media 관계·RLS를 기록한다. |
-| `docs/api-contracts.md` | favorite, comment/reaction, conversation/read, recommendation/analyze 요청·응답과 오류를 기록한다. |
+| `docs/data-model.md` | 확정 target과 현재 migration 차이를 구분하고 `profile_sports`, one-like, `listing_images`, publication RLS를 기록한다. |
+| `docs/api-contracts.md` | email OTP/demo, draft/publication, one-like, signed image, 맞춤 추천, 감사 가능한 지표 요청·응답과 오류를 기록한다. |
 | `docs/development.md` | 로컬 Storage/Realtime/Edge Function 설정, seed, 검증 명령과 문제 해결 방법을 추가한다. |
 | `apps/mobile/jest.config.*`, `jest.setup.*` | Expo SDK 호환 test runner와 React Native mock을 구성한다. 정확한 확장자와 버전은 구현 시 Expo 공식 호환 조합으로 확정한다. |
 | `apps/mobile/**/*.test.ts(x)` | repository/추천 규칙/component interaction과 상태별 화면 테스트를 추가한다. |
@@ -209,7 +214,7 @@
 
 ```mermaid
 flowchart TD
-  T00["T00 결정 및 문서 동기화"]
+  T00["T00 결정 및 문서 동기화 (완료)"]
   T10["T10 디자인 시스템"]
   T12["T12 카피·타이포·데모 데이터"]
   T20["T20 공유 계약"]
@@ -277,7 +282,7 @@ flowchart TD
 
 ### 실행 Wave
 
-1. **Wave 0 — 결정:** `T00`. 데이터/표기/보안 결정과 문서 정합성을 먼저 고정한다.
+1. **Wave 0 — 결정(완료):** `T00`. 데이터/표기/보안 결정과 문서 정합성을 2026-08-14에 고정했다.
 2. **Wave 1 — 기반 병렬화:** `T10`, `T12`, `T20`을 서로 다른 worktree에서 진행한다.
 3. **Wave 2 — 데이터 연결:** `T21`을 먼저 통합한 뒤 `T22`~`T26`을 파일 소유권이 겹치지 않게 병렬 진행한다.
 4. **Wave 3 — 화면 병렬화:** 공통 UI가 통합되면 `T30`~`T35`를 화면별 worktree에서 진행한다. 각 화면은 먼저 repository interface/mock으로 작업하고 해당 데이터 작업을 merge한 뒤 실제 연결한다.
@@ -311,16 +316,17 @@ flowchart TD
 | Realtime 재연결 시 메시지가 중복되거나 순서가 바뀜 | message ID 기반 dedupe, server timestamp 정렬, subscription cleanup, reconnect 후 catch-up query를 구현한다. |
 | unread/read update가 상대 메시지까지 임의 수정함 | DB policy와 repository가 participant 및 sender/recipient 조건을 함께 검증하고 RLS 테스트를 추가한다. |
 | 커뮤니티 일반 사용자가 직접 `active` 콘텐츠를 만들거나 숨겨진 글이 노출됨 | insert status를 draft로 제한하고 publication은 moderator/admin server 경계와 RLS 양쪽에서 강제한다. |
-| private Storage 정책인데 `getPublicUrl`로 draft 이미지가 노출됨 | private bucket과 signed projection을 하나의 방식으로 확정하고 public URL fallback을 제거한다. |
+| private Storage 정책인데 `getPublicUrl`로 draft 이미지가 노출됨 | private bucket과 최대 10분 signed projection을 사용하고 public URL/raw path fallback을 제거한다. |
 | 이미지 upload 성공 후 listing/image row 실패로 고아 object가 남음 | 보상 삭제, deterministic path, 재시도/idempotency, 정리 job 또는 운영 절차를 둔다. |
 | profile/shared type 변경이 Next.js 웹 mapping을 깨뜨림 | domain과 DB type을 먼저 통합하고 root `typecheck/test/build` 및 웹 repository test를 실행한다. |
 | demo fallback이 운영 장애를 정상 데이터처럼 숨김 | demo mode를 명시적 개발 flag로 분리하고 production에서는 setup/error/login 상태를 표시한다. |
 | 추천 결과가 근거 없이 편향되거나 AI로 오인됨 | 입력·점수·추천 사유를 결정론적으로 테스트하고 실제 모델 연결 전 AI 표현을 금지한다. |
+| placeholder·seed·`sold` 상태를 재사용 성과로 집계하거나 CO2 환산치를 노출함 | 완료 record ID/timestamp로 재계산 가능한 거래·재사용 건수만 표시하고 기준 데이터가 없으면 지표를 숨긴다. |
 | AI/이미지 분석 비용·비밀·개인정보가 클라이언트로 유출됨 | Edge Function에 secret을 두고 auth, rate limit, payload size/MIME, timeout, 구조화된 응답, 보존 정책을 강제한다. |
 | 데모 seed가 운영 사용자나 상품을 덮어씀 | 고정 demo namespace/ID와 idempotent upsert를 유지하고 production 적용을 별도 운영 절차로 둔다. |
 | 여러 worktree가 migration, theme, lockfile을 동시에 수정함 | 해당 파일의 단일 소유자와 integration 순서를 지키고 화면 agent는 공통 파일을 직접 수정하지 않는다. |
 | 기준 구현이 미커밋 상태라 새 worktree가 현재 모바일 변경을 포함하지 않음 | 병렬 작업 전에 안전한 checkpoint 기준을 만들고 모든 worktree가 같은 commit에서 시작했는지 확인한다. |
-| 현재 RLS가 seller의 직접 `active` listing 생성을 허용해 문서의 검토 모델을 우회함 | `T00`에서 publication 정책을 확정하고 새 migration의 insert/update policy와 UI 상태 전이를 같은 규칙으로 맞춘다. |
+| 현재 RLS가 seller/author의 직접 `active` 생성을 허용해 확정된 검토 모델을 우회함 | `T21`에서 insert는 draft, seller는 pending_review 요청까지만 허용하고 active 전이는 moderator/admin으로 제한한다. |
 | profile 기본 RLS 때문에 판매자 이름이 계속 placeholder로 표시됨 | 개인 profile 전체를 공개하지 말고 display name/avatar 등 승인된 최소 필드만 제공하는 view 또는 서버 projection을 사용한다. |
 
 ## 테스트 계획
@@ -380,11 +386,12 @@ supabase test db
 필수 시나리오:
 
 - active listing/community만 anonymous read 가능
-- draft listing/post는 owner와 moderator만 read 가능
+- draft listing/post는 owner와 moderator/admin만 read 가능
 - 일반 사용자는 publication/role/ban 상태를 변경할 수 없음
-- favorite/reaction은 자기 행만 생성·삭제 가능하고 중복 insert가 안전함
+- favorite/like는 자기 행만 생성·삭제 가능하고 `(post_id, user_id)` 중복 요청이 안전함
 - message는 participant만 읽고 쓰며 허용된 read field만 변경 가능
 - private image는 허용된 signed 경로 외 직접 read 불가
+- signed image 응답은 최대 10분 만료를 가지며 raw path와 `getPublicUrl` fallback이 없음
 - removed/hidden/private resource는 일관된 not-found 의미를 가짐
 
 ### 5. Expo Web/브라우저 테스트
