@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @icegear/web --filter @icegear/mobile dev",
     "dev:web": "pnpm --filter @icegear/web dev",
-    "dev:mobile": "pnpm --filter @icegear/mobile dev",
+    "dev:mobile": "pnpm --filter @icegear/mobile start",
+    "dev:mobile:web": "pnpm --filter @icegear/mobile web",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",

@@ -78,3 +78,19 @@ supabase db reset
 
 호스팅 프로젝트에서는 프로젝트를 연결한 뒤 `supabase db push`를 사용합니다.
 배포된 `0001_init.sql`을 수정하지 말고, 이후 스키마 변경은 순서가 있는 새 migration 파일로 추가합니다.
+
+## 데모 상품 데이터
+
+`seed.demo.sql`은 화면 시연을 위한 익명 판매자 3명, 활성 상품 14개, 커뮤니티 글 4개를 넣습니다.
+스키 7개와 하키 7개 상품, 스키·하키 각 2개의 게시글이 포함되며, 이미지를 업로드하지 않아도 확인할 수 있도록
+placeholder 이미지 URL을 사용합니다. 데모 판매자는 실제 로그인 계정이 아니므로
+운영 데이터베이스에서 재사용하지 않습니다.
+
+```bash
+# 로컬 Supabase에서 migration과 기준 seed를 적용
+supabase db reset
+# 이후 로컬 SQL 실행 경로에서 seed.demo.sql 내용을 적용
+```
+
+호스팅 프로젝트에 적용할 때는 `seed.demo.sql`의 SQL을 검토한 뒤 관리자 SQL 실행 경로로
+한 번 실행합니다. 같은 demo ID를 기준으로 upsert하므로 반복 실행해도 상품이 중복되지 않습니다.

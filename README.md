@@ -1,8 +1,10 @@
 # IceGear
 
 IceGear는 Next.js 웹 앱과 Expo Router 모바일 앱으로 구성된 TypeScript 모노레포입니다.
-현재 MVP에는 웹·모바일 중고거래 목록/상세 조회, 모바일 임시 판매글 등록, 공유 도메인 계약,
+현재 MVP에는 웹·모바일 중고거래 목록/상세 조회, 모바일 하단 탭과 당근마켓풍 홈/판매 UI,
+커뮤니티 피드·작성·댓글 데모, 채팅 목록·대화 데모, 공유 도메인 계약,
 RLS가 적용된 Supabase 마이그레이션과 스포츠 시드 데이터가 포함되어 있습니다.
+모바일 typography는 Pretendard·Paperlogy·Barlow Condensed의 역할 기반 조합을 사용합니다.
 실제 데이터 조회와 인증된 쓰기를 사용하려면 Supabase 프로젝트와 실행 환경을 별도로 설정해야 합니다.
 
 ## 사전 요구사항
@@ -30,6 +32,7 @@ pnpm install
 ```bash
 pnpm dev:web
 pnpm dev:mobile
+pnpm dev:mobile:web
 ```
 
 두 개발 서버를 함께 실행할 수도 있습니다.
@@ -67,6 +70,7 @@ packages/
 supabase/
   migrations/  PostgreSQL 스키마와 RLS 정책
   seed.sql     결정적인 스포츠 기준 데이터
+  seed.demo.sql 시연용 익명 판매자와 상품 데이터
 ```
 
 ## 연결된 Supabase 설정
@@ -90,5 +94,10 @@ Supabase 프로젝트를 연결하거나 로컬 프로젝트를 설정한 뒤 mi
 supabase db reset
 ```
 
-시드는 ski와 hockey 스포츠 행만 생성합니다. Auth 사용자, profile, 사용자 listing은
+기본 시드는 ski와 hockey 스포츠 행만 생성합니다. 화면을 바로 시연하려면 migration 적용 후
+`supabase/seed.demo.sql`을 실행하세요. 데모 seed는 익명 판매자 3명, 활성 상품 14개,
+커뮤니티 글 4개와 placeholder 이미지를 추가합니다. 실제 Auth 사용자·profile·판매 write는
 설정된 애플리케이션 흐름을 통해 생성해야 합니다.
+
+모바일 화면 정보 구조와 인증 경계는 [모바일 MVP 가이드](docs/mobile-mvp.md), 전체 제품 기준은
+[SSOT](docs/SSOT.md)를 참고하세요.

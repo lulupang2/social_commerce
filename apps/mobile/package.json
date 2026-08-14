@@ -4,6 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
+    "dev": "expo start",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -16,8 +17,10 @@
     "@supabase/supabase-js": "2.112.3",
     "expo": "~57.0.12",
     "expo-constants": "~57.0.10",
+    "expo-font": "~57.0.1",
     "expo-linking": "~57.0.5",
     "expo-router": "~57.0.12",
+    "expo-splash-screen": "~57.0.6",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",

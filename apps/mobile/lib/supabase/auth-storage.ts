@@ -11,6 +11,12 @@ export interface AuthStorage {
   removeItem(key: string): Promise<void>;
 }
 
+const serverStorage: AuthStorage = {
+  getItem: async () => null,
+  setItem: async () => undefined,
+  removeItem: async () => undefined,
+};
+
 export function createAuthStorage(storage: AuthStorage = AsyncStorage): AuthStorage {
   return {
     getItem: (key) => storage.getItem(key),
@@ -19,4 +25,7 @@ export function createAuthStorage(storage: AuthStorage = AsyncStorage): AuthStor
   };
 }
 
-export const authStorage = createAuthStorage();
+/** AsyncStorage relies on window.localStorage on web, so SSR needs a no-op adapter. */
+export const authStorage = createAuthStorage(
+  typeof window === 'undefined' ? serverStorage : AsyncStorage,
+);

@@ -1,6 +1,6 @@
 # IceGear MVP 개발 가이드
 
-**상태:** 클라이언트·도메인·스키마 기반은 구현되었고, Supabase 프로젝트와 실행 환경 설정은 배포 작업으로 남아 있습니다.
+**상태:** 모바일 하단 탭·거래 UI·커뮤니티·채팅 vertical slice와 연결된 Supabase 데모 데이터까지 구성되었습니다. 운영용 moderation·실시간성은 후속 작업입니다.
 
 저장소에는 pnpm workspace, Next.js 웹 MVP, Expo Router 모바일 MVP, 공유 `packages/domain` 계약,
 Supabase migration과 결정적인 seed가 있습니다. 커밋된 `.env.example`에는 placeholder만 있으며,
@@ -36,7 +36,9 @@ pnpm export:mobile:web
 
 공개 Supabase 변수가 없으면 웹과 모바일은 의도적으로 설정 안내 상태를 렌더링합니다.
 연결된 개발을 하려면 예시 파일을 복사하고 공개 project URL/publishable key를 입력한 뒤,
-Supabase 프로젝트를 설정 또는 연결하고 migration/seed를 적용한 다음 `pnpm dev`를 실행합니다.
+Supabase 프로젝트를 설정 또는 연결하고 migration을 적용한 다음 `pnpm dev`를 실행합니다.
+현재 연결된 `social_commerce` 프로젝트에는 `supabase/seed.demo.sql`로 데모 판매자 3명,
+활성 상품 14개(스키 7개·하키 7개), 커뮤니티 글 4개, placeholder 이미지가 적용되어 있습니다.
 
 ### 현재 스크립트
 
@@ -45,6 +47,7 @@ Supabase 프로젝트를 설정 또는 연결하고 migration/seed를 적용한 
 | `pnpm dev` | 웹과 모바일 개발 프로세스를 병렬 실행 | 사용 가능 |
 | `pnpm dev:web` | Next.js 웹 앱 실행 | 사용 가능 |
 | `pnpm dev:mobile` | Expo 도구 실행 | 사용 가능 |
+| `pnpm dev:mobile:web` | Expo Web 앱 실행 | 사용 가능 |
 | `pnpm --dir packages/domain typecheck` | 공유 domain 패키지 타입 검사 | 사용 가능 |
 | `pnpm --dir packages/domain test` | domain 검증 테스트 실행 | 사용 가능 |
 | `pnpm --dir packages/domain build` | domain 패키지 빌드 | 사용 가능; 무시되는 `dist/` 생성 |
@@ -84,13 +87,15 @@ apps/mobile/.env          # 무시됨; Expo 공개 설정만
 
 ## 로컬 Supabase workflow
 
-migration 우선 workflow는 `supabase/migrations/0001_init.sql`과 `supabase/seed.sql`에 반영되어 있습니다.
+migration 우선 workflow는 `supabase/migrations/0001_init.sql`에 반영되어 있습니다.
+기준 스포츠만 필요한 경우 `supabase/seed.sql`, 시연 상품까지 필요한 경우 `supabase/seed.demo.sql`을 사용합니다.
 
 1. 순서가 있는 SQL migration을 생성하거나 갱신합니다.
 2. 테이블 변경과 같은 migration에서 RLS와 정책을 함께 정의합니다.
 3. 문서화된 query path에 필요한 constraint와 index를 추가합니다.
 4. Supabase 프로젝트를 설정/연결하고 처음부터 모든 migration을 적용하도록 reset합니다.
-5. 커밋된 seed를 실행합니다. Auth profile이나 사용자 콘텐츠가 아닌 스포츠 기준 데이터만 넣습니다.
+5. 기준 데이터만 필요하면 `supabase/seed.sql`, 시연 화면이 필요하면 `supabase/seed.demo.sql`을 실행합니다.
+   데모 seed의 Auth 레코드는 익명 판매자이며 실제 로그인 계정으로 사용하지 않습니다.
 6. anonymous, 인증된 owner, 다른 사용자, operator 권한을 각각 테스트합니다.
 7. 생성된 타입을 채택한다면 database type을 재생성합니다. 현재 웹 앱은 커밋된 타입 snapshot을 사용합니다.
 
@@ -106,6 +111,10 @@ Migration에 없는 Dashboard 수동 변경은 만들지 않습니다. 불가피
 - 필요한 authorization context를 노출하는 작고 조합 가능한 data-access 함수를 선호합니다.
 - 재시도가 가능한 write는 idempotent하게 만들고 문서화된 오류 코드를 반환합니다.
 - UI layout이나 design-system 규칙은 domain 문서에 넣지 않고 별도 design 문서에서 결정합니다.
+- 모바일 text와 input은 `apps/mobile/lib/typography.tsx`의 공통 primitive를 사용합니다. 새 화면에서
+  React Native `Text`/`TextInput`을 직접 사용하면 Pretendard weight mapping이 적용되지 않습니다.
+- 모바일 폰트는 `apps/mobile/assets/fonts`의 공식 정적 배포본과 함께 OFL 파일을 유지합니다.
+  폰트를 추가하거나 교체할 때 Expo config, runtime loader, 라이선스 문서를 같은 변경에서 갱신합니다.
 
 ## 테스트 전략
 
@@ -169,5 +178,14 @@ production release 전 다음을 결정해야 합니다.
 root workspace script, 웹·모바일 MVP client, 공유 계약, RLS migration, 결정적인 스포츠 seed가 구현되어 있습니다.
 로컬 검증 매트릭스(`pnpm install`, `pnpm typecheck`, `pnpm test`, `pnpm lint`, `pnpm build`,
 `pnpm format:check`, `pnpm export:mobile:web`)는 통과합니다.
-남은 작업은 Supabase project 생성/연결, 두 앱 환경 파일 입력, migration/seed 적용, Auth 설정,
-실제 identity를 사용한 RLS 검증입니다. 결제, fulfillment, 배포, CI는 현재 MVP 범위 밖입니다.
+모바일 MVP의 공개 feed는 바로 확인할 수 있고, 판매/커뮤니티 작성/실제 채팅 전송은 게스트 Auth 또는 실제 Auth 설정이 필요합니다.
+남은 작업은 Realtime·읽음 상태, comments/reactions/favorites persistence, moderation, 실기기 QA입니다.
+결제, fulfillment, 배포, CI는 현재 MVP 범위 밖입니다.
+
+## Supabase advisor 메모
+
+2026-08-14 연결 프로젝트에서 advisor를 실행했습니다. 기존 migration의 trigger/helper function에
+`search_path` 고정 권고가 있고, `handle_new_user`, `is_admin`, `is_admin_or_moderator`는
+공개 schema의 `SECURITY DEFINER` 실행 권한 경고가 있습니다. Auth leaked-password protection도
+비활성 상태입니다. 이번 UI 고도화에서는 동작 범위를 넓히지 않기 위해 schema를 임의 변경하지 않았으며,
+운영 전 별도 security migration과 Auth 설정에서 반드시 해소해야 합니다.

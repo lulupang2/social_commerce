@@ -1,11 +1,12 @@
 # IceGear MVP 단일 기준 문서(SSOT)
 
-**상태:** MVP 구현 기준선 완료. Supabase 프로젝트, 환경변수, seed 적용은 연결된 실행 환경에서 추가해야 합니다.
+**상태:** 모바일 MVP 고도화(하단 탭, 당근마켓풍 거래 UI, 커뮤니티·채팅 vertical slice)와 `social_commerce` 데모 데이터 적용까지 완료했습니다. 운영용 moderation·실시간성·인증 정책은 후속 작업입니다.
 
 **최종 검토일:** 2026-08-14
 
 이 문서는 IceGear MVP의 짧고 오래 유지되는 기준입니다. 확정된 사실, 구현을 위한 제안,
-아직 결정하지 않은 항목을 구분합니다. 시각 디자인, 화면 배치, navigation 방식, 문구, interaction 상세는 정의하지 않습니다.
+아직 결정하지 않은 항목을 구분합니다. 픽셀 단위의 시각 디자인은 정의하지 않지만, 현재 모바일 정보 구조와
+vertical slice 범위는 [모바일 MVP 가이드](mobile-mvp.md)에 기록합니다.
 
 ## 문서 읽는 법
 
@@ -43,6 +44,8 @@ location, media metadata, seller type을 제안하지만 어떤 필드와 지역
 4. moderation/report 정책이 승인된 경우에만 community post/comment/reaction을 공개합니다.
 5. 사용자가 허용된 대상과 사유로 report를 만들고 operator가 처리합니다.
 6. 모든 write는 인증 owner 또는 명시된 operator role을 가지며 Supabase RLS가 저장 데이터를 보호합니다.
+7. 모바일은 홈·커뮤니티·판매·채팅·나의 IceGear 하단 탭으로 핵심 흐름을 제공합니다.
+8. 인증 전에는 공개 상품·커뮤니티·데모 채팅을 탐색할 수 있고, 글 작성·판매·실제 메시지 전송은 인증 경계를 통과합니다.
 
 Transaction은 향후 reservation/handoff를 위해 모델링할 수 있지만 payment provider와 fulfillment 자동화는 MVP에 포함하지 않습니다.
 save/collection, follow, messaging, recommendation feed는 현재 domain package에 표현되지 않았으며 미결정입니다.
@@ -51,12 +54,12 @@ save/collection, follow, messaging, recommendation feed는 현재 domain package
 
 - 결제, checkout, 환불, 세금, 배송, fulfillment, 반품
 - seller payout, commission, identity verification, marketplace dispute
-- 실시간 채팅, direct message, activity feed, push notification campaign
+- 실시간 transport·읽음 동기화·push notification campaign을 포함한 운영용 채팅 인프라
 - moderation/report 정책 없이 공개하는 community content
 - 행동 데이터나 ML이 필요한 recommendation/ranking 모델
 - 승인되지 않은 통화, 지역, inventory 정책
 - 웹 전용 또는 native 전용으로 두 클라이언트를 분리시키는 기능
-- bespoke design system, visual layout, navigation model
+- 운영용 design system, pixel-level visual QA, 고급 검색/추천 UI
 
 ## 작업 Persona
 
@@ -105,6 +108,16 @@ operator/moderator는 별도 admin 앱 약속이 아니라 운영 요구사항�
 3. reaction과 수정/삭제는 명시된 moderation 정책을 따릅니다.
 4. 사용자가 위험하거나 부적절한 콘텐츠/listing을 report합니다.
 5. moderator/operator가 audit 가능한 방식으로 처리합니다.
+
+모바일 MVP에는 위 정책을 전제로 한 커뮤니티 피드·상세·작성 화면과 로컬 댓글/좋아요 상호작용이 먼저 포함되어 있습니다.
+실제 게시·moderation은 Supabase Auth/RLS와 운영 정책이 준비된 환경에서 활성화합니다.
+
+### 거래 채팅(제안)
+
+1. 상품 상세의 문의 버튼이 채팅 목록으로 이동합니다.
+2. 인증 사용자는 conversation participant인지 확인된 대화만 읽고 메시지를 작성합니다.
+3. 인증 전 또는 데모 환경에서는 시연용 conversation과 로컬 메시지를 표시합니다.
+4. 실시간 구독, 읽음 상태, 차단·신고·push 알림은 후속 vertical slice에서 확정합니다.
 
 ### 안정적인 listing/community 공유(제안)
 
@@ -178,7 +191,7 @@ Next.js 웹 ───┘                 └── 권한 작업은 서버 route
 
 ```text
 apps/
-  mobile/       Expo 앱
+  mobile/       Expo 앱(하단 탭·상품·커뮤니티·채팅·프로필)
   web/          Next.js 앱
 packages/
   domain/       프레임워크 독립 타입/검증 계약
@@ -188,7 +201,8 @@ supabase/
 docs/           제품·엔지니어링 문서
 ```
 
-현재 웹은 request-scoped public Supabase client로 읽고, 모바일은 public client로 active listing 조회와 draft 생성을 수행합니다.
+현재 웹은 request-scoped public Supabase client로 읽고, 모바일은 public client로 active listing·community를 조회하고
+인증 session이 있으면 draft listing·community post·message 생성을 수행합니다. 미인증 화면은 안전한 demo fallback을 사용합니다.
 Supabase `config.toml`, hosted project link, service-role client는 저장하지 않습니다.
 
 ## 보안과 RLS 원칙
@@ -228,15 +242,17 @@ service-role key는 읽거나 bundle에 포함하지 않습니다.
 현재 저장소에서 확인되는 내용:
 
 - **구현 완료:** root pnpm workspace/lockfile, ski/hockey domain 계약과 Zod test, 웹 marketplace browse/detail과 health route,
-  모바일 active listing browse/detail과 validated draft 생성, public-key-only Supabase client,
-  `supabase/migrations/0001_init.sql`의 RLS, `supabase/seed.sql`의 스포츠 데이터
+  모바일 하단 탭·당근마켓풍 홈/상품 상세·판매 작성, 커뮤니티 피드/상세/작성, 채팅 목록/대화, 프로필 화면,
+  active listing/community 조회와 validated draft/post/message 생성 경계, public-key-only Supabase client,
+  `supabase/migrations/0001_init.sql`의 RLS, `supabase/seed.sql`의 스포츠 데이터,
+  `supabase/seed.demo.sql`의 익명 데모 판매자 3명·활성 상품 14개·커뮤니티 글 4개·placeholder 이미지
 - **검증 완료:** `pnpm install`, `pnpm typecheck`, `pnpm test`, `pnpm lint`, `pnpm build`,
   `pnpm format:check`, `pnpm export:mobile:web`; 공개 Supabase 값이 없을 때 setup 상태 렌더링
-- **연결 환경에서 필요한 작업:** 두 앱의 `.env.example` 복사/입력, Supabase project 연결 또는 시작,
-  migration/seed 적용, Auth와 실제 listing fixture 생성, anonymous/owner/operator RLS 검증
+- **연결 환경에서 필요한 작업:** 실제 사용자 Auth provider와 profile/onboarding, listing 이미지 Storage,
+  anonymous/owner/operator RLS 검증, moderation·댓글/반응 persistence, 실시간 채팅과 listing publication 운영 화면
 - **현재 MVP 밖:** payment/checkout, fulfillment, payout, production 배포/CI, analytics,
-  조건부 community/transaction workflow
-- **의미:** client/domain/schema 통합은 완료됐지만 데이터와 인증 write는 Supabase project/Auth/RLS 설정에 의존합니다.
+  실시간/push 채팅 인프라와 운영 moderation workflow
+- **의미:** 공개 browse용 데모 데이터는 연결되었지만, 인증된 write와 운영 데이터는 Supabase Auth/RLS 및 운영 정책에 의존합니다.
 
 ## 미결정 사항
 
@@ -244,7 +260,7 @@ service-role key는 읽거나 bundle에 포함하지 않습니다.
 | --- | --- | --- |
 | 제품 taxonomy | sport/category/attribute/condition/지역의 첫 release 범위 | listing schema, 검색, 검증, seed |
 | Commerce 모델 | peer marketplace, 단일 seller, catalog/affiliate 중 무엇인지 | ownership, order, payment, legal |
-| Social 기능 | post/comment/reaction/report를 MVP에 포함할지와 save/collection 필요 여부 | moderation, abuse, privacy, metric |
+| Social 기능 | 현재 community/chat demo를 어떤 persistence·moderation 정책으로 승격할지 | moderation, abuse, privacy, metric |
 | Identity | Auth provider와 recovery 규칙 | client flow, callback URL, support |
 | Listing 운영 | 누가 create/edit/activate하고 report를 어떻게 처리하는지 | role, audit, moderation, operator 도구 |
 | Media | image가 MVP 필수인지와 upload 승인 주체 | Storage bucket, 변환, 저작권, RLS |

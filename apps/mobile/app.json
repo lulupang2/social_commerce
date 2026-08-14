@@ -6,7 +6,28 @@
     "orientation": "portrait",
     "scheme": "icegear",
     "userInterfaceStyle": "automatic",
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Pretendard-Regular.otf",
+            "./assets/fonts/Pretendard-SemiBold.otf",
+            "./assets/fonts/Pretendard-Bold.otf",
+            "./assets/fonts/Paperlogy-7Bold.ttf",
+            "./assets/fonts/Paperlogy-8ExtraBold.ttf",
+            "./assets/fonts/BarlowCondensed-Bold.ttf"
+          ]
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F7F8FA"
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     },
