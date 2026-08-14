@@ -16,7 +16,8 @@ import {
   getCommunityPost,
   type CommunityPostPreview,
 } from '../../lib/community/repository';
-import { colors, formatTime, radii, sportLabels } from '../../lib/theme';
+import { formatTime, sportLabels } from '../../lib/format';
+import { colors, radii } from '../../lib/theme';
 import { AppText as Text, AppTextInput as TextInput, fontFamilies } from '../../lib/typography';
 
 export default function CommunityDetailScreen() {

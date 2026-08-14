@@ -1,10 +1,7 @@
 import { z } from 'zod';
 
-/** The sports currently supported by the marketplace and community. */
 export const SPORTS = ['ski', 'hockey'] as const;
 export type Sport = (typeof SPORTS)[number];
-export type SportType = Sport;
-
 export const sportSchema = z.enum(SPORTS);
 
 export const SPORT_LABELS: Record<Sport, string> = {
@@ -65,6 +62,10 @@ export const HOCKEY_POSITIONS = ['forward', 'defense', 'goalie', 'any'] as const
 export type HockeyPosition = (typeof HOCKEY_POSITIONS)[number];
 export const hockeyPositionSchema = z.enum(HOCKEY_POSITIONS);
 
+export const HANDEDNESSES = ['left', 'right'] as const;
+export type Handedness = (typeof HANDEDNESSES)[number];
+export const handednessSchema = z.enum(HANDEDNESSES);
+
 export const GENDERS = ['men', 'women', 'unisex', 'youth'] as const;
 export type Gender = (typeof GENDERS)[number];
 export const genderSchema = z.enum(GENDERS);
@@ -73,90 +74,127 @@ export const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'expert'] a
 export type SkillLevel = (typeof SKILL_LEVELS)[number];
 export const skillLevelSchema = z.enum(SKILL_LEVELS);
 
-/** Shared base properties for a sport-specific listing detail record. */
-export interface ListingDetailBase {
-  brand?: string;
-  model?: string;
-  year?: number;
-  size?: string;
-  gender?: Gender;
-  notes?: string;
-}
+export const SKI_LISTING_REQUIRED_DETAIL_FIELDS = ['sport'] as const;
+export const SKI_LISTING_OPTIONAL_DETAIL_FIELDS = [
+  'brand',
+  'model',
+  'year',
+  'size',
+  'gender',
+  'skillLevel',
+  'notes',
+  'equipmentType',
+  'discipline',
+  'lengthCm',
+  'waistWidthMm',
+  'radiusM',
+  'bootMondopointMm',
+  'bootFlex',
+  'bindingIncluded',
+] as const;
 
-export interface SkiListingDetails extends ListingDetailBase {
-  /** Optional because sport is already the discriminator on a listing. */
-  sport?: 'ski';
-  equipmentType?: SkiEquipmentType;
-  discipline?: SkiDiscipline;
-  lengthCm?: number;
-  waistWidthMm?: number;
-  radiusM?: number;
-  bootSizeMondopoint?: number;
-  bootFlex?: number;
-  bindingIncluded?: boolean;
-}
+export const HOCKEY_LISTING_REQUIRED_DETAIL_FIELDS = ['sport'] as const;
+export const HOCKEY_LISTING_OPTIONAL_DETAIL_FIELDS = [
+  'brand',
+  'model',
+  'year',
+  'size',
+  'gender',
+  'skillLevel',
+  'notes',
+  'equipmentType',
+  'format',
+  'position',
+  'handedness',
+  'stickFlex',
+  'stickLengthCm',
+  'curve',
+  'kickPoint',
+  'skateSize',
+  'skateWidth',
+] as const;
 
-export interface HockeyListingDetails extends ListingDetailBase {
-  /** Optional because sport is already the discriminator on a listing. */
-  sport?: 'hockey';
-  equipmentType?: HockeyEquipmentType;
-  format?: HockeyFormat;
-  position?: HockeyPosition;
-  handedness?: 'left' | 'right';
-  stickFlex?: number;
-  stickLengthCm?: number;
-  curve?: string;
-  kickPoint?: string;
-  skateSize?: number;
-  skateWidth?: string;
-}
+export type SkiListingRequiredDetailField =
+  (typeof SKI_LISTING_REQUIRED_DETAIL_FIELDS)[number];
+export type SkiListingOptionalDetailField =
+  (typeof SKI_LISTING_OPTIONAL_DETAIL_FIELDS)[number];
+export type HockeyListingRequiredDetailField =
+  (typeof HOCKEY_LISTING_REQUIRED_DETAIL_FIELDS)[number];
+export type HockeyListingOptionalDetailField =
+  (typeof HOCKEY_LISTING_OPTIONAL_DETAIL_FIELDS)[number];
 
-export type SportListingDetails = SkiListingDetails | HockeyListingDetails;
-export type SkiListingDetail = SkiListingDetails;
-export type HockeyListingDetail = HockeyListingDetails;
+/** UI-safe field discovery without guessing JSON keys. */
+export const LISTING_DETAIL_FIELDS_BY_SPORT = {
+  ski: {
+    required: SKI_LISTING_REQUIRED_DETAIL_FIELDS,
+    optional: SKI_LISTING_OPTIONAL_DETAIL_FIELDS,
+  },
+  hockey: {
+    required: HOCKEY_LISTING_REQUIRED_DETAIL_FIELDS,
+    optional: HOCKEY_LISTING_OPTIONAL_DETAIL_FIELDS,
+  },
+} as const satisfies Record<
+  Sport,
+  { required: readonly string[]; optional: readonly string[] }
+>;
 
 const optionalTrimmedText = z.string().trim().min(1).max(120).optional();
 const optionalYear = z.number().int().min(1900).max(2200).optional();
 const optionalSize = z.string().trim().min(1).max(40).optional();
 
+const listingDetailBaseFields = {
+  brand: optionalTrimmedText,
+  model: optionalTrimmedText,
+  year: optionalYear,
+  size: optionalSize,
+  gender: genderSchema.optional(),
+  skillLevel: skillLevelSchema.optional(),
+  notes: z.string().trim().min(1).max(1_000).optional(),
+};
+
+/**
+ * `sport` is required in validated output. The default keeps the existing
+ * mobile create payload valid while giving repositories a canonical discriminator.
+ */
 export const skiListingDetailsSchema = z
   .object({
-    sport: z.literal('ski').optional(),
-    brand: optionalTrimmedText,
-    model: optionalTrimmedText,
-    year: optionalYear,
-    size: optionalSize,
-    gender: genderSchema.optional(),
-    notes: z.string().trim().max(1000).optional(),
+    ...listingDetailBaseFields,
+    sport: z.literal('ski').default('ski'),
     equipmentType: skiEquipmentTypeSchema.optional(),
     discipline: skiDisciplineSchema.optional(),
-    lengthCm: z.number().positive().max(300).optional(),
-    waistWidthMm: z.number().positive().max(200).optional(),
-    radiusM: z.number().positive().max(100).optional(),
-    bootSizeMondopoint: z.number().positive().max(40).optional(),
+    lengthCm: z.number().finite().positive().max(300).optional(),
+    waistWidthMm: z.number().finite().positive().max(200).optional(),
+    radiusM: z.number().finite().positive().max(100).optional(),
+    bootMondopointMm: z.number().int().min(100).max(400).optional(),
     bootFlex: z.number().int().positive().max(200).optional(),
     bindingIncluded: z.boolean().optional(),
   })
-  .passthrough();
+  .strict();
+
+export type SkiListingDetails = z.infer<typeof skiListingDetailsSchema>;
 
 export const hockeyListingDetailsSchema = z
   .object({
-    sport: z.literal('hockey').optional(),
-    brand: optionalTrimmedText,
-    model: optionalTrimmedText,
-    year: optionalYear,
-    size: optionalSize,
-    gender: genderSchema.optional(),
-    notes: z.string().trim().max(1000).optional(),
+    ...listingDetailBaseFields,
+    sport: z.literal('hockey').default('hockey'),
     equipmentType: hockeyEquipmentTypeSchema.optional(),
     format: hockeyFormatSchema.optional(),
     position: hockeyPositionSchema.optional(),
-    handedness: z.enum(['left', 'right']).optional(),
-    stickFlex: z.number().positive().max(200).optional(),
-    stickLengthCm: z.number().positive().max(250).optional(),
-    curve: z.string().trim().max(80).optional(),
-    kickPoint: z.string().trim().max(80).optional(),
-    skateSize: z.number().positive().max(20).optional(),
-    skateWidth: z.string().trim().max(20).optional(),
+    handedness: handednessSchema.optional(),
+    stickFlex: z.number().int().positive().max(200).optional(),
+    stickLengthCm: z.number().finite().positive().max(250).optional(),
+    curve: z.string().trim().min(1).max(80).optional(),
+    kickPoint: z.string().trim().min(1).max(80).optional(),
+    skateSize: z.number().finite().positive().max(20).optional(),
+    skateWidth: z.string().trim().min(1).max(20).optional(),
   })
-  .passthrough();
+  .strict();
+
+export type HockeyListingDetails = z.infer<typeof hockeyListingDetailsSchema>;
+
+export type SportListingDetails = SkiListingDetails | HockeyListingDetails;
+
+export const listingDetailsSchemaBySport = {
+  ski: skiListingDetailsSchema,
+  hockey: hockeyListingDetailsSchema,
+} satisfies Record<Sport, z.ZodTypeAny>;

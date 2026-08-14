@@ -16,13 +16,12 @@ import { listingRepository, type ListingRepositoryError } from '../../lib/listin
 import { isSupabaseConfigured } from '../../lib/supabase/client';
 import {
   categoryLabels,
-  colors,
   conditionLabels,
   formatLocation,
   formatPrice,
-  radii,
   sportLabels,
-} from '../../lib/theme';
+} from '../../lib/format';
+import { colors, radii } from '../../lib/theme';
 import { AppText as Text, fontFamilies } from '../../lib/typography';
 
 function DetailValue({ value }: { value: unknown }) {

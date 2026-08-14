@@ -30,6 +30,63 @@ export function useIceGearFonts() {
   return useFonts(fontSources);
 }
 
+/**
+ * Semantic text roles. Paperlogy carries editorial hierarchy, Pretendard keeps
+ * Korean body copy legible, and Barlow Condensed is reserved for prices/data.
+ */
+export const typography = StyleSheet.create({
+  display: {
+    fontFamily: fontFamilies.displayExtraBold,
+    fontSize: 36,
+    lineHeight: 42,
+    letterSpacing: -1.1,
+  },
+  title: {
+    fontFamily: fontFamilies.displayBold,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.7,
+  },
+  headline: {
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 20,
+    lineHeight: 28,
+    letterSpacing: -0.25,
+  },
+  body: {
+    fontFamily: fontFamilies.body,
+    fontSize: 16,
+    lineHeight: 24,
+    letterSpacing: -0.1,
+  },
+  bodyStrong: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: 16,
+    lineHeight: 24,
+    letterSpacing: -0.1,
+  },
+  label: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: -0.05,
+  },
+  caption: {
+    fontFamily: fontFamilies.body,
+    fontSize: 12,
+    lineHeight: 18,
+    letterSpacing: 0,
+  },
+  price: {
+    fontFamily: fontFamilies.accentBold,
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: 0.2,
+  },
+});
+
+export type TypographyVariant = keyof typeof typography;
+
 function numericWeight(weight: TextStyle['fontWeight']): number {
   if (typeof weight === 'number') return weight;
   if (!weight || weight === 'normal') return 400;
@@ -48,17 +105,37 @@ function resolveFamily(style: TextProps['style'] | TextInputProps['style']): str
   return fontFamilies.body;
 }
 
-/**
- * App-wide text primitive. Existing fontWeight styles are mapped to an actual
- * Pretendard face so Android never has to synthesize a Korean font weight.
- */
-export function AppText({ style, ...props }: TextProps) {
-  const fontFamily = resolveFamily(style);
-  return <NativeText {...props} style={[style, { fontFamily, fontWeight: 'normal' }]} />;
+export interface AppTextProps extends TextProps {
+  variant?: TypographyVariant;
 }
 
-/** TextInput counterpart to AppText with the same Pretendard weight mapping. */
-export function AppTextInput({ style, ...props }: TextInputProps) {
-  const fontFamily = resolveFamily(style);
-  return <NativeTextInput {...props} style={[style, { fontFamily, fontWeight: 'normal' }]} />;
+/**
+ * App-wide text primitive. Explicit fontWeight styles map to real Pretendard
+ * files, so Android never synthesizes a Korean font weight.
+ */
+export function AppText({ style, variant, ...props }: AppTextProps) {
+  const roleStyle = variant ? typography[variant] : undefined;
+  const fontFamily = resolveFamily([roleStyle, style]);
+  return (
+    <NativeText
+      {...props}
+      style={[roleStyle, style, { fontFamily, fontWeight: 'normal' }]}
+    />
+  );
+}
+
+export interface AppTextInputProps extends TextInputProps {
+  variant?: Extract<TypographyVariant, 'body' | 'bodyStrong' | 'label'>;
+}
+
+/** TextInput counterpart with the same concrete Pretendard weight mapping. */
+export function AppTextInput({ style, variant, ...props }: AppTextInputProps) {
+  const roleStyle = variant ? typography[variant] : undefined;
+  const fontFamily = resolveFamily([roleStyle, style]);
+  return (
+    <NativeTextInput
+      {...props}
+      style={[roleStyle, style, { fontFamily, fontWeight: 'normal' }]}
+    />
+  );
 }

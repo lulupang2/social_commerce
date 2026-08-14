@@ -16,14 +16,13 @@ import type { Listing } from '@icegear/domain';
 import { listingRepository, type ListingRepositoryError } from '../../lib/listings/repository';
 import {
   categoryLabels,
-  colors,
   conditionLabels,
   formatLocation,
   formatPrice,
   formatTime,
-  radii,
   sportLabels,
-} from '../../lib/theme';
+} from '../../lib/format';
+import { colors, radii } from '../../lib/theme';
 import { AppText as Text, AppTextInput as TextInput, fontFamilies } from '../../lib/typography';
 
 type SportFilter = 'all' | 'ski' | 'hockey';

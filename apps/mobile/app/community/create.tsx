@@ -14,7 +14,8 @@ import {
 import type { Sport } from '@icegear/domain';
 
 import { createCommunityPost } from '../../lib/community/repository';
-import { colors, radii, sportLabels } from '../../lib/theme';
+import { sportLabels } from '../../lib/format';
+import { colors, radii } from '../../lib/theme';
 import { AppText as Text, AppTextInput as TextInput, fontFamilies } from '../../lib/typography';
 
 const sportOptions: Array<{ id: Sport | undefined; label: string }> = [

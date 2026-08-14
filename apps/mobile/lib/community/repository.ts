@@ -1,7 +1,7 @@
 import type { CommunityPostType, Sport } from '@icegear/domain';
 
 import { supabase } from '../supabase/client';
-import { formatTime } from '../theme';
+import { formatTime } from '../format';
 
 export type CommunityPostPreview = {
   id: string;

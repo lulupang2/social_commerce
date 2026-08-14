@@ -1,5 +1,5 @@
 import { supabase } from '../supabase/client';
-import { formatTime } from '../theme';
+import { formatTime } from '../format';
 
 export type ChatMessage = {
   id: string;

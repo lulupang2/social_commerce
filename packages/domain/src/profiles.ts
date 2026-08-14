@@ -1,20 +1,85 @@
 import { z } from 'zod';
-import { locationSchema, type LocationInput } from './listings.js';
-import { skillLevelSchema, sportSchema, SPORTS, type SkillLevel, type Sport } from './sports.js';
 
-export interface Profile {
-  id: string;
-  userId: string;
-  username?: string;
-  displayName: string;
-  bio?: string;
-  avatarUrl?: string;
-  location?: LocationInput;
-  preferredSports: Sport[];
-  skillLevel?: SkillLevel;
-  createdAt: string;
-  updatedAt: string;
-}
+import { httpsUrlSchema, isoTimestampSchema, uuidSchema } from './common.js';
+import { locationObjectSchema } from './listings.js';
+import {
+  handednessSchema,
+  hockeyFormatSchema,
+  hockeyPositionSchema,
+  SKI_DISCIPLINES,
+  skillLevelSchema,
+  SPORTS,
+} from './sports.js';
+
+export const APPAREL_SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL'] as const;
+export type ApparelSize = (typeof APPAREL_SIZES)[number];
+export const apparelSizeSchema = z.enum(APPAREL_SIZES);
+
+export const PROTECTIVE_GEAR_SIZES = ['youth', 'junior', 'senior_s', 'senior_m', 'senior_l'] as const;
+export type ProtectiveGearSize = (typeof PROTECTIVE_GEAR_SIZES)[number];
+export const protectiveGearSizeSchema = z.enum(PROTECTIVE_GEAR_SIZES);
+
+export const PROFILE_SKI_DISCIPLINES = ['all_mountain', ...SKI_DISCIPLINES] as const;
+export type ProfileSkiDiscipline = (typeof PROFILE_SKI_DISCIPLINES)[number];
+export const profileSkiDisciplineSchema = z.enum(PROFILE_SKI_DISCIPLINES);
+
+export const profileSizePreferencesSchema = z
+  .object({
+    footLengthMm: z.number().int().min(100).max(400).optional(),
+    bootMondopointMm: z.number().int().min(100).max(400).optional(),
+    skiLengthCm: z.number().int().min(60).max(230).optional(),
+    skateSize: z.number().finite().positive().max(20).optional(),
+    skateWidth: z.string().trim().min(1).max(20).optional(),
+    apparelSize: apparelSizeSchema.optional(),
+    protectiveGearSize: protectiveGearSizeSchema.optional(),
+  })
+  .strict();
+
+export type ProfileSizePreferences = z.infer<typeof profileSizePreferencesSchema>;
+
+export const profileEquipmentPreferencesSchema = z
+  .object({
+    discipline: profileSkiDisciplineSchema.optional(),
+    format: hockeyFormatSchema.optional(),
+    position: hockeyPositionSchema.optional(),
+    handedness: handednessSchema.optional(),
+  })
+  .strict();
+
+export type ProfileEquipmentPreferences = z.infer<
+  typeof profileEquipmentPreferencesSchema
+>;
+
+export const profileSportPreferenceSchema = z
+  .object({
+    sportId: uuidSchema,
+    skillLevel: skillLevelSchema.nullish(),
+    sizePreferences: profileSizePreferencesSchema.nullish(),
+    preferences: profileEquipmentPreferencesSchema.nullish(),
+  })
+  .strict();
+
+export type ProfileSportPreference = z.infer<typeof profileSportPreferenceSchema>;
+
+export const profileSportsSchema = z
+  .array(profileSportPreferenceSchema)
+  .min(1, 'Choose at least one sport')
+  .max(SPORTS.length)
+  .superRefine((sports, context) => {
+    const sportIds = new Set<string>();
+    sports.forEach((sport, index) => {
+      if (sportIds.has(sport.sportId)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, 'sportId'],
+          message: 'Each sport may appear only once',
+        });
+      }
+      sportIds.add(sport.sportId);
+    });
+  });
+
+export type ProfileSports = z.infer<typeof profileSportsSchema>;
 
 const displayNameSchema = z.string().trim().min(1, 'Display name is required').max(80);
 const usernameSchema = z
@@ -22,72 +87,53 @@ const usernameSchema = z
   .trim()
   .toLowerCase()
   .regex(/^[a-z0-9_][a-z0-9_-]{1,29}$/, 'Username must be 2-30 letters, numbers, _ or -');
-const sportsSchema = z.array(sportSchema).min(1).max(SPORTS.length);
-const optionalUrlSchema = z.string().trim().url().optional().nullable();
 
-const profileFields = {
-  displayName: displayNameSchema.optional(),
-  name: displayNameSchema.optional(),
-  username: usernameSchema.optional(),
+const editableProfileFields = {
+  displayName: displayNameSchema,
+  username: usernameSchema.optional().nullable(),
   bio: z.string().trim().max(500).optional().nullable(),
-  avatarUrl: optionalUrlSchema,
-  location: locationSchema.optional().nullable(),
-  preferredSports: sportsSchema.optional(),
-  favoriteSports: sportsSchema.optional(),
-  favoriteSport: sportSchema.optional(),
-  skillLevel: skillLevelSchema.optional(),
+  avatarUrl: httpsUrlSchema.optional().nullable(),
+  location: locationObjectSchema.optional().nullable(),
+  sports: profileSportsSchema,
 };
 
-/** Fields that can be edited after a profile exists. */
-export const profileInputSchema = z
-  .object(profileFields)
-  .passthrough()
-  .superRefine((value, context) => {
-    if (!value.displayName && !value.name) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['displayName'],
-        message: 'Display name is required',
-      });
-    }
-  });
-
-export const profileSchema = profileInputSchema;
-export type ProfileInput = z.input<typeof profileInputSchema>;
-export type UpdateProfileInput = ProfileInput;
-
-/**
- * First-run profile data. Clients may use either preferredSports or favoriteSports
- * while migrating, but at least one sport preference is required.
- */
-export const onboardingInputSchema = z
+export const profileSchema = z
   .object({
-    ...profileFields,
-    preferredSports: sportsSchema.optional(),
-    favoriteSports: sportsSchema.optional(),
-    favoriteSport: sportSchema.optional(),
+    id: uuidSchema,
+    ...editableProfileFields,
+    createdAt: isoTimestampSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export type Profile = z.infer<typeof profileSchema>;
+
+export const profileUpdateSchema = z
+  .object({
+    displayName: displayNameSchema.optional(),
+    username: usernameSchema.optional().nullable(),
+    bio: z.string().trim().max(500).optional().nullable(),
+    avatarUrl: httpsUrlSchema.optional().nullable(),
+    location: locationObjectSchema.optional().nullable(),
+    sports: profileSportsSchema.optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'At least one profile field is required');
+
+export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
+
+export const onboardingPayloadSchema = z
+  .object({
+    displayName: displayNameSchema,
+    username: usernameSchema.optional(),
+    bio: z.string().trim().max(500).optional(),
+    avatarUrl: httpsUrlSchema.optional(),
+    location: locationObjectSchema.optional(),
+    sports: profileSportsSchema,
     acceptTerms: z.literal(true).optional(),
     marketingOptIn: z.boolean().optional(),
   })
-  .passthrough()
-  .superRefine((value, context) => {
-    if (!value.displayName && !value.name) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['displayName'],
-        message: 'Display name is required',
-      });
-    }
+  .strict();
 
-    if (!value.preferredSports && !value.favoriteSports && !value.favoriteSport) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['preferredSports'],
-        message: 'Choose at least one sport',
-      });
-    }
-  });
-
-export const onboardingSchema = onboardingInputSchema;
-export type OnboardingInput = z.input<typeof onboardingInputSchema>;
-export type OnboardingPayload = OnboardingInput;
+export type OnboardingPayload = z.input<typeof onboardingPayloadSchema>;
+export type Onboarding = z.output<typeof onboardingPayloadSchema>;
