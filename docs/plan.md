@@ -1,6 +1,6 @@
 # IceGear 모바일 MVP 고도화 작업 계획
 
-- **상태:** `T00` 결정 게이트 및 문서 동기화 완료; schema/UI 구현 미착수
+ - **상태:** `T00`~`T60` 및 `T90` 통합/QA 구현 및 문서 정합화 완료 (pnpm install, format:check, typecheck, test, lint, build, export:mobile:web 및 Expo Web 375/390/desktop 검증 통과)
 - **기준일:** 2026-08-14
 - **주요 범위:** Expo 모바일 앱, 공유 도메인 계약, Supabase Auth/Postgres/RLS/Storage/Realtime
 - **비교 기준:** [FitLoop - Reimagining Circular Fashion](https://www.behance.net/gallery/251515731/FitLoop-Reimagining-Circular-Fashion)

@@ -11,7 +11,14 @@ export interface AvatarProps extends ViewProps {
   status?: 'online' | 'offline';
 }
 
-export function Avatar({ name, imageUrl, size = interaction.minimumTarget, status, style, ...props }: AvatarProps) {
+export function Avatar({
+  name,
+  imageUrl,
+  size = interaction.minimumTarget,
+  status,
+  style,
+  ...props
+}: AvatarProps) {
   const statusSize = Math.max(10, size * 0.24);
 
   return (
@@ -22,10 +29,16 @@ export function Avatar({ name, imageUrl, size = interaction.minimumTarget, statu
       style={[styles.container, { height: size, width: size }, style]}
     >
       {imageUrl ? (
-        <Image source={{ uri: imageUrl }} style={{ borderRadius: size / 2, height: size, width: size }} />
+        <Image
+          source={{ uri: imageUrl }}
+          style={{ borderRadius: size / 2, height: size, width: size }}
+        />
       ) : (
         <View style={[styles.fallback, { borderRadius: size / 2, height: size, width: size }]}>
-          <AppText style={[styles.initials, { fontSize: Math.max(12, size * 0.36) }]} variant="bodyStrong">
+          <AppText
+            style={[styles.initials, { fontSize: Math.max(12, size * 0.36) }]}
+            variant="bodyStrong"
+          >
             {initials(name)}
           </AppText>
         </View>
@@ -52,5 +65,11 @@ const styles = StyleSheet.create({
   container: { position: 'relative' },
   fallback: { alignItems: 'center', backgroundColor: colors.infoSoft, justifyContent: 'center' },
   initials: { color: colors.info },
-  status: { borderColor: colors.surface, borderWidth: 2, bottom: 0, position: 'absolute', right: 0 },
+  status: {
+    borderColor: colors.surface,
+    borderWidth: 2,
+    bottom: 0,
+    position: 'absolute',
+    right: 0,
+  },
 });

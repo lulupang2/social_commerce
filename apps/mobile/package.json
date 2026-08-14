@@ -9,7 +9,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"lib/**/*.test.*\" \"components/**/*.test.*\""
   },
   "dependencies": {
     "@icegear/domain": "workspace:*",
@@ -17,7 +18,11 @@
     "@supabase/supabase-js": "2.112.3",
     "expo": "~57.0.12",
     "expo-constants": "~57.0.10",
+    "expo-crypto": "~57.0.1",
+    "expo-file-system": "~57.0.2",
     "expo-font": "~57.0.1",
+    "expo-image-manipulator": "~57.0.9",
+    "expo-image-picker": "~57.0.9",
     "expo-linking": "~57.0.5",
     "expo-router": "~57.0.12",
     "expo-splash-screen": "~57.0.6",
@@ -35,6 +40,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "tsx": "^4.23.12",
     "typescript": "~6.0.3"
   }
 }

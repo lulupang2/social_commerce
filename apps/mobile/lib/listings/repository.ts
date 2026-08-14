@@ -12,8 +12,8 @@ import {
   type ListingImage,
 } from '@icegear/domain';
 import type { SupabaseClient } from '@supabase/supabase-js';
-
-import { supabase } from '../supabase/client';
+import { resolveSignedUrls } from '../media/index.ts';
+// Lazy import default supabase client to support Node test execution without polyfill side-effects
 
 const LISTING_SELECT =
   'id,seller_id,sport_id,category,title,description,price,currency,condition,status,details,location_text,created_at,updated_at,sports!inner(slug),listing_images(storage_path,alt_text,sort_order)';
@@ -28,22 +28,21 @@ type ListingImageRow = {
 type ListingRow = {
   id: string;
   seller_id: string;
-  sport_id?: string | null;
+  sport_id: string;
   category: string;
   title: string;
-  description?: string | null;
+  description: string | null;
   price: number | string;
-  currency?: string | null;
+  currency: string | null;
   condition: string;
   status: string;
-  details?: unknown;
+  details?: Record<string, unknown> | null;
   location_text?: string | null;
   created_at: string;
   updated_at: string;
   sports?: { slug?: string | null } | Array<{ slug?: string | null }> | null;
   listing_images?: ListingImageRow[] | null;
 };
-
 export type ListingRepositoryErrorCode =
   | 'not_configured'
   | 'validation_error'
@@ -55,7 +54,7 @@ export type ListingRepositoryErrorCode =
 export interface ListingRepositoryError {
   code: ListingRepositoryErrorCode;
   message: string;
-  fieldErrors?: Record<string, string>;
+  fieldErrors?: Record<string, string[]>;
 }
 
 export type ListingRepositoryResult<T> =
@@ -78,7 +77,7 @@ function failure<T>(error: ListingRepositoryError): ListingRepositoryResult<T> {
 function safeRequestError(): ListingRepositoryError {
   return {
     code: 'request_failed',
-    message: 'The marketplace could not be reached. Try again shortly.',
+    message: 'Marketplace request failed. Check your connection and try again.',
   };
 }
 
@@ -91,32 +90,32 @@ function getSportSlug(row: ListingRow): string | undefined {
   return relation?.slug ?? undefined;
 }
 
-function toPublicImageUrl(path: string, client: SupabaseClient): string {
-  if (/^https?:\/\//i.test(path)) return path;
-
-  try {
-    return client.storage.from(LISTING_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl || path;
-  } catch {
-    return path;
-  }
-}
-
-function mapImages(
+async function mapImagesAsync(
   rows: ListingImageRow[] | null | undefined,
   client: SupabaseClient,
-): ListingImage[] {
-  return (rows ?? [])
+): Promise<ListingImage[]> {
+  const validRows = (rows ?? [])
     .filter((row) => typeof row.storage_path === 'string' && row.storage_path.trim().length > 0)
     .slice()
-    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
-    .map((row, index) => ({
-      url: toPublicImageUrl(row.storage_path, client),
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+
+  if (validRows.length === 0) return [];
+
+  const paths = validRows.map((r) => r.storage_path);
+  const signedMap = await resolveSignedUrls(client, paths);
+
+  return validRows.map((row, index) => {
+    const resolved = signedMap.get(row.storage_path);
+    return {
+      url: resolved?.signedUrl ?? row.storage_path,
+      ...(resolved?.expiresAt ? { expiresAt: resolved.expiresAt } : {}),
       ...(row.alt_text ? { altText: row.alt_text } : {}),
       sortOrder: row.sort_order ?? index,
-    }));
+    };
+  });
 }
 
-function mapListingRow(row: ListingRow, client: SupabaseClient): Listing {
+async function mapListingRowAsync(row: ListingRow, client: SupabaseClient): Promise<Listing> {
   const parsedSport = sportSchema.parse(getSportSlug(row));
   const category = listingCategorySchema.parse(row.category) as ListingCategory;
   const condition = listingConditionSchema.parse(row.condition) as ListingCondition;
@@ -133,6 +132,9 @@ function mapListingRow(row: ListingRow, client: SupabaseClient): Listing {
     ? rawTags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
     : undefined;
   const location = row.location_text?.trim() || undefined;
+
+  const images = await mapImagesAsync(row.listing_images, client);
+
   const core = {
     id: row.id,
     sellerId: row.seller_id,
@@ -145,7 +147,7 @@ function mapListingRow(row: ListingRow, client: SupabaseClient): Listing {
       amount,
       currency: (row.currency ?? 'USD').toUpperCase(),
     },
-    images: mapImages(row.listing_images, client),
+    images,
     ...(location ? { location } : {}),
     ...(tags?.length ? { tags } : {}),
     createdAt: row.created_at,
@@ -162,61 +164,67 @@ function mapListingRow(row: ListingRow, client: SupabaseClient): Listing {
 function formatValidationErrors(
   issues: Array<{ path: (string | number)[]; message: string }>,
 ): ListingRepositoryError {
-  const fieldErrors: Record<string, string> = {};
+  const first = issues[0];
+  const field = first?.path.join('.');
+  const message = first ? (field ? `${field}: ${first.message}` : first.message) : 'Invalid input';
+
+  const fieldErrors: Record<string, string[]> = {};
   for (const issue of issues) {
-    const field = issue.path.length ? issue.path.join('.') : 'form';
-    fieldErrors[field] ??= issue.message;
+    const key = issue.path.join('.') || 'root';
+    if (!fieldErrors[key]) fieldErrors[key] = [];
+    fieldErrors[key].push(issue.message);
   }
 
   return {
     code: 'validation_error',
-    message: 'Check the listing details and try again.',
+    message,
     fieldErrors,
   };
 }
 
 function serializeLocation(location: CreateListingPayload['location']): string | null {
+  if (!location) return null;
   if (typeof location === 'string') {
-    return location.trim() || null;
+    const trimmed = location.trim();
+    return trimmed.length ? trimmed : null;
   }
 
-  if (!location) {
-    return null;
-  }
-
-  const parts = [location.city, location.region, location.countryCode, location.postalCode]
-    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
-    .map((part) => part.trim());
+  const parts = [location.city, location.region, location.countryCode]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part && part.length));
 
   return parts.length ? parts.join(', ') : null;
 }
 
 function getPriceAndCurrency(payload: CreateListingPayload): { amount: number; currency: string } {
   if (typeof payload.price === 'number') {
-    return {
-      amount: payload.price,
-      currency: (payload.currency ?? 'USD').toUpperCase(),
-    };
+    return { amount: payload.price, currency: 'USD' };
   }
 
   return {
     amount: payload.price.amount,
-    currency: (payload.currency ?? payload.price.currency).toUpperCase(),
+    currency: payload.price.currency.toUpperCase(),
   };
 }
 
 function buildDetails(payload: CreateListingPayload): Record<string, unknown> {
-  const details = isRecord(payload.details) ? { ...payload.details } : {};
+  const {
+    sport,
+    category,
+    title,
+    description,
+    price,
+    condition,
+    images,
+    location,
+    tags,
+    ...details
+  } = payload;
 
-  if (payload.tags !== undefined) details.tags = payload.tags;
-  if (payload.isNegotiable !== undefined) details.isNegotiable = payload.isNegotiable;
-  if (payload.shippingAvailable !== undefined)
-    details.shippingAvailable = payload.shippingAvailable;
-  if (payload.localPickupAvailable !== undefined) {
-    details.localPickupAvailable = payload.localPickupAvailable;
-  }
-
-  return details;
+  return {
+    ...details,
+    ...(tags?.length ? { tags } : {}),
+  };
 }
 
 function buildImageRows(payload: CreateListingPayload): ListingImageRow[] {
@@ -233,25 +241,34 @@ function buildImageRows(payload: CreateListingPayload): ListingImageRow[] {
   });
 }
 
-function configuredClient(
-  client: SupabaseClient | null,
-): { client: SupabaseClient; error: null } | { client: null; error: ListingRepositoryError } {
-  return client
-    ? { client, error: null }
-    : {
-        client: null,
-        error: {
-          code: 'not_configured',
-          message: 'Connect Supabase to browse or publish marketplace listings.',
-        },
-      };
+async function resolveClient(
+  providedClient?: SupabaseClient | null,
+): Promise<
+  { client: SupabaseClient; error: null } | { client: null; error: ListingRepositoryError }
+> {
+  if (providedClient) {
+    return { client: providedClient, error: null };
+  }
+  try {
+    const { supabase } = await import('../supabase/client.ts');
+    if (supabase) {
+      return { client: supabase, error: null };
+    }
+  } catch {
+    // Return unconfigured when client cannot be loaded
+  }
+  return {
+    client: null,
+    error: {
+      code: 'not_configured',
+      message: 'Connect Supabase to browse or publish marketplace listings.',
+    },
+  };
 }
 
-export function createListingRepository(
-  client: SupabaseClient | null = supabase,
-): ListingRepository {
+export function createListingRepository(providedClient?: SupabaseClient | null): ListingRepository {
   async function listActive(): Promise<ListingRepositoryResult<Listing[]>> {
-    const configured = configuredClient(client);
+    const configured = await resolveClient(providedClient);
     if (!configured.client) return failure(configured.error);
 
     const { data, error } = await configured.client
@@ -263,9 +280,10 @@ export function createListingRepository(
     if (error) return failure(safeRequestError());
 
     try {
-      return success(
-        ((data ?? []) as ListingRow[]).map((row) => mapListingRow(row, configured.client)),
+      const listings = await Promise.all(
+        ((data ?? []) as ListingRow[]).map((row) => mapListingRowAsync(row, configured.client)),
       );
+      return success(listings);
     } catch {
       return failure({
         code: 'mapping_failed',
@@ -275,7 +293,7 @@ export function createListingRepository(
   }
 
   async function getActiveById(id: string): Promise<ListingRepositoryResult<Listing>> {
-    const configured = configuredClient(client);
+    const configured = await resolveClient(providedClient);
     if (!configured.client) return failure(configured.error);
 
     const normalizedId = id.trim();
@@ -294,7 +312,8 @@ export function createListingRepository(
     if (!data) return failure({ code: 'not_found', message: 'Listing not found.' });
 
     try {
-      return success(mapListingRow(data as ListingRow, configured.client));
+      const listing = await mapListingRowAsync(data as ListingRow, configured.client);
+      return success(listing);
     } catch {
       return failure({
         code: 'mapping_failed',
@@ -304,7 +323,7 @@ export function createListingRepository(
   }
 
   async function create(payload: CreateListingPayload): Promise<ListingRepositoryResult<Listing>> {
-    const configured = configuredClient(client);
+    const configured = await resolveClient(providedClient);
     if (!configured.client) return failure(configured.error);
 
     const parsed = createListingSchema.safeParse(payload);
@@ -367,9 +386,12 @@ export function createListingRepository(
       );
 
       if (imageError) {
+        // Roll back created draft listing if images fail to attach
+        await configured.client.from('listings').delete().eq('id', created.id);
+
         return failure({
           code: 'request_failed',
-          message: 'The listing was saved, but its images could not be attached.',
+          message: 'The listing could not be created because its images failed to attach.',
         });
       }
     }
@@ -381,7 +403,8 @@ export function createListingRepository(
     } as ListingRow;
 
     try {
-      return success(mapListingRow(createdRow, configured.client));
+      const listing = await mapListingRowAsync(createdRow, configured.client);
+      return success(listing);
     } catch {
       return failure({
         code: 'mapping_failed',

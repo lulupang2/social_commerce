@@ -69,8 +69,10 @@ export function getListingAttributes(listing: Listing): ListingAttribute[] {
     if (!label || rawValue === undefined || rawValue === null || rawValue === '') continue;
 
     let value = typeof rawValue === 'boolean' ? (rawValue ? '포함' : '미포함') : String(rawValue);
-    if (typeof rawValue === 'string') value = valueLabels[rawValue] ?? rawValue.replaceAll('_', ' ');
-    if (typeof rawValue === 'number' && (key === 'lengthCm' || key === 'stickLengthCm')) value = `${rawValue} cm`;
+    if (typeof rawValue === 'string')
+      value = valueLabels[rawValue] ?? rawValue.replaceAll('_', ' ');
+    if (typeof rawValue === 'number' && (key === 'lengthCm' || key === 'stickLengthCm'))
+      value = `${rawValue} cm`;
     if (typeof rawValue === 'number' && key === 'waistWidthMm') value = `${rawValue} mm`;
     if (typeof rawValue === 'number' && key === 'radiusM') value = `${rawValue} m`;
     base.push({ label, value });
@@ -79,7 +81,12 @@ export function getListingAttributes(listing: Listing): ListingAttribute[] {
   return base;
 }
 
-export function ListingAttributeGrid({ listing, attributes, style, ...props }: ListingAttributeGridProps) {
+export function ListingAttributeGrid({
+  listing,
+  attributes,
+  style,
+  ...props
+}: ListingAttributeGridProps) {
   const items = listing ? getListingAttributes(listing) : attributes;
 
   return (
@@ -100,7 +107,14 @@ export function ListingAttributeGrid({ listing, attributes, style, ...props }: L
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  cell: { backgroundColor: colors.surfaceSubtle, borderRadius: radii.md, flexGrow: 1, gap: spacing.xs, minWidth: '46%', padding: spacing.md },
+  cell: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.md,
+    flexGrow: 1,
+    gap: spacing.xs,
+    minWidth: '46%',
+    padding: spacing.md,
+  },
   label: { color: colors.textMuted },
   value: { color: colors.text },
 });

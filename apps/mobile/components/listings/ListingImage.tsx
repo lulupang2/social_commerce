@@ -16,15 +16,25 @@ export interface ListingImageProps {
 
 export function ListingImage({ image, title, aspectRatio = 1, status, style }: ListingImageProps) {
   const uri = typeof image === 'string' ? image : image?.url;
-  const altText = typeof image === 'string' ? `${title} 상품 이미지` : image?.altText || `${title} 상품 이미지`;
+  const altText =
+    typeof image === 'string' ? `${title} 상품 이미지` : image?.altText || `${title} 상품 이미지`;
   const unavailable = status === 'sold' || status === 'reserved';
 
   return (
     <View style={[styles.container, { aspectRatio }, style]}>
       {uri ? (
-        <Image accessibilityLabel={altText} resizeMode="cover" source={{ uri }} style={styles.image} />
+        <Image
+          accessibilityLabel={altText}
+          resizeMode="cover"
+          source={{ uri }}
+          style={styles.image}
+        />
       ) : (
-        <View accessibilityLabel={`${title} 이미지 없음`} accessibilityRole="image" style={styles.placeholder}>
+        <View
+          accessibilityLabel={`${title} 이미지 없음`}
+          accessibilityRole="image"
+          style={styles.placeholder}
+        >
           <AppIcon color={colors.textSubtle} name="image" size={32} />
           <AppText style={styles.placeholderText} variant="caption">
             이미지 준비 중
@@ -43,10 +53,24 @@ export function ListingImage({ image, title, aspectRatio = 1, status, style }: L
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: colors.surfaceSubtle, borderRadius: radii.md, overflow: 'hidden', position: 'relative', width: '100%' },
+  container: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    position: 'relative',
+    width: '100%',
+  },
   image: { height: '100%', width: '100%' },
   placeholder: { alignItems: 'center', flex: 1, gap: spacing.xs, justifyContent: 'center' },
   placeholderText: { color: colors.textSubtle },
-  status: { backgroundColor: colors.scrim, borderRadius: radii.pill, left: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, position: 'absolute', top: spacing.sm },
+  status: {
+    backgroundColor: colors.scrim,
+    borderRadius: radii.pill,
+    left: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    position: 'absolute',
+    top: spacing.sm,
+  },
   statusText: { color: colors.textInverse },
 });

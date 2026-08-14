@@ -52,7 +52,8 @@ export function Button({
 }: ButtonProps) {
   const [focused, setFocused] = useState(false);
   const isDisabled = disabled || loading;
-  const foreground = variant === 'secondary' || variant === 'ghost' ? colors.text : colors.textInverse;
+  const foreground =
+    variant === 'secondary' || variant === 'ghost' ? colors.text : colors.textInverse;
 
   return (
     <Pressable
@@ -82,11 +83,15 @@ export function Button({
     >
       <View style={styles.content}>
         {loading ? <ActivityIndicator color={foreground} size="small" /> : null}
-        {!loading && leadingIcon ? <AppIcon color={foreground} name={leadingIcon} size={18} /> : null}
+        {!loading && leadingIcon ? (
+          <AppIcon color={foreground} name={leadingIcon} size={18} />
+        ) : null}
         <AppText numberOfLines={1} style={{ color: foreground }} variant="label">
           {label}
         </AppText>
-        {!loading && trailingIcon ? <AppIcon color={foreground} name={trailingIcon} size={18} /> : null}
+        {!loading && trailingIcon ? (
+          <AppIcon color={foreground} name={trailingIcon} size={18} />
+        ) : null}
       </View>
     </Pressable>
   );
@@ -105,5 +110,10 @@ const styles = StyleSheet.create({
   large: { minHeight: interaction.controlHeightLarge, paddingHorizontal: spacing.xl },
   fullWidth: { alignSelf: 'stretch' },
   pressed: { opacity: interaction.pressedOpacity },
-  content: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'center' },
+  content: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+  },
 });

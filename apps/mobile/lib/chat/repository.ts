@@ -1,227 +1,269 @@
 import { supabase } from '../supabase/client';
-import { formatTime } from '../format';
+import { createDemoChatTransport } from './demo-transport';
+import {
+  createClientMessageId,
+  failure,
+  mergeMessages,
+  success,
+  type ChatMessage,
+  type ChatPage,
+  type ChatRepositoryError,
+  type ChatResult,
+  type ChatSummary,
+  type ConversationCursor,
+  type MessageCursor,
+  type UnreadSummary,
+} from './model';
+import { createSupabaseChatTransport } from './supabase-transport';
+import type {
+  ChatRealtimeEvent,
+  ChatSubscription,
+  ChatSubscriptionHandlers,
+  ChatTransport,
+  ConversationPageOptions,
+  MessagePageOptions,
+} from './transport';
 
-export type ChatMessage = {
-  id: string;
-  senderId: string;
-  body: string;
-  createdAt: string;
-  timeLabel: string;
-  isMine: boolean;
-};
+export type {
+  ChatMessage,
+  ChatPage,
+  ChatRepositoryError,
+  ChatRepositoryErrorCode,
+  ChatResult,
+  ChatSummary,
+  ConversationCursor,
+  MessageCursor,
+  MessageDelivery,
+  UnreadSummary,
+} from './model';
+export type {
+  ChatRealtimeEvent,
+  ChatRealtimeStatus,
+  ChatSubscription,
+  ChatSubscriptionHandlers,
+  ConversationPageOptions,
+  MessagePageOptions,
+} from './transport';
 
-export type ChatSummary = {
-  id: string;
-  participantName: string;
-  participantInitial: string;
-  listingTitle: string;
-  preview: string;
-  unreadCount: number;
-  updatedAt: string;
-  timeLabel: string;
-  messages: ChatMessage[];
-  isDemo?: boolean;
-};
-
-const DEMO_CHATS: ChatSummary[] = [
-  {
-    id: 'demo-chat-1',
-    participantName: '강원 장비함',
-    participantInitial: '강',
-    listingTitle: 'Rossignol Experience 88 Ti 172cm',
-    preview: '네, 주말에 직거래 가능합니다!',
-    unreadCount: 2,
-    updatedAt: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
-    timeLabel: '18분 전',
-    isDemo: true,
-    messages: [
-      {
-        id: 'demo-message-1',
-        senderId: 'me',
-        body: '스키 상태를 조금 더 알 수 있을까요?',
-        createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-        timeLabel: '45분 전',
-        isMine: true,
-      },
-      {
-        id: 'demo-message-2',
-        senderId: 'demo-seller',
-        body: '엣지 정비했고 베이스 큰 손상은 없습니다.',
-        createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-        timeLabel: '30분 전',
-        isMine: false,
-      },
-      {
-        id: 'demo-message-3',
-        senderId: 'demo-seller',
-        body: '네, 주말에 직거래 가능합니다!',
-        createdAt: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
-        timeLabel: '18분 전',
-        isMine: false,
-      },
-    ],
-  },
-  {
-    id: 'demo-chat-2',
-    participantName: '링크버디',
-    participantInitial: '링',
-    listingTitle: 'CCM Jetspeed FT6 Pro Ice Skates 270',
-    preview: '270 사이즈 맞으면 예약 도와드릴게요.',
-    unreadCount: 0,
-    updatedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-    timeLabel: '3시간 전',
-    isDemo: true,
-    messages: [
-      {
-        id: 'demo-message-4',
-        senderId: 'demo-seller',
-        body: '270 사이즈 맞으면 예약 도와드릴게요.',
-        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-        timeLabel: '3시간 전',
-        isMine: false,
-      },
-    ],
-  },
-  {
-    id: 'demo-chat-3',
-    participantName: '스노우 클럽',
-    participantInitial: '스',
-    listingTitle: 'Smith Squad MAG Ski Goggles',
-    preview: '상품 잘 받았습니다. 감사합니다!',
-    unreadCount: 0,
-    updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    timeLabel: '2일 전',
-    isDemo: true,
-    messages: [
-      {
-        id: 'demo-message-5',
-        senderId: 'me',
-        body: '상품 잘 받았습니다. 감사합니다!',
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        timeLabel: '2일 전',
-        isMine: true,
-      },
-    ],
-  },
-];
-
-export function demoChats(): ChatSummary[] {
-  return DEMO_CHATS.map((chat) => ({
-    ...chat,
-    messages: chat.messages.map((message) => ({ ...message })),
-  }));
+export interface ChatSendOperation {
+  optimistic: ChatMessage;
+  completion: Promise<ChatResult<ChatMessage>>;
+  retry(): Promise<ChatResult<ChatSendOperation>>;
 }
 
-export async function listChats(): Promise<ChatSummary[]> {
-  if (!supabase) return demoChats();
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData.user) return demoChats();
+export type ChatSendObserver = (message: ChatMessage) => void;
 
-  const { data, error } = await supabase
-    .from('conversations')
-    .select('id,listing_id,buyer_id,seller_id,status,created_at,updated_at,listings(title)')
-    .or(`buyer_id.eq.${authData.user.id},seller_id.eq.${authData.user.id}`)
-    .neq('status', 'blocked')
-    .order('updated_at', { ascending: false });
-  if (error || !data?.length) return demoChats();
+export interface ChatRepository {
+  findOrCreateConversation(
+    listingId: string,
+    participantId: string,
+  ): Promise<ChatResult<ChatSummary>>;
+  listConversations(
+    options?: ConversationPageOptions,
+  ): Promise<ChatResult<ChatPage<ChatSummary, ConversationCursor>>>;
+  getConversation(id: string): Promise<ChatResult<ChatSummary>>;
+  listMessages(
+    conversationId: string,
+    options?: MessagePageOptions,
+  ): Promise<ChatResult<ChatPage<ChatMessage, MessageCursor>>>;
+  beginSend(
+    conversationId: string,
+    body: string,
+    observer?: ChatSendObserver,
+  ): Promise<ChatResult<ChatSendOperation>>;
+  retryMessage(
+    failedMessage: ChatMessage,
+    observer?: ChatSendObserver,
+  ): Promise<ChatResult<ChatSendOperation>>;
+  markConversationRead(
+    conversationId: string,
+  ): Promise<ChatResult<{ updatedCount: number; unread: UnreadSummary }>>;
+  getUnreadSummary(): Promise<ChatResult<UnreadSummary>>;
+  subscribeToMessages(
+    conversationId: string,
+    after: MessageCursor | undefined,
+    handlers: ChatSubscriptionHandlers,
+  ): Promise<ChatResult<ChatSubscription>>;
+}
 
-  const summaries = await Promise.all(
-    data.map(async (row) => {
-      const messages = await loadMessages(row.id, authData.user.id);
-      const latest = messages[messages.length - 1];
-      const listing = Array.isArray(row.listings) ? row.listings[0] : row.listings;
-      return {
-        id: row.id,
-        participantName: row.seller_id === authData.user.id ? '구매자' : '판매자',
-        participantInitial: row.seller_id === authData.user.id ? '구' : '판',
-        listingTitle: listing?.title ?? '상품 문의',
-        preview: latest?.body ?? '대화를 시작해보세요.',
-        unreadCount: 0,
-        updatedAt: row.updated_at,
-        timeLabel: formatTime(row.updated_at),
-        messages,
-      } satisfies ChatSummary;
-    }),
+function sameMessage(left: ChatMessage, right: ChatMessage): boolean {
+  return (
+    left.id === right.id &&
+    left.body === right.body &&
+    left.readAt === right.readAt &&
+    left.deletedAt === right.deletedAt &&
+    left.delivery === right.delivery
   );
-  return summaries;
 }
 
-export async function getChat(id: string): Promise<ChatSummary | null> {
-  const demo = DEMO_CHATS.find((chat) => chat.id === id);
-  if (demo || !supabase)
-    return demo ? { ...demo, messages: demo.messages.map((message) => ({ ...message })) } : null;
+export function createChatRepository(transport: ChatTransport): ChatRepository {
+  async function beginSendWithId(
+    conversationId: string,
+    body: string,
+    messageId: string,
+    observer?: ChatSendObserver,
+  ): Promise<ChatResult<ChatSendOperation>> {
+    const normalizedBody = body.trim();
+    if (!normalizedBody || normalizedBody.length > 10_000) {
+      return failure({
+        code: 'validation',
+        message: normalizedBody
+          ? '메시지는 10,000자까지 보낼 수 있어요.'
+          : '메시지를 입력해 주세요.',
+      });
+    }
 
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData.user) return null;
-  const { data, error } = await supabase
-    .from('conversations')
-    .select('id,listing_id,buyer_id,seller_id,status,created_at,updated_at,listings(title)')
-    .eq('id', id)
-    .maybeSingle();
-  if (
-    error ||
-    !data ||
-    (data.buyer_id !== authData.user.id && data.seller_id !== authData.user.id)
-  ) {
-    return null;
+    const auth = await transport.getCurrentUserId();
+    if (auth.error) return auth;
+    const optimistic: ChatMessage = {
+      id: messageId,
+      conversationId,
+      senderId: auth.data,
+      body: normalizedBody,
+      readAt: null,
+      deletedAt: null,
+      createdAt: new Date().toISOString(),
+      timeLabel: '방금 전',
+      isMine: true,
+      delivery: 'sending',
+    };
+    observer?.(optimistic);
+
+    const completion = transport
+      .insertMessage({
+        id: messageId,
+        conversationId,
+        senderId: auth.data,
+        body: normalizedBody,
+      })
+      .then((result): ChatResult<ChatMessage> => {
+        if (result.error) {
+          const failed = { ...optimistic, delivery: 'failed' as const, error: result.error };
+          observer?.(failed);
+          return failure(result.error);
+        }
+        observer?.(result.data);
+        return result;
+      });
+
+    const operation: ChatSendOperation = {
+      optimistic,
+      completion,
+      retry: () => beginSendWithId(conversationId, normalizedBody, messageId, observer),
+    };
+    return success(operation);
   }
-  const messages = await loadMessages(id, authData.user.id);
-  const listing = Array.isArray(data.listings) ? data.listings[0] : data.listings;
+
+  async function beginSend(
+    conversationId: string,
+    body: string,
+    observer?: ChatSendObserver,
+  ): Promise<ChatResult<ChatSendOperation>> {
+    return beginSendWithId(conversationId, body, createClientMessageId(), observer);
+  }
+
+  async function retryMessage(
+    failedMessage: ChatMessage,
+    observer?: ChatSendObserver,
+  ): Promise<ChatResult<ChatSendOperation>> {
+    if (
+      failedMessage.delivery !== 'failed' ||
+      !failedMessage.isMine ||
+      !failedMessage.conversationId
+    ) {
+      return failure({ code: 'permission', message: '실패한 내 메시지만 다시 보낼 수 있어요.' });
+    }
+    return beginSendWithId(
+      failedMessage.conversationId,
+      failedMessage.body,
+      failedMessage.id,
+      observer,
+    );
+  }
+
+  async function subscribeToMessages(
+    conversationId: string,
+    after: MessageCursor | undefined,
+    handlers: ChatSubscriptionHandlers,
+  ): Promise<ChatResult<ChatSubscription>> {
+    const messagesById = new Map<string, ChatMessage>();
+    const removedIds = new Set<string>();
+    const result = await transport.subscribeToMessages(conversationId, after, {
+      ...handlers,
+      onEvent(event: ChatRealtimeEvent): void {
+        if (event.type === 'remove') {
+          const freshIds = event.messageIds.filter((id) => !removedIds.has(id));
+          for (const id of freshIds) {
+            removedIds.add(id);
+            messagesById.delete(id);
+          }
+          if (freshIds.length) handlers.onEvent({ type: 'remove', messageIds: freshIds });
+          return;
+        }
+
+        const freshMessages: ChatMessage[] = [];
+        for (const message of event.messages) {
+          const existing = messagesById.get(message.id);
+          if (!existing || !sameMessage(existing, message)) {
+            messagesById.set(message.id, message);
+            removedIds.delete(message.id);
+            freshMessages.push(message);
+          }
+        }
+        if (freshMessages.length) {
+          handlers.onEvent({ type: 'upsert', messages: mergeMessages([], freshMessages) });
+        }
+      },
+    });
+    return result;
+  }
+
   return {
-    id: data.id,
-    participantName: data.seller_id === authData.user.id ? '구매자' : '판매자',
-    participantInitial: data.seller_id === authData.user.id ? '구' : '판',
-    listingTitle: listing?.title ?? '상품 문의',
-    preview: messages[messages.length - 1]?.body ?? '대화를 시작해보세요.',
-    unreadCount: 0,
-    updatedAt: data.updated_at,
-    timeLabel: formatTime(data.updated_at),
-    messages,
+    findOrCreateConversation: transport.findOrCreateConversation,
+    listConversations: transport.listConversations,
+    getConversation: transport.getConversation,
+    listMessages: transport.listMessages,
+    beginSend,
+    retryMessage,
+    markConversationRead: transport.markConversationRead,
+    getUnreadSummary: transport.getUnreadSummary,
+    subscribeToMessages,
   };
 }
 
-async function loadMessages(conversationId: string, userId: string): Promise<ChatMessage[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from('messages')
-    .select('id,sender_id,body,created_at')
-    .eq('conversation_id', conversationId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: true });
-  if (error || !data) return [];
-  return data.map((row) => ({
-    id: row.id,
-    senderId: row.sender_id,
-    body: row.body,
-    createdAt: row.created_at,
-    timeLabel: formatTime(row.created_at),
-    isMine: row.sender_id === userId,
-  }));
+const explicitDemoTransport =
+  typeof __DEV__ !== 'undefined' &&
+  __DEV__ === true &&
+  process.env.EXPO_PUBLIC_CHAT_TRANSPORT === 'demo';
+
+export const chatRepository = createChatRepository(
+  explicitDemoTransport ? createDemoChatTransport() : createSupabaseChatTransport(supabase),
+);
+
+/** Compatibility for T34 screens while they migrate to paginated repository methods. */
+export async function listChats(): Promise<ChatSummary[]> {
+  const result = await chatRepository.listConversations();
+  return result.data?.items ?? [];
 }
 
+/** Compatibility for T34 screens while they migrate to paginated repository methods. */
+export async function getChat(id: string): Promise<ChatSummary | null> {
+  const conversation = await chatRepository.getConversation(id);
+  if (conversation.error) return null;
+  const messages = await chatRepository.listMessages(id, { pageSize: 50 });
+  if (messages.error) return conversation.data;
+  return { ...conversation.data, messages: messages.data.items };
+}
+
+/** Compatibility for T34 screens while they migrate to optimistic operations. */
 export async function sendChatMessage(
   conversationId: string,
   body: string,
 ): Promise<{ data: ChatMessage | null; error: string | null }> {
-  if (!supabase) return { data: null, error: '로그인 후 메시지를 보낼 수 있어요.' };
-  const { data: authData, error: authError } = await supabase.auth.getUser();
-  if (authError || !authData.user)
-    return { data: null, error: '로그인 후 메시지를 보낼 수 있어요.' };
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({ conversation_id: conversationId, sender_id: authData.user.id, body: body.trim() })
-    .select('id,sender_id,body,created_at')
-    .single();
-  if (error || !data) return { data: null, error: '메시지를 보내지 못했어요.' };
-  return {
-    data: {
-      id: data.id,
-      senderId: data.sender_id,
-      body: data.body,
-      createdAt: data.created_at,
-      timeLabel: '방금 전',
-      isMine: true,
-    },
-    error: null,
-  };
+  const started = await chatRepository.beginSend(conversationId, body);
+  if (started.error) return { data: null, error: started.error.message };
+  const confirmed = await started.data.completion;
+  return confirmed.error
+    ? { data: null, error: confirmed.error.message }
+    : { data: confirmed.data, error: null };
 }

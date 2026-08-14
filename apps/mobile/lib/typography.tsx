@@ -116,12 +116,7 @@ export interface AppTextProps extends TextProps {
 export function AppText({ style, variant, ...props }: AppTextProps) {
   const roleStyle = variant ? typography[variant] : undefined;
   const fontFamily = resolveFamily([roleStyle, style]);
-  return (
-    <NativeText
-      {...props}
-      style={[roleStyle, style, { fontFamily, fontWeight: 'normal' }]}
-    />
-  );
+  return <NativeText {...props} style={[roleStyle, style, { fontFamily, fontWeight: 'normal' }]} />;
 }
 
 export interface AppTextInputProps extends TextInputProps {
@@ -133,9 +128,6 @@ export function AppTextInput({ style, variant, ...props }: AppTextInputProps) {
   const roleStyle = variant ? typography[variant] : undefined;
   const fontFamily = resolveFamily([roleStyle, style]);
   return (
-    <NativeTextInput
-      {...props}
-      style={[roleStyle, style, { fontFamily, fontWeight: 'normal' }]}
-    />
+    <NativeTextInput {...props} style={[roleStyle, style, { fontFamily, fontWeight: 'normal' }]} />
   );
 }

@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  View,
+  type PressableProps,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import { colors, interaction, radii, spacing, stateStyles } from '../../lib/theme';
 import { AppText } from '../../lib/typography';
@@ -28,7 +35,9 @@ export function Chip({
   const [focused, setFocused] = useState(false);
   const content = (
     <>
-      {icon ? <AppIcon color={selected ? colors.textInverse : colors.textMuted} name={icon} size={16} /> : null}
+      {icon ? (
+        <AppIcon color={selected ? colors.textInverse : colors.textMuted} name={icon} size={16} />
+      ) : null}
       <AppText style={{ color: selected ? colors.textInverse : colors.text }} variant="label">
         {label}
       </AppText>
@@ -36,7 +45,11 @@ export function Chip({
   );
 
   if (!onPress) {
-    return <View style={[styles.base, selected && styles.selected, disabled && styles.disabled, style]}>{content}</View>;
+    return (
+      <View style={[styles.base, selected && styles.selected, disabled && styles.disabled, style]}>
+        {content}
+      </View>
+    );
   }
 
   return (

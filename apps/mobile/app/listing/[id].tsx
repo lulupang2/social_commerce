@@ -1,8 +1,10 @@
+import type { Listing } from '@icegear/domain';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Image,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -10,20 +12,31 @@ import {
   View,
 } from 'react-native';
 
-import type { Listing } from '@icegear/domain';
-
-import { listingRepository, type ListingRepositoryError } from '../../lib/listings/repository';
-import { isSupabaseConfigured } from '../../lib/supabase/client';
+import {
+  ListingDetailGallery,
+  ListingDetailSellerCard,
+  ListingDetailStickyCta,
+} from '../../components/listing-detail';
+import { ListingAttributeGrid } from '../../components/listings/ListingAttributeGrid';
+import { RecommendationReason } from '../../components/listings/RecommendationReason';
+import { AppIcon, Chip, StateView } from '../../components/ui';
+import { useSession } from '../../lib/auth/session';
+import { chatRepository } from '../../lib/chat/repository';
+import { favoritesRepository } from '../../lib/favorites/repository';
 import {
   categoryLabels,
   conditionLabels,
   formatLocation,
   formatPrice,
-  sportLabels,
+  formatTime,
+  statusLabels,
 } from '../../lib/format';
-import { colors, radii } from '../../lib/theme';
+import { listingRepository, type ListingRepositoryError } from '../../lib/listings/repository';
+import { isSupabaseConfigured } from '../../lib/supabase/client';
+import { colors, radii, spacing } from '../../lib/theme';
 import { AppText as Text, fontFamilies } from '../../lib/typography';
 
+import { moderationRepository } from '../../lib/moderation';
 function DetailValue({ value }: { value: unknown }) {
   if (typeof value === 'boolean')
     return <Text style={styles.detailValue}>{value ? '있음' : '없음'}</Text>;
@@ -34,8 +47,21 @@ function DetailValue({ value }: { value: unknown }) {
 
 export default function ListingDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string | string[] }>();
+  const session = useSession();
+  const { id, recommendationReason } = useLocalSearchParams<{
+    id: string | string[];
+    recommendationReason?: string | string[];
+  }>();
+
+  const reason = Array.isArray(recommendationReason)
+    ? recommendationReason[0]
+    : recommendationReason;
   const listingId = Array.isArray(id) ? id[0] : id;
+
+  const isAuthenticated = session.state.status === 'authenticated';
+  const currentUserId =
+    session.state.status === 'authenticated' ? session.state.user.id : undefined;
+
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState<ListingRepositoryError | null>(() =>
     isSupabaseConfigured
@@ -43,329 +69,541 @@ export default function ListingDetailScreen() {
       : { code: 'not_configured', message: 'Supabase를 연결하면 상품을 확인할 수 있어요.' },
   );
   const [loading, setLoading] = useState(isSupabaseConfigured);
-  const [imageFailed, setImageFailed] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [isFavoriteLoading, setIsFavoriteLoading] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [isSellerBlocked, setIsSellerBlocked] = useState(false);
+
+  const loadListingAndFavorite = useCallback(async () => {
+    if (!listingId) {
+      setError({ code: 'not_found', message: '상품을 찾을 수 없어요.' });
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const result = await listingRepository.getActiveById(listingId);
+    if (result.error) {
+      setError(result.error);
+      setListing(null);
+      setLoading(false);
+      return;
+    }
+
+    setListing(result.data);
+
+    if (result.data && isAuthenticated) {
+      const favResult = await favoritesRepository.isFavorite(listingId);
+      if (favResult.data !== null) {
+        setIsFavorite(favResult.data);
+      }
+    }
+    const blockedRes = await moderationRepository.isUserBlocked(result.data.sellerId);
+    if (blockedRes.data !== null) {
+      setIsSellerBlocked(Boolean(blockedRes.data));
+    }
+
+    setLoading(false);
+  }, [listingId, isAuthenticated]);
 
   useEffect(() => {
-    let mounted = true;
-    async function load() {
-      if (!listingId) {
-        setError({ code: 'not_found', message: '상품을 찾을 수 없어요.' });
-        setLoading(false);
-        return;
-      }
-      const result = await listingRepository.getActiveById(listingId);
-      if (!mounted) return;
-      if (result.error) setError(result.error);
-      else setListing(result.data);
-      setLoading(false);
+    void loadListingAndFavorite();
+  }, [loadListingAndFavorite]);
+
+  const handleToggleFavorite = async () => {
+    if (!isAuthenticated) {
+      router.push('/auth');
+      return;
     }
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, [listingId]);
+
+    if (!listing || isFavoriteLoading) return;
+
+    const previousValue = isFavorite;
+    setIsFavorite(!previousValue);
+    setIsFavoriteLoading(true);
+
+    const result = await favoritesRepository.toggle(listing.id);
+    setIsFavoriteLoading(false);
+
+    if (result.error) {
+      // Optimistic rollback
+      setIsFavorite(previousValue);
+    } else if (result.data) {
+      setIsFavorite(result.data.isFavorite);
+    }
+  };
+
+  const handleStartChat = async () => {
+    if (!isAuthenticated) {
+      router.push('/auth');
+      return;
+    }
+
+    if (!listing || isChatLoading) return;
+
+    const isOwnListing = currentUserId === listing.sellerId;
+    if (isOwnListing || listing.status === 'sold' || listing.status === 'removed') {
+      return;
+    }
+
+    setIsChatLoading(true);
+    setChatError(null);
+
+    const result = await chatRepository.findOrCreateConversation(listing.id, listing.sellerId);
+    setIsChatLoading(false);
+
+    if (result.data?.id) {
+      router.push(`/chat/${result.data.id}`);
+    } else if (result.error) {
+      setChatError(result.error.message || '채팅방을 생성하는데 실패했어요.');
+    }
+  };
+  const handleReportSeller = () => {
+    if (!listing) return;
+    if (!isAuthenticated) {
+      router.push('/auth');
+      return;
+    }
+    Alert.alert('상품/판매자 신고', '이 게시글을 신고하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '신고 접수',
+        style: 'destructive',
+        onPress: async () => {
+          const res = await moderationRepository.submitReport({
+            targetType: 'listing',
+            targetId: listing.id,
+            reason: 'other',
+          });
+          if (res.error) {
+            Alert.alert('신고 실패', res.error.message);
+          } else {
+            Alert.alert('신고 완료', '신고가 접수되었습니다. 검토 후 처리됩니다.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleToggleBlockSeller = () => {
+    if (!listing) return;
+    if (!isAuthenticated) {
+      router.push('/auth');
+      return;
+    }
+    const willBlock = !isSellerBlocked;
+    Alert.alert(
+      willBlock ? '판매자 차단' : '차단 해제',
+      willBlock
+        ? '이 판매자를 차단하시겠습니까? 차단 시 해당 사용자의 콘텐츠가 제한됩니다.'
+        : '차단을 해제하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: willBlock ? '차단' : '해제',
+          style: willBlock ? 'destructive' : 'default',
+          onPress: async () => {
+            if (willBlock) {
+              const res = await moderationRepository.blockUser(listing.sellerId);
+              if (res.error) {
+                Alert.alert('차단 실패', res.error.message);
+              } else {
+                setIsSellerBlocked(true);
+                Alert.alert('차단 완료', '판매자가 차단되었습니다.');
+              }
+            } else {
+              const res = await moderationRepository.unblockUser(listing.sellerId);
+              if (res.error) {
+                Alert.alert('차단 해제 실패', res.error.message);
+              } else {
+                setIsSellerBlocked(false);
+                Alert.alert('차단 해제 완료', '차단이 해제되었습니다.');
+              }
+            }
+          },
+        },
+      ],
+    );
+  };
 
   if (loading) {
     return (
-      <StateScreen>
-        <ActivityIndicator color={colors.accent} />
-        <Text style={styles.stateText}>상품을 불러오는 중이에요.</Text>
-      </StateScreen>
+      <SafeAreaView style={styles.safeArea}>
+        <StateView kind="loading" title="상품을 불러오는 중이에요" />
+      </SafeAreaView>
     );
   }
 
-  if (error || !listing) {
+  const isRemoved = listing?.status === 'removed';
+  if (error || !listing || isRemoved) {
+    const isNotConfigured = error?.code === 'not_configured';
     return (
-      <StateScreen>
-        <Text style={styles.stateEmoji}>🧤</Text>
-        <Text style={styles.stateTitle}>
-          {error?.code === 'not_configured' ? '마켓 연결이 필요해요' : '상품을 찾을 수 없어요'}
-        </Text>
-        <Text style={styles.stateText}>
-          {error?.message ?? '상품이 삭제되었거나 판매 완료되었어요.'}
-        </Text>
-        <Pressable onPress={() => router.back()} style={styles.darkButton}>
-          <Text style={styles.darkButtonText}>돌아가기</Text>
-        </Pressable>
-      </StateScreen>
-    );
-  }
-
-  const image = listing.images[0];
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <SafeAreaView style={styles.safeArea}>
         <View style={styles.navBar}>
           <Pressable
             accessibilityLabel="뒤로"
+            accessibilityRole="button"
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Text style={styles.backIcon}>‹</Text>
+            <AppIcon color={colors.text} name="back" size={24} />
           </Pressable>
-          <Text style={styles.navTitle}>상품 상세</Text>
-          <Pressable
-            accessibilityLabel={saved ? '찜 취소' : '찜하기'}
-            onPress={() => setSaved((current) => !current)}
-            style={styles.saveButton}
-          >
-            <Text style={[styles.saveText, saved ? styles.saveTextActive : null]}>
-              {saved ? '♥' : '♡'}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.imageWrap}>
-          {image && !imageFailed ? (
-            <Image
-              accessibilityLabel={listing.title}
-              onError={() => setImageFailed(true)}
-              source={{ uri: image.url }}
-              style={styles.image}
-            />
-          ) : (
-            <View style={styles.imageFallback}>
-              <Text style={styles.imageEmoji}>{listing.sport === 'ski' ? '⛷' : '🏒'}</Text>
-              <Text style={styles.imageFallbackText}>{sportLabels[listing.sport]} 장비</Text>
-            </View>
-          )}
-          <View style={styles.imageBadge}>
-            <Text style={styles.imageBadgeText}>{sportLabels[listing.sport]}</Text>
-          </View>
-        </View>
-
-        <View style={styles.authorRow}>
-          <View style={styles.authorAvatar}>
-            <Text style={styles.authorAvatarText}>I</Text>
-          </View>
-          <View style={styles.authorCopy}>
-            <Text style={styles.authorName}>IceGear 판매자</Text>
-            <Text style={styles.authorMeta}>안전한 거래를 위해 채팅으로 문의해주세요.</Text>
-          </View>
-        </View>
-        <Text style={styles.title}>{listing.title}</Text>
-        <Text style={styles.location}>{formatLocation(listing.location)} · 판매중</Text>
-        <Text style={styles.price}>{formatPrice(listing)}</Text>
-        <View style={styles.chipRow}>
-          <View style={styles.chip}>
-            <Text style={styles.chipText}>
-              {categoryLabels[listing.category] ?? listing.category}
-            </Text>
-          </View>
-          <View style={styles.chip}>
-            <Text style={styles.chipText}>
-              {conditionLabels[listing.condition] ?? listing.condition}
-            </Text>
-          </View>
-        </View>
-        <Text style={styles.description}>{listing.description || '상품 설명이 아직 없어요.'}</Text>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>상품 정보</Text>
-          {Object.entries(listing.details).map(([key, value]) => (
-            <View key={key} style={styles.detailRow}>
-              <Text style={styles.detailKey}>{key}</Text>
-              <DetailValue value={value} />
-            </View>
-          ))}
-          <View style={styles.detailRow}>
-            <Text style={styles.detailKey}>등록일</Text>
-            <Text style={styles.detailValue}>
-              {new Intl.DateTimeFormat('ko-KR', {
-                year: 'numeric',
-                month: 'numeric',
-                day: 'numeric',
-              }).format(new Date(listing.createdAt))}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.safetyCard}>
-          <Text style={styles.safetyIcon}>✓</Text>
-          <View style={styles.safetyCopy}>
-            <Text style={styles.safetyTitle}>안전 거래 체크</Text>
-            <Text style={styles.safetyText}>
-              직거래는 사람이 많은 공공장소에서 진행하고, 외부 링크 결제를 요청받으면 신고해주세요.
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
-      <View style={styles.bottomBar}>
-        <Pressable onPress={() => setSaved((current) => !current)} style={styles.bottomSave}>
-          <Text style={[styles.bottomSaveText, saved ? styles.saveTextActive : null]}>
-            {saved ? '♥' : '♡'}
+          <Text style={styles.navTitle} variant="bodyStrong">
+            상품 상세
           </Text>
-        </Pressable>
-        <Pressable onPress={() => router.push('/chats')} style={styles.contactButton}>
-          <Text style={styles.contactText}>채팅으로 문의하기</Text>
-        </Pressable>
-      </View>
-    </SafeAreaView>
-  );
-}
+          <View style={styles.headerSpacer} />
+        </View>
+        <StateView
+          actionLabel="돌아가기"
+          icon={isNotConfigured ? 'warning' : 'image'}
+          kind="error"
+          message={
+            error?.message ??
+            (isRemoved
+              ? '판매자에 의해 삭제된 상품이에요.'
+              : '상품이 존재하지 않거나 정보를 불러올 수 없어요.')
+          }
+          onAction={() => router.back()}
+          title={isNotConfigured ? '마켓 연결이 필요해요' : '상품을 찾을 수 없어요'}
+        />
+      </SafeAreaView>
+    );
+  }
 
-function StateScreen({ children }: { children: ReactNode }) {
+  const isOwnListing = Boolean(currentUserId && currentUserId === listing.sellerId);
+  const formattedPrice = formatPrice(listing);
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.state}>{children}</View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardView}
+      >
+        <View style={styles.navBar}>
+          <Pressable
+            accessibilityLabel="뒤로"
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <AppIcon color={colors.text} name="back" size={24} />
+          </Pressable>
+          <Text style={styles.navTitle} variant="bodyStrong">
+            상품 상세
+          </Text>
+          <Pressable
+            accessibilityLabel={isFavorite ? '찜 취소' : '찜하기'}
+            accessibilityRole="button"
+            accessibilityState={{ checked: isFavorite }}
+            onPress={handleToggleFavorite}
+            style={styles.saveHeaderButton}
+          >
+            <Text style={[styles.saveHeaderText, isFavorite && styles.saveTextActive]}>
+              {isFavorite ? '♥' : '♡'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Image Gallery */}
+          <ListingDetailGallery
+            images={listing.images}
+            sport={listing.sport}
+            status={listing.status}
+            title={listing.title}
+          />
+
+          {/* Seller Projection */}
+          <View style={styles.sectionSpacing}>
+            <ListingDetailSellerCard
+              isBlocked={isSellerBlocked}
+              isOwnListing={isOwnListing}
+              onBlockSeller={handleToggleBlockSeller}
+              onReportSeller={handleReportSeller}
+              sellerId={listing.sellerId}
+            />
+          </View>
+
+          {/* Optional Recommendation Reason */}
+          {reason ? (
+            <View style={styles.sectionSpacing}>
+              <RecommendationReason reason={reason} />
+            </View>
+          ) : null}
+
+          {/* Title & Metadata */}
+          <View style={styles.headerSection}>
+            <Text style={styles.title} variant="title">
+              {listing.title}
+            </Text>
+
+            <View style={styles.metaRow}>
+              <Text style={styles.locationText} variant="caption">
+                {formatLocation(listing.location)}
+              </Text>
+              <Text style={styles.metaDot} variant="caption">
+                ·
+              </Text>
+              <Text style={styles.timeText} variant="caption">
+                {formatTime(listing.createdAt)}
+              </Text>
+              <Text style={styles.metaDot} variant="caption">
+                ·
+              </Text>
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusBadgeText} variant="caption">
+                  {statusLabels[listing.status]}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.price} variant="headline">
+              {formattedPrice}
+            </Text>
+
+            <View style={styles.chipRow}>
+              <Chip label={categoryLabels[listing.category] ?? listing.category} />
+              <Chip label={conditionLabels[listing.condition] ?? listing.condition} />
+            </View>
+          </View>
+
+          {/* Description */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle} variant="bodyStrong">
+              상품 설명
+            </Text>
+            <Text style={styles.description} variant="body">
+              {listing.description || '상품 설명이 아직 없어요.'}
+            </Text>
+          </View>
+
+          {/* Ski / Hockey Attribute Grid */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle} variant="bodyStrong">
+              장비 상세 정보
+            </Text>
+            <ListingAttributeGrid listing={listing} />
+          </View>
+
+          {/* Key-Value Details */}
+          {Object.keys(listing.details).length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle} variant="bodyStrong">
+                추가 속성
+              </Text>
+              {Object.entries(listing.details).map(([key, value]) => (
+                <View key={key} style={styles.detailRow}>
+                  <Text style={styles.detailKey} variant="caption">
+                    {key}
+                  </Text>
+                  <DetailValue value={value} />
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {/* Safety Notice Card */}
+          <View style={styles.safetyCard}>
+            <View style={styles.safetyIconBadge}>
+              <AppIcon color={colors.info} name="check" size={14} />
+            </View>
+            <View style={styles.safetyCopy}>
+              <Text style={styles.safetyTitle} variant="bodyStrong">
+                안전 거래 체크
+              </Text>
+              <Text style={styles.safetyText} variant="caption">
+                직거래는 사람이 많은 공공장소에서 진행하고, 외부 링크 결제를 요청받으면
+                신고해주세요.
+              </Text>
+            </View>
+          </View>
+
+          {/* Chat Error Notice */}
+          {chatError ? (
+            <View style={styles.chatErrorCard}>
+              <AppIcon color={colors.error} name="warning" size={16} />
+              <Text style={styles.chatErrorText} variant="caption">
+                {chatError}
+              </Text>
+            </View>
+          ) : null}
+        </ScrollView>
+
+        {/* Sticky Favorite & Chat CTA */}
+        <ListingDetailStickyCta
+          isChatLoading={isChatLoading}
+          isFavorite={isFavorite}
+          isFavoriteLoading={isFavoriteLoading}
+          isOwnListing={isOwnListing}
+          onStartChat={handleStartChat}
+          onToggleFavorite={handleToggleFavorite}
+          priceText={formattedPrice}
+          status={listing.status}
+        />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: colors.canvas, flex: 1 },
-  content: { paddingBottom: 110, paddingHorizontal: 18 },
+  safeArea: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  keyboardView: {
+    flex: 1,
+  },
   navBar: {
     alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
+    height: 52,
     justifyContent: 'space-between',
-    minHeight: 57,
+    paddingHorizontal: spacing.md,
   },
-  backButton: { justifyContent: 'center', width: 40 },
-  backIcon: { color: colors.ink, fontSize: 35, fontWeight: '300', lineHeight: 39 },
-  navTitle: { color: colors.ink, fontSize: 16, fontWeight: '800' },
-  saveButton: { alignItems: 'center', justifyContent: 'center', width: 40 },
-  saveText: { color: colors.ink, fontSize: 25, lineHeight: 28 },
-  saveTextActive: { color: colors.accent },
-  imageWrap: { borderRadius: radii.md, height: 290, overflow: 'hidden', position: 'relative' },
-  image: { backgroundColor: '#E7EDF2', height: '100%', width: '100%' },
-  imageFallback: {
+  backButton: {
     alignItems: 'center',
-    backgroundColor: '#E7EDF2',
-    flex: 1,
+    height: 40,
     justifyContent: 'center',
+    width: 40,
   },
-  imageEmoji: { fontSize: 70 },
-  imageFallbackText: { color: colors.navy, fontSize: 13, fontWeight: '800', marginTop: 5 },
-  imageBadge: {
-    backgroundColor: 'rgba(32,33,36,0.78)',
-    borderRadius: radii.pill,
-    bottom: 13,
-    left: 13,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    position: 'absolute',
+  navTitle: {
+    color: colors.text,
   },
-  imageBadgeText: { color: colors.surface, fontSize: 11, fontWeight: '800' },
-  authorRow: { alignItems: 'center', flexDirection: 'row', marginTop: 19 },
-  authorAvatar: {
+  saveHeaderButton: {
     alignItems: 'center',
-    backgroundColor: colors.navySoft,
-    borderRadius: radii.pill,
-    height: 38,
+    height: 40,
     justifyContent: 'center',
-    width: 38,
+    width: 40,
   },
-  authorAvatarText: { color: colors.navy, fontSize: 15, fontWeight: '900' },
-  authorCopy: { marginLeft: 10 },
-  authorName: { color: colors.ink, fontSize: 13, fontWeight: '800' },
-  authorMeta: { color: colors.subtle, fontSize: 11, marginTop: 3 },
+  saveHeaderText: {
+    color: colors.text,
+    fontSize: 22,
+  },
+  saveTextActive: {
+    color: colors.accent,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  content: {
+    gap: spacing.md,
+    paddingBottom: 110,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  sectionSpacing: {
+    marginTop: spacing.xs,
+  },
+  headerSection: {
+    gap: spacing.xs,
+  },
   title: {
-    color: colors.ink,
+    color: colors.text,
     fontFamily: fontFamilies.displayBold,
-    fontSize: 23,
-    fontWeight: '900',
-    lineHeight: 31,
-    marginTop: 17,
   },
-  location: { color: colors.muted, fontSize: 12, marginTop: 7 },
-  price: {
-    color: colors.ink,
-    fontFamily: fontFamilies.accentBold,
-    fontSize: 27,
-    fontWeight: '900',
-    letterSpacing: 0.2,
-    marginTop: 12,
+  metaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
-  chipRow: { flexDirection: 'row', gap: 7, marginTop: 11 },
-  chip: {
-    backgroundColor: colors.canvas,
+  locationText: {
+    color: colors.textMuted,
+  },
+  metaDot: {
+    color: colors.textSubtle,
+  },
+  timeText: {
+    color: colors.textMuted,
+  },
+  statusBadge: {
+    backgroundColor: colors.surfaceSubtle,
     borderRadius: radii.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
   },
-  chipText: { color: colors.muted, fontSize: 11, fontWeight: '700' },
-  description: { color: colors.muted, fontSize: 14, lineHeight: 22, marginTop: 18 },
+  statusBadgeText: {
+    color: colors.text,
+  },
+  price: {
+    color: colors.text,
+    fontFamily: fontFamilies.accentBold,
+    marginTop: spacing.xs,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
   section: {
     backgroundColor: colors.surface,
     borderRadius: radii.md,
-    gap: 12,
-    marginTop: 23,
-    padding: 16,
+    gap: spacing.sm,
+    padding: spacing.md,
   },
-  sectionTitle: { color: colors.ink, fontSize: 16, fontWeight: '800', marginBottom: 2 },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  detailKey: { color: colors.muted, flex: 1, fontSize: 12 },
-  detailValue: { color: colors.ink, flex: 1, fontSize: 12, textAlign: 'right' },
+  sectionTitle: {
+    color: colors.text,
+  },
+  description: {
+    color: colors.textMuted,
+    lineHeight: 22,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  detailKey: {
+    color: colors.textMuted,
+    flex: 1,
+  },
+  detailValue: {
+    color: colors.text,
+    flex: 1,
+    textAlign: 'right',
+  },
   safetyCard: {
     alignItems: 'flex-start',
-    backgroundColor: colors.navySoft,
+    backgroundColor: colors.infoSoft,
     borderRadius: radii.sm,
     flexDirection: 'row',
-    gap: 9,
-    marginTop: 14,
-    padding: 13,
+    gap: spacing.sm,
+    padding: spacing.md,
   },
-  safetyIcon: {
-    alignItems: 'center',
-    backgroundColor: colors.navy,
-    borderRadius: radii.pill,
-    color: colors.surface,
-    fontSize: 10,
-    fontWeight: '800',
-    height: 18,
-    lineHeight: 18,
-    textAlign: 'center',
-    width: 18,
-  },
-  safetyCopy: { flex: 1 },
-  safetyTitle: { color: colors.navy, fontSize: 12, fontWeight: '800' },
-  safetyText: { color: colors.navy, fontSize: 11, lineHeight: 17, marginTop: 4 },
-  bottomBar: {
+  safetyIconBadge: {
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderTopColor: colors.line,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    padding: 12,
-  },
-  bottomSave: {
-    alignItems: 'center',
-    borderColor: colors.line,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    height: 48,
-    justifyContent: 'center',
-    marginRight: 9,
-    width: 51,
-  },
-  bottomSaveText: { color: colors.ink, fontSize: 23 },
-  contactButton: {
-    alignItems: 'center',
-    backgroundColor: colors.accent,
-    borderRadius: radii.sm,
-    flex: 1,
-    height: 48,
-    justifyContent: 'center',
-  },
-  contactText: { color: colors.surface, fontSize: 14, fontWeight: '800' },
-  state: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 30 },
-  stateEmoji: { fontSize: 40, marginBottom: 13 },
-  stateTitle: { color: colors.ink, fontSize: 18, fontWeight: '800', textAlign: 'center' },
-  stateText: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 9,
-    textAlign: 'center',
-  },
-  darkButton: {
-    backgroundColor: colors.ink,
     borderRadius: radii.pill,
-    marginTop: 19,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
+    height: 20,
+    justifyContent: 'center',
+    marginTop: 2,
+    width: 20,
   },
-  darkButtonText: { color: colors.surface, fontSize: 13, fontWeight: '800' },
+  safetyCopy: {
+    flex: 1,
+  },
+  safetyTitle: {
+    color: colors.info,
+  },
+  safetyText: {
+    color: colors.info,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  chatErrorCard: {
+    alignItems: 'center',
+    backgroundColor: colors.errorSoft,
+    borderRadius: radii.sm,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    padding: spacing.sm,
+  },
+  chatErrorText: {
+    color: colors.error,
+  },
 });

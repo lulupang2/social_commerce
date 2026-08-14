@@ -23,7 +23,9 @@ const variantStyles = StyleSheet.create({
 });
 
 export function Surface({ variant = 'plain', padding = 'medium', style, ...props }: SurfaceProps) {
-  return <View {...props} style={[styles.base, variantStyles[variant], paddingStyles[padding], style]} />;
+  return (
+    <View {...props} style={[styles.base, variantStyles[variant], paddingStyles[padding], style]} />
+  );
 }
 
 const styles = StyleSheet.create({ base: { borderRadius: radii.lg } });

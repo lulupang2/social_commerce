@@ -1,6 +1,6 @@
 # IceGear MVP 개발 가이드
 
-**상태:** 모바일 하단 탭·거래 UI·커뮤니티·채팅 vertical slice와 연결된 Supabase 데모 데이터까지 구성되었습니다. 운영용 moderation·실시간성은 후속 작업입니다.
+ **상태:** `T00`~`T60` 및 `T90` 하단 탭, 거래 UI, 커뮤니티, 채팅, 프로필, Realtime, media, RLS/Supabase 마이그레이션 및 전체 검증이 완료되었습니다.
 
 저장소에는 pnpm workspace, Next.js 웹 MVP, Expo Router 모바일 MVP, 공유 `packages/domain` 계약,
 Supabase migration과 결정적인 seed가 있습니다. 커밋된 `.env.example`에는 placeholder만 있으며,

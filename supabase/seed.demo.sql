@@ -456,14 +456,17 @@ where (
 -- listing_images are intentionally not seeded. Private Storage metadata must reference
 -- real licensed objects; URL placeholders and metadata for nonexistent bytes are invalid.
 
+-- Demo community posts span realistic content categories (question, review, guide, discussion)
+-- matching the canonical community_post_type enum values.
 insert into public.community_posts (
-  id, author_id, sport_id, title, body, status, published_at, created_at, updated_at
+  id, author_id, sport_id, post_type, title, body, status, published_at, created_at, updated_at
 )
 values
   (
     '30000000-0000-4000-8000-000000000001',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '11111111-1111-4111-8111-111111111111',
+    'question',
     '[데모] 첫 스키 길이, 키보다 얼마나 짧게 보세요?',
     '키 168cm이고 이번 시즌부터 완만한 슬로프에서 기본 턴을 연습하려고 해요. 158~165cm 사이를 보고 있는데 처음 고를 때 길이 외에 회전 반경이나 허리 폭도 함께 확인하셨는지 궁금합니다.',
     'active',
@@ -475,6 +478,7 @@ values
     '30000000-0000-4000-8000-000000000002',
     'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     '22222222-2222-4222-8222-222222222222',
+    'review',
     '[데모] 하키 스케이트 피팅 때 확인한 네 가지',
     '처음 스케이트를 맞출 때 길이만 보지 않고 발볼, 뒤꿈치 고정, 발가락 여유, 열성형 가능 여부를 차례로 확인했어요. 브랜드마다 체감 사이즈가 달라서 같은 표기라도 양쪽을 직접 신어보는 편이 좋았습니다.',
     'active',
@@ -486,6 +490,7 @@ values
     '30000000-0000-4000-8000-000000000003',
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     '11111111-1111-4111-8111-111111111111',
+    'guide',
     '[데모] 시즌 전 중고 스키 점검 순서 공유해요',
     '저는 바인딩 구성과 부츠 호환 여부를 먼저 확인하고 상판, 사이드월, 엣지, 베이스 순서로 살펴봐요. 수리 흔적과 보관 상태도 물어보고 가능하면 밝은 곳에서 양쪽을 나란히 확인합니다.',
     'active',
@@ -497,6 +502,7 @@ values
     '30000000-0000-4000-8000-000000000004',
     'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     '22222222-2222-4222-8222-222222222222',
+    'discussion',
     '[데모] 입문자 하키 장비, 어디부터 맞추셨나요?',
     '대여 장비로 연습을 시작했고 이제 스케이트와 보호 장비를 하나씩 준비하려고 해요. 예산을 나눌 때 먼저 직접 맞춰야 했던 장비와 중고로 고를 때 확인한 항목을 알려주시면 참고하겠습니다.',
     'active',
@@ -507,6 +513,7 @@ values
 on conflict (id) do update
 set author_id = excluded.author_id,
     sport_id = excluded.sport_id,
+    post_type = excluded.post_type,
     title = excluded.title,
     body = excluded.body,
     status = excluded.status,
@@ -516,6 +523,7 @@ set author_id = excluded.author_id,
 where (
   public.community_posts.author_id,
   public.community_posts.sport_id,
+  public.community_posts.post_type,
   public.community_posts.title,
   public.community_posts.body,
   public.community_posts.status,
@@ -524,6 +532,7 @@ where (
 ) is distinct from (
   excluded.author_id,
   excluded.sport_id,
+  excluded.post_type,
   excluded.title,
   excluded.body,
   excluded.status,
@@ -559,6 +568,23 @@ begin
     where id::text like '30000000-0000-4000-8000-%'
   ) <> 4 then
     raise exception 'Expected 4 demo community posts';
+  end if;
+
+  if (
+    select count(distinct post_type)
+    from public.community_posts
+    where id::text like '30000000-0000-4000-8000-%'
+  ) <> 4 then
+    raise exception 'Expected 4 distinct demo community post types';
+  end if;
+
+  if exists (
+    select 1
+    from public.community_posts
+    where id::text like '30000000-0000-4000-8000-%'
+      and post_type not in ('discussion', 'question', 'guide', 'meetup', 'review')
+  ) then
+    raise exception 'Demo community posts must use valid community_post_type enum values';
   end if;
 
   if exists (

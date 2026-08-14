@@ -1,219 +1,370 @@
-import { useRouter } from 'expo-router';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, radii } from '../../lib/theme';
+import {
+  ProfileAccountActions,
+  ProfileActivity,
+  ProfileEditor,
+  ProfileHero,
+} from '../../components/profile';
+import { AppIcon, Button, StateView } from '../../components/ui';
+import { signOut as signOutSession, useSession } from '../../lib/auth';
+import {
+  getCurrentProfile,
+  getCurrentProfileActivityStatistics,
+  type CurrentProfile,
+  type ProfileActivityStatistics,
+} from '../../lib/profile/repository';
+import { colors, radii, spacing } from '../../lib/theme';
 import { AppText as Text, fontFamilies } from '../../lib/typography';
-
-function MenuRow({
-  icon,
-  label,
-  detail,
-  onPress,
-}: {
-  icon: string;
-  label: string;
-  detail?: string;
-  onPress?: () => void;
-}) {
-  return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={styles.menuRow}>
-      <View style={styles.menuIcon}>
-        <Text style={styles.menuIconText}>{icon}</Text>
-      </View>
-      <Text style={styles.menuLabel}>{label}</Text>
-      {detail ? <Text style={styles.menuDetail}>{detail}</Text> : null}
-      <Text style={styles.menuChevron}>›</Text>
-    </Pressable>
-  );
-}
+import { moderationRepository } from '../../lib/moderation';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { state: sessionState, refresh: refreshSession } = useSession();
+  const [profile, setProfile] = useState<CurrentProfile | null>(null);
+  const [statistics, setStatistics] = useState<ProfileActivityStatistics | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [statisticsLoading, setStatisticsLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [statisticsError, setStatisticsError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+
+  const loadAccount = useCallback(async () => {
+    if (sessionState.status !== 'authenticated') {
+      setProfile(null);
+      setStatistics(null);
+      setProfileError(null);
+      setStatisticsError(null);
+      return;
+    }
+
+    setProfileLoading(true);
+    setStatisticsLoading(true);
+    setProfileError(null);
+    setStatisticsError(null);
+    const [profileResult, statisticsResult] = await Promise.all([
+      getCurrentProfile(),
+      getCurrentProfileActivityStatistics(),
+    ]);
+    setProfileLoading(false);
+    setStatisticsLoading(false);
+
+    if (profileResult.error) {
+      setProfile(null);
+      setProfileError(profileResult.error.message);
+    } else {
+      setProfile(profileResult.data);
+    }
+
+    if (statisticsResult.error) {
+      setStatistics(null);
+      setStatisticsError(statisticsResult.error.message);
+    } else {
+      setStatistics(statisticsResult.data);
+    }
+  }, [sessionState.status]);
+
+  const reloadStatistics = useCallback(async () => {
+    if (sessionState.status !== 'authenticated') return;
+    setStatisticsLoading(true);
+    setStatisticsError(null);
+    const result = await getCurrentProfileActivityStatistics();
+    setStatisticsLoading(false);
+    if (result.error) {
+      setStatistics(null);
+      setStatisticsError(result.error.message);
+      return;
+    }
+    setStatistics(result.data);
+  }, [sessionState.status]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadAccount();
+    }, [loadAccount]),
+  );
+
+  async function signOut() {
+    setSignOutError(null);
+    setSigningOut(true);
+    const result = await signOutSession('local');
+    if (!result.error) await refreshSession();
+    setSigningOut(false);
+    if (result.error) {
+      setSignOutError(result.error.message);
+      return;
+    }
+    setEditing(false);
+    setProfile(null);
+    setStatistics(null);
+  }
+  const handleSafetySettings = async () => {
+    const blockedRes = await moderationRepository.getBlockedUserIds();
+    const count = blockedRes.data ? blockedRes.data.size : 0;
+    Alert.alert(
+      '안전 및 차단 관리',
+      `현재 차단한 사용자: ${count}명\n\nIceGear는 쾌적하고 안전한 스포츠 용품 거래 환경을 위해 차단 및 신고 기능을 제공합니다.`,
+      [{ text: '확인', style: 'default' }],
+    );
+  };
+
+  const authenticated = sessionState.status === 'authenticated' ? sessionState : null;
+  const onboardingRequired = profile?.onboardingState === 'required';
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.eyebrow}>MY ICEGEAR</Text>
-            <Text style={styles.title}>나의 IceGear</Text>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardView}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            authenticated ? (
+              <RefreshControl
+                accessibilityLabel="프로필 새로고침"
+                onRefresh={() => void loadAccount()}
+                refreshing={profileLoading && profile !== null}
+                tintColor={colors.accent}
+              />
+            ) : undefined
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.eyebrow}>MY ICEGEAR</Text>
+              <Text style={styles.title}>나의 장비함</Text>
+            </View>
+            <View style={styles.headerMark} accessible accessibilityLabel="IceGear 프로필">
+              <Text style={styles.headerMarkText}>IG</Text>
+            </View>
           </View>
-          <Pressable accessibilityLabel="설정" style={styles.settings}>
-            <Text style={styles.settingsText}>⚙</Text>
-          </Pressable>
-        </View>
 
-        <View style={styles.profileCard}>
-          <View style={styles.profileAvatar}>
-            <Text style={styles.profileAvatarText}>I</Text>
-          </View>
-          <View style={styles.profileCopy}>
-            <Text style={styles.profileTitle}>IceGear에 오신 것을 환영해요</Text>
-            <Text style={styles.profileBody}>
-              로그인하면 찜, 판매 내역, 채팅을 한 곳에서 관리할 수 있어요.
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/auth')}
-            style={styles.loginButton}
-          >
-            <Text style={styles.loginText}>로그인</Text>
-          </Pressable>
-        </View>
+          {sessionState.status === 'loading' || sessionState.status === 'callback' ? (
+            <StateView
+              kind="loading"
+              message={
+                sessionState.status === 'callback'
+                  ? '이메일 링크의 로그인 정보를 확인하고 있어요.'
+                  : '저장된 계정을 확인하고 있어요.'
+              }
+              title="프로필을 준비하는 중"
+            />
+          ) : null}
 
-        <View style={styles.statsRow}>
-          <View style={styles.stat}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>판매중</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.stat}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>거래완료</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.stat}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>찜한상품</Text>
-          </View>
-        </View>
+          {sessionState.status === 'error' ? (
+            <StateView
+              actionLabel={sessionState.error.recoverable ? '다시 확인' : undefined}
+              kind="error"
+              message={sessionState.error.message}
+              onAction={
+                sessionState.error.recoverable
+                  ? () => {
+                      void refreshSession();
+                    }
+                  : undefined
+              }
+              title="로그인 상태를 확인하지 못했어요"
+            />
+          ) : null}
 
-        <Text style={styles.sectionTitle}>나의 활동</Text>
-        <View style={styles.menuCard}>
-          <MenuRow icon="♡" label="찜한 상품" detail="0" />
-          <MenuRow
-            icon="▣"
-            label="내가 올린 상품"
-            detail="0"
-            onPress={() => router.push('/(tabs)/sell')}
-          />
-          <MenuRow
-            icon="✎"
-            label="내 커뮤니티 글"
-            detail="0"
-            onPress={() => router.push('/(tabs)/community')}
-          />
-        </View>
+          {sessionState.status === 'unauthenticated' ? (
+            <View style={styles.guestCard}>
+              <View style={styles.guestIcon}>
+                <AppIcon color={colors.accent} name="profile" size={30} />
+              </View>
+              <Text style={styles.guestKicker}>YOUR LOCKER STARTS HERE</Text>
+              <Text style={styles.guestTitle}>로그인하고 내 장비 기록을 모아보세요</Text>
+              <Text style={styles.guestBody}>
+                찜한 상품, 판매글, 커뮤니티 활동은 확인된 계정의 실제 기록만 보여드려요.
+              </Text>
+              <Button
+                fullWidth
+                label="이메일로 로그인"
+                onPress={() => router.push('/auth')}
+                size="large"
+                variant="accent"
+              />
+            </View>
+          ) : null}
 
-        <Text style={styles.sectionTitle}>안내 및 설정</Text>
-        <View style={styles.menuCard}>
-          <MenuRow icon="?" label="안전 거래 가이드" />
-          <MenuRow icon="◎" label="알림 설정" />
-          <MenuRow icon="ⓘ" label="IceGear 이용약관" />
-        </View>
-        <Text style={styles.version}>IceGear MVP · v0.1.0</Text>
-      </ScrollView>
+          {authenticated && profileLoading && !profile ? (
+            <StateView
+              kind="loading"
+              message="프로필과 선호 장비를 불러오고 있어요."
+              title="내 장비함을 여는 중"
+            />
+          ) : null}
+
+          {authenticated && profileError && !profile ? (
+            <StateView
+              actionLabel="다시 불러오기"
+              kind="error"
+              message={profileError}
+              onAction={() => void loadAccount()}
+              title="프로필을 불러오지 못했어요"
+            />
+          ) : null}
+
+          {authenticated && profile && (onboardingRequired || editing) ? (
+            <>
+              {onboardingRequired ? (
+                <View style={styles.requiredBanner}>
+                  <AppIcon color={colors.warning} name="warning" size={20} />
+                  <View style={styles.requiredCopy}>
+                    <Text style={styles.requiredTitle}>프로필 설정이 아직 끝나지 않았어요</Text>
+                    <Text style={styles.requiredBody}>
+                      이름과 선호 스포츠를 저장하면 활동 화면을 열 수 있어요.
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              <ProfileEditor
+                mode={onboardingRequired ? 'onboarding' : 'edit'}
+                onCancel={onboardingRequired ? undefined : () => setEditing(false)}
+                onSaved={(savedProfile) => {
+                  setProfile(savedProfile);
+                  setEditing(false);
+                  void reloadStatistics();
+                }}
+                profile={profile}
+              />
+            </>
+          ) : null}
+
+          {authenticated && profile && !onboardingRequired && !editing ? (
+            <>
+              <ProfileHero
+                email={authenticated.user.email}
+                onEdit={() => setEditing(true)}
+                profile={profile}
+              />
+              <ProfileActivity
+                error={statisticsError}
+                loading={statisticsLoading}
+                onCommunity={() => router.push('/(tabs)/community')}
+                onFavorites={() => router.push('/(tabs)')}
+                onRetry={() => void reloadStatistics()}
+                onSelling={() => router.push('/(tabs)/sell')}
+                statistics={statistics}
+              />
+              <ProfileAccountActions
+                anonymous={authenticated.isAnonymous}
+                error={signOutError}
+                onSafetySettings={() => void handleSafetySettings()}
+                onSignOut={() => void signOut()}
+                signingOut={signingOut}
+              />
+            </>
+          ) : null}
+
+          <Text style={styles.version}>IceGear · 계정 데이터 기준</Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: colors.canvas, flex: 1 },
-  content: { paddingBottom: 30, paddingHorizontal: 18 },
-  headerRow: {
+  safeArea: { backgroundColor: colors.background, flex: 1 },
+  keyboardView: { flex: 1 },
+  content: {
+    alignSelf: 'center',
+    flexGrow: 1,
+    gap: spacing.xxl,
+    maxWidth: 720,
+    paddingBottom: 112,
+    paddingHorizontal: spacing.page,
+    width: '100%',
+  },
+  header: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingTop: 14,
+    paddingTop: spacing.md,
   },
   eyebrow: {
     color: colors.accent,
     fontFamily: fontFamilies.accentBold,
     fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1.4,
+    letterSpacing: 1.5,
   },
   title: {
-    color: colors.ink,
+    color: colors.text,
     fontFamily: fontFamilies.displayExtraBold,
-    fontSize: 26,
-    fontWeight: '800',
-    marginTop: 6,
+    fontSize: 29,
+    lineHeight: 36,
+    marginTop: spacing.xs,
   },
-  settings: {
+  headerMark: {
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.line,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  settingsText: { color: colors.ink, fontSize: 19 },
-  profileCard: {
-    alignItems: 'center',
-    backgroundColor: colors.navy,
+    backgroundColor: colors.primary,
     borderRadius: radii.md,
-    flexDirection: 'row',
-    marginTop: 21,
-    padding: 17,
-  },
-  profileAvatar: {
-    alignItems: 'center',
-    backgroundColor: '#F5B67F',
-    borderRadius: radii.pill,
-    height: 47,
+    height: 48,
     justifyContent: 'center',
-    width: 47,
+    width: 48,
   },
-  profileAvatarText: { color: colors.navy, fontSize: 19, fontWeight: '900' },
-  profileCopy: { flex: 1, marginLeft: 12 },
-  profileTitle: { color: colors.surface, fontSize: 13, fontWeight: '800', lineHeight: 18 },
-  profileBody: { color: '#D6E0EF', fontSize: 11, lineHeight: 16, marginTop: 4 },
-  loginButton: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.pill,
-    marginLeft: 8,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  loginText: { color: colors.navy, fontSize: 11, fontWeight: '800' },
-  statsRow: {
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 12,
-    paddingVertical: 17,
-  },
-  stat: { alignItems: 'center', flex: 1 },
-  statNumber: {
-    color: colors.ink,
+  headerMarkText: {
+    color: colors.accent,
     fontFamily: fontFamilies.accentBold,
-    fontSize: 22,
-    fontWeight: '900',
+    fontSize: 18,
+    letterSpacing: 0.5,
   },
-  statLabel: { color: colors.muted, fontSize: 11, marginTop: 5 },
-  statDivider: { backgroundColor: colors.line, height: 27, width: 1 },
-  sectionTitle: {
-    color: colors.ink,
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 10,
-    marginTop: 25,
-  },
-  menuCard: { backgroundColor: colors.surface, borderRadius: radii.md, overflow: 'hidden' },
-  menuRow: {
+  guestCard: {
     alignItems: 'center',
-    borderBottomColor: colors.line,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    minHeight: 57,
-    paddingHorizontal: 14,
+    backgroundColor: colors.surfaceStrong,
+    borderRadius: radii.lg,
+    gap: spacing.md,
+    padding: spacing.xxl,
   },
-  menuIcon: {
+  guestIcon: {
     alignItems: 'center',
-    backgroundColor: colors.canvas,
-    borderRadius: radii.sm,
-    height: 31,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.pill,
+    height: 60,
     justifyContent: 'center',
-    width: 31,
+    width: 60,
   },
-  menuIconText: { color: colors.navy, fontSize: 16, fontWeight: '800' },
-  menuLabel: { color: colors.ink, flex: 1, fontSize: 13, fontWeight: '700', marginLeft: 11 },
-  menuDetail: { color: colors.subtle, fontSize: 12, marginRight: 10 },
-  menuChevron: { color: colors.subtle, fontSize: 22, fontWeight: '300' },
-  version: { color: colors.subtle, fontSize: 11, marginTop: 25, textAlign: 'center' },
+  guestKicker: {
+    color: colors.accent,
+    fontFamily: fontFamilies.accentBold,
+    fontSize: 12,
+    letterSpacing: 1.4,
+    marginTop: spacing.sm,
+  },
+  guestTitle: {
+    color: colors.textInverse,
+    fontFamily: fontFamilies.displayBold,
+    fontSize: 24,
+    lineHeight: 31,
+    textAlign: 'center',
+  },
+  guestBody: { color: colors.textSubtle, fontSize: 14, lineHeight: 22, textAlign: 'center' },
+  requiredBanner: {
+    alignItems: 'flex-start',
+    backgroundColor: colors.warningSoft,
+    borderRadius: radii.md,
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  requiredCopy: { flex: 1 },
+  requiredTitle: { color: colors.warning, fontSize: 14, lineHeight: 20, fontWeight: '800' },
+  requiredBody: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: spacing.xs },
+  version: { color: colors.textSubtle, fontSize: 11, lineHeight: 17, textAlign: 'center' },
 });

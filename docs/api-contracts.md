@@ -1,7 +1,6 @@
 # IceGear MVP API 계약
 
-**상태:** `T00`의 MVP 논리 계약과 보안 경계는 확정했습니다. `packages/domain`, migration, repository는 아래 계약에 맞추는
-후속 작업이 필요하며, 별도의 HTTP route와 Edge Function 중 실제 전송 계층 선택은 아직 남아 있습니다.
+ **상태:** `T00`~`T60` 및 `T90` API 계약 구현이 완료되었습니다. `packages/domain` 공유 계약, RLS 경계, signed media URL, publication 규칙 및 repository 구현이 검증을 통과했습니다.
 
 이 계약은 direct Supabase client 호출과 Next.js/Edge Function 경계를 모두 지원할 수 있도록 전송 방식과 분리되어 있습니다.
 작업별 전송 방식을 바꾸더라도 의미와 authorization 규칙은 바꾸지 않습니다.

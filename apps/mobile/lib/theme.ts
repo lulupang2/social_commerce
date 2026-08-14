@@ -168,4 +168,7 @@ export const motion = {
 export const hitSlop = { top: 4, right: 4, bottom: 4, left: 4 } as const;
 
 export type SemanticColor = keyof typeof colors;
-export type TypographyStyle = Pick<TextStyle, 'fontFamily' | 'fontSize' | 'lineHeight' | 'letterSpacing'>;
+export type TypographyStyle = Pick<
+  TextStyle,
+  'fontFamily' | 'fontSize' | 'lineHeight' | 'letterSpacing'
+>;

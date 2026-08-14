@@ -3,6 +3,21 @@
 
 begin;
 
+create type public.community_post_type as enum (
+  'discussion',
+  'question',
+  'guide',
+  'meetup',
+  'review'
+);
+
+alter table public.community_posts
+  add column post_type public.community_post_type not null default 'discussion';
+
+create index community_posts_active_type_created_idx
+  on public.community_posts (post_type, created_at desc)
+  where status = 'active';
+
 alter table public.profiles
   add column onboarding_completed_at timestamptz;
 
@@ -346,6 +361,26 @@ where not profile.is_banned
   );
 
 revoke all on public.public_seller_profiles from public;
+
+-- Public author lookup is deliberately limited to profiles behind active posts.
+-- Profile biography, authority, and moderation state never enter this projection.
+create view public.public_community_authors
+with (security_barrier = true)
+as
+select
+  profile.id,
+  profile.display_name,
+  profile.avatar_url
+from public.profiles profile
+where not profile.is_banned
+  and exists (
+    select 1
+    from public.community_posts post
+    where post.author_id = profile.id
+      and post.status = 'active'
+  );
+
+revoke all on public.public_community_authors from public;
 
 -- One row is one like. There is intentionally no reaction-kind column.
 create table public.community_reactions (
@@ -737,6 +772,7 @@ begin
   if exists (select 1 from pg_roles where rolname = 'anon') then
     grant select on public.public_seller_profiles to anon;
     grant select on public.community_post_reaction_counts to anon;
+    grant select on public.public_community_authors to anon;
   end if;
 
   if exists (select 1 from pg_roles where rolname = 'authenticated') then
@@ -745,6 +781,7 @@ begin
     grant select on public.publication_audit_events to authenticated;
     grant select on public.public_seller_profiles to authenticated;
     grant select on public.community_post_reaction_counts to authenticated;
+    grant select on public.public_community_authors to authenticated;
   end if;
 end;
 $$;

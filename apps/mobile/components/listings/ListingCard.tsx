@@ -36,7 +36,14 @@ export function ListingCard({
   const navigationLabel = `${listing.title}, ${formatPrice(listing)}, ${formatLocation(listing.location)}`;
 
   return (
-    <View style={[styles.shell, variant === 'rail' && styles.rail, horizontal && styles.horizontalShell, style]}>
+    <View
+      style={[
+        styles.shell,
+        variant === 'rail' && styles.rail,
+        horizontal && styles.horizontalShell,
+        style,
+      ]}
+    >
       <Pressable
         accessibilityHint="상품 상세 화면으로 이동합니다"
         accessibilityLabel={navigationLabel}
@@ -90,13 +97,25 @@ export function ListingCard({
 }
 
 const styles = StyleSheet.create({
-  shell: { backgroundColor: colors.surface, borderRadius: radii.lg, minWidth: 0, position: 'relative', ...elevation.low },
+  shell: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    minWidth: 0,
+    position: 'relative',
+    ...elevation.low,
+  },
   rail: { width: 224 },
   horizontalShell: { minHeight: 144 },
   navigation: { borderRadius: radii.lg, minHeight: interaction.minimumTarget, overflow: 'hidden' },
   horizontalNavigation: { flexDirection: 'row' },
   pressed: { opacity: interaction.pressedOpacity },
-  horizontalImage: { alignSelf: 'stretch', aspectRatio: undefined, borderBottomRightRadius: 0, borderTopRightRadius: 0, width: 132 },
+  horizontalImage: {
+    alignSelf: 'stretch',
+    aspectRatio: undefined,
+    borderBottomRightRadius: 0,
+    borderTopRightRadius: 0,
+    width: 132,
+  },
   copy: { flex: 1, gap: spacing.xs, padding: spacing.md },
   metaRow: { alignItems: 'center', flexDirection: 'row', minHeight: 28 },
   title: { color: colors.text },

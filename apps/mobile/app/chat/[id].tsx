@@ -1,86 +1,348 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   SafeAreaView,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
 
+import { ChatBubble, ChatComposer, ConnectionStatusHeader } from '../../components/chat';
+import { useSession } from '../../lib/auth/session';
+import { createDemoChatTransport } from '../../lib/chat/demo-transport';
 import {
-  getChat,
-  sendChatMessage,
+  chatRepository,
   type ChatMessage,
+  type ChatRealtimeStatus,
+  type ChatSubscription,
   type ChatSummary,
+  type MessageCursor,
 } from '../../lib/chat/repository';
 import { colors, radii } from '../../lib/theme';
-import { AppText as Text, AppTextInput as TextInput } from '../../lib/typography';
+import { AppText as Text } from '../../lib/typography';
+
+import { moderationRepository } from '../../lib/moderation';
+const isDevelopmentRuntime = typeof __DEV__ !== 'undefined' && __DEV__ === true;
 
 export default function ChatDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string | string[] }>();
+  const session = useSession();
+  const { id, demo } = useLocalSearchParams<{ id: string | string[]; demo?: string }>();
   const chatId = Array.isArray(id) ? id[0] : id;
+  const isDemoQuery = demo === 'true';
+
+  const isAuthenticated = session.state.status === 'authenticated';
+  const isDemo = isDevelopmentRuntime && (!isAuthenticated || isDemoQuery);
+
   const [chat, setChat] = useState<ChatSummary | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<ChatRealtimeStatus | 'demo'>(
+    isDemo ? 'demo' : 'closed',
+  );
+  const [isCatchingUp, setIsCatchingUp] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
-    async function load() {
-      if (!chatId) {
+  const flatListRef = useRef<FlatList<ChatMessage>>(null);
+  const subscriptionRef = useRef<ChatSubscription | null>(null);
+  const activeSendsRef = useRef<Set<string>>(new Set());
+
+  const loadChatAndMessages = useCallback(async () => {
+    if (!chatId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+
+    if (isDemo) {
+      const demoTransport = createDemoChatTransport();
+      const conversation = await demoTransport.getConversation(chatId);
+      if (conversation.error) {
+        setError(conversation.error.message);
         setLoading(false);
         return;
       }
-      const result = await getChat(chatId);
-      if (!mounted) return;
-      setChat(result);
-      setMessages(result?.messages ?? []);
+      const msgs = await demoTransport.listMessages(chatId, { pageSize: 50 });
+      setChat(conversation.data);
+      setMessages(msgs.data?.items ?? []);
+      setConnectionStatus('demo');
       setLoading(false);
+      return;
     }
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, [chatId]);
 
-  async function submit() {
-    const body = message.trim();
-    if (!body || !chatId || sending) return;
-    setError(null);
-    setSending(true);
-    if (chat?.isDemo) {
-      const now = new Date().toISOString();
-      setMessages((current) => [
-        ...current,
-        {
-          id: `local-${Date.now()}`,
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
+
+    const conversation = await chatRepository.getConversation(chatId);
+    if (conversation.error) {
+      setError(conversation.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const msgs = await chatRepository.listMessages(chatId, { pageSize: 50 });
+    setChat(conversation.data);
+    setMessages(msgs.data?.items ?? []);
+
+    void chatRepository.markConversationRead(chatId);
+    setLoading(false);
+  }, [chatId, isDemo, isAuthenticated]);
+
+  useEffect(() => {
+    void loadChatAndMessages();
+  }, [loadChatAndMessages]);
+
+  const setupSubscription = useCallback(async () => {
+    if (isDemo || !isAuthenticated || !chatId) return;
+
+    if (subscriptionRef.current) {
+      await subscriptionRef.current.unsubscribe();
+      subscriptionRef.current = null;
+    }
+
+    const lastMsg = messages[messages.length - 1];
+    const afterCursor: MessageCursor | undefined = lastMsg
+      ? { createdAt: lastMsg.createdAt, id: lastMsg.id }
+      : undefined;
+
+    const subResult = await chatRepository.subscribeToMessages(chatId, afterCursor, {
+      onStatus: (status) => setConnectionStatus(status),
+      onError: (err) => setError(err.message),
+      onEvent: (event) => {
+        if (event.type === 'remove') {
+          const removeSet = new Set(event.messageIds);
+          setMessages((curr) => curr.filter((m) => !removeSet.has(m.id)));
+        } else if (event.type === 'upsert') {
+          setMessages((curr) => {
+            const updated = [...curr];
+            for (const msg of event.messages) {
+              const idx = updated.findIndex((m) => m.id === msg.id);
+              if (idx >= 0) {
+                updated[idx] = msg;
+              } else {
+                updated.push(msg);
+              }
+            }
+            return updated.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+          });
+          void chatRepository.markConversationRead(chatId);
+        }
+      },
+    });
+
+    if (subResult.data) {
+      subscriptionRef.current = subResult.data;
+    }
+  }, [chatId, isDemo, isAuthenticated, messages]);
+
+  useEffect(() => {
+    if (!loading && chatId && !isDemo && isAuthenticated) {
+      void setupSubscription();
+    }
+
+    return () => {
+      if (subscriptionRef.current) {
+        void subscriptionRef.current.unsubscribe();
+        subscriptionRef.current = null;
+      }
+    };
+  }, [loading, chatId, isDemo, isAuthenticated, setupSubscription]);
+
+  const handleCatchUp = useCallback(async () => {
+    if (!chatId || isDemo || !isAuthenticated) return;
+    setIsCatchingUp(true);
+    const msgs = await chatRepository.listMessages(chatId, { pageSize: 50 });
+    if (msgs.data) {
+      setMessages(msgs.data.items);
+      void chatRepository.markConversationRead(chatId);
+    }
+    setIsCatchingUp(false);
+  }, [chatId, isDemo, isAuthenticated]);
+
+  const handleSend = useCallback(
+    async (body: string) => {
+      if (!chatId || sending) return;
+      const sendKey = `${chatId}:${body}:${Date.now()}`;
+      if (activeSendsRef.current.has(sendKey)) return;
+      activeSendsRef.current.add(sendKey);
+
+      setSending(true);
+      setError(null);
+
+      if (isDemo) {
+        const demoTransport = createDemoChatTransport();
+        const optimisticId = `demo-${Date.now()}`;
+        const optimisticMsg: ChatMessage = {
+          id: optimisticId,
+          conversationId: chatId,
           senderId: 'me',
           body,
-          createdAt: now,
+          createdAt: new Date().toISOString(),
           timeLabel: '방금 전',
           isMine: true,
-        },
-      ]);
-      setMessage('');
+          delivery: 'confirmed',
+        };
+        setMessages((curr) => [...curr, optimisticMsg]);
+        await demoTransport.insertMessage({
+          id: optimisticId,
+          conversationId: chatId,
+          senderId: 'demo-current-user',
+          body,
+        });
+        setSending(false);
+        activeSendsRef.current.delete(sendKey);
+        return;
+      }
+
+      let currentOptimistic: ChatMessage | null = null;
+
+      const observer = (updatedMsg: ChatMessage) => {
+        currentOptimistic = updatedMsg;
+        setMessages((curr) => {
+          const idx = curr.findIndex((m) => m.id === updatedMsg.id);
+          if (idx >= 0) {
+            const copy = [...curr];
+            copy[idx] = updatedMsg;
+            return copy;
+          }
+          return [...curr, updatedMsg];
+        });
+      };
+
+      const started = await chatRepository.beginSend(chatId, body, observer);
+      if (started.error) {
+        setError(started.error.message);
+        setSending(false);
+        activeSendsRef.current.delete(sendKey);
+        return;
+      }
+
+      const result = await started.data.completion;
       setSending(false);
-      return;
+      activeSendsRef.current.delete(sendKey);
+
+      if (result.error) {
+        setError(result.error.message);
+      }
+    },
+    [chatId, isDemo, sending],
+  );
+
+  const handleRetry = useCallback(
+    async (failedMsg: ChatMessage) => {
+      if (!chatId || sending) return;
+      setSending(true);
+      setError(null);
+
+      const observer = (updatedMsg: ChatMessage) => {
+        setMessages((curr) => {
+          const idx = curr.findIndex((m) => m.id === updatedMsg.id);
+          if (idx >= 0) {
+            const copy = [...curr];
+            copy[idx] = updatedMsg;
+            return copy;
+          }
+          return [...curr, updatedMsg];
+        });
+      };
+
+      const retried = await chatRepository.retryMessage(failedMsg, observer);
+      if (retried.error) {
+        setError(retried.error.message);
+        setSending(false);
+        return;
+      }
+
+      const result = await retried.data.completion;
+      setSending(false);
+      if (result.error) {
+        setError(result.error.message);
+      }
+    },
+    [chatId, sending],
+  );
+  const handleMorePress = () => {
+    if (!chat) return;
+    Alert.alert('안전 설정 및 관리', `${chat.participantName}님과의 대화`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '상대방 신고',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert('신고 사유 선택', '신고 이유를 선택해주세요.', [
+            { text: '취소', style: 'cancel' },
+            {
+              text: '스팸/사기 의심',
+              onPress: () => void submitChatReport('spam'),
+            },
+            {
+              text: '욕설/괴롭힘',
+              onPress: () => void submitChatReport('harassment'),
+            },
+            {
+              text: '기타 사유',
+              onPress: () => void submitChatReport('other'),
+            },
+          ]);
+        },
+      },
+      {
+        text: '사용자 차단',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert(
+            '사용자 차단',
+            `${chat.participantName}님을 차단하시겠습니까? 차단 시 상대방의 메시지 및 게시물이 숨겨집니다.`,
+            [
+              { text: '취소', style: 'cancel' },
+              {
+                text: '차단',
+                style: 'destructive',
+                onPress: async () => {
+                  if (!chat.participantId || chat.participantId.length < 10) {
+                    Alert.alert('차단 실패', '유효한 사용자 정보가 없습니다.');
+                    return;
+                  }
+                  const res = await moderationRepository.blockUser(chat.participantId);
+                  if (res.error) {
+                    Alert.alert('차단 실패', res.error.message);
+                  } else {
+                    Alert.alert('차단 완료', '상대방이 차단되었습니다.');
+                  }
+                },
+              },
+            ],
+          );
+        },
+      },
+    ]);
+  };
+
+  const submitChatReport = async (reason: 'spam' | 'harassment' | 'other') => {
+    if (!chat || !chat.participantId) return;
+    const targetId = chat.participantId.length >= 10 ? chat.participantId : chatId;
+    const targetType = chat.participantId.length >= 10 ? 'profile' : 'message';
+    const res = await moderationRepository.submitReport({
+      targetType,
+      targetId,
+      reason,
+      details: `Chat ${chatId} report`,
+    });
+    if (res.error) {
+      Alert.alert('신고 실패', res.error.message);
+    } else {
+      Alert.alert('신고 완료', '신고가 접수되었습니다. 검토 후 처리됩니다.');
     }
-    const result = await sendChatMessage(chatId, body);
-    setSending(false);
-    if (result.error || !result.data) {
-      setError(result.error ?? '메시지를 보내지 못했어요.');
-      return;
-    }
-    setMessages((current) => [...current, result.data as ChatMessage]);
-    setMessage('');
-  }
+  };
 
   if (loading) {
     return (
@@ -88,6 +350,21 @@ export default function ChatDetailScreen() {
         <View style={styles.state}>
           <ActivityIndicator color={colors.accent} />
           <Text style={styles.stateText}>채팅을 불러오는 중이에요.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAuthenticated && !isDemo) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.state}>
+          <Text style={styles.stateEmoji}>🔒</Text>
+          <Text style={styles.stateTitle}>로그인이 필요해요</Text>
+          <Text style={styles.stateText}>대화에 참여하려면 로그인해 주세요.</Text>
+          <Pressable onPress={() => router.push('/auth')} style={styles.darkButton}>
+            <Text style={styles.darkButtonText}>로그인하기</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
@@ -111,6 +388,7 @@ export default function ChatDetailScreen() {
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
         style={styles.keyboard}
       >
         <View style={styles.navBar}>
@@ -127,59 +405,50 @@ export default function ChatDetailScreen() {
               {chat.listingTitle}
             </Text>
           </View>
-          <Pressable accessibilityLabel="더보기" style={styles.moreButton}>
+          <Pressable
+            accessibilityLabel="더보기"
+            onPress={handleMorePress}
+            style={styles.moreButton}
+          >
             <Text style={styles.more}>•••</Text>
           </Pressable>
         </View>
+
+        <ConnectionStatusHeader
+          isCatchingUp={isCatchingUp}
+          onCatchUp={() => void handleCatchUp()}
+          status={connectionStatus}
+        />
+
         <View style={styles.safetyNotice}>
           <Text style={styles.safetyIcon}>✓</Text>
           <Text style={styles.safetyText}>거래 전 상품 상태와 만날 장소를 꼭 확인하세요.</Text>
         </View>
-        <ScrollView contentContainerStyle={styles.messageList} keyboardShouldPersistTaps="handled">
-          {messages.map((item) => (
-            <View
-              key={item.id}
-              style={[styles.messageRow, item.isMine ? styles.messageRowMine : null]}
-            >
-              {!item.isMine ? (
-                <View style={styles.smallAvatar}>
-                  <Text style={styles.smallAvatarText}>{chat.participantInitial}</Text>
-                </View>
-              ) : null}
-              <View style={[styles.bubbleWrap, item.isMine ? styles.bubbleWrapMine : null]}>
-                <View style={[styles.bubble, item.isMine ? styles.bubbleMine : null]}>
-                  <Text style={[styles.bubbleText, item.isMine ? styles.bubbleTextMine : null]}>
-                    {item.body}
-                  </Text>
-                </View>
-                <Text style={[styles.messageTime, item.isMine ? styles.messageTimeMine : null]}>
-                  {item.timeLabel}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
+
+        <FlatList
+          ref={flatListRef}
+          contentContainerStyle={styles.messageList}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          renderItem={({ item }) => (
+            <ChatBubble
+              message={item}
+              onRetry={(msg) => void handleRetry(msg)}
+              participantInitial={chat.participantInitial}
+            />
+          )}
+        />
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <View style={styles.composer}>
-          <TextInput
-            accessibilityLabel="메시지 입력"
-            onChangeText={setMessage}
-            onSubmitEditing={() => void submit()}
-            placeholder="메시지를 입력하세요"
-            placeholderTextColor={colors.subtle}
-            returnKeyType="send"
-            style={styles.input}
-            value={message}
-          />
-          <Pressable
-            accessibilityLabel="메시지 보내기"
-            disabled={!message.trim() || sending}
-            onPress={() => void submit()}
-            style={styles.sendButton}
-          >
-            <Text style={[styles.sendText, !message.trim() ? styles.sendDisabled : null]}>↑</Text>
-          </Pressable>
-        </View>
+
+        <ChatComposer
+          disabled={!isAuthenticated && !isDemo}
+          onSend={(body) => void handleSend(body)}
+          sending={sending}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -209,8 +478,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.navySoft,
     flexDirection: 'row',
     gap: 7,
-    margin: 14,
+    marginHorizontal: 14,
+    marginTop: 10,
+    marginBottom: 4,
     padding: 10,
+    borderRadius: radii.md,
   },
   safetyIcon: {
     alignItems: 'center',
@@ -226,75 +498,17 @@ const styles = StyleSheet.create({
   },
   safetyText: { color: colors.navy, flex: 1, fontSize: 11 },
   messageList: { gap: 16, padding: 18, paddingBottom: 28 },
-  messageRow: { alignItems: 'flex-end', flexDirection: 'row' },
-  messageRowMine: { justifyContent: 'flex-end' },
-  smallAvatar: {
-    alignItems: 'center',
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.pill,
-    height: 29,
-    justifyContent: 'center',
-    width: 29,
-  },
-  smallAvatarText: { color: colors.accent, fontSize: 11, fontWeight: '800' },
-  bubbleWrap: { marginLeft: 8, maxWidth: '78%' },
-  bubbleWrapMine: { alignItems: 'flex-end', marginLeft: 0 },
-  bubble: {
-    backgroundColor: colors.surface,
-    borderBottomLeftRadius: 4,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-  },
-  bubbleMine: {
-    backgroundColor: colors.accent,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 4,
-  },
-  bubbleText: { color: colors.ink, fontSize: 13, lineHeight: 19 },
-  bubbleTextMine: { color: colors.surface },
-  messageTime: { color: colors.subtle, fontSize: 10, marginTop: 4 },
-  messageTimeMine: { textAlign: 'right' },
-  composer: {
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderTopColor: colors.line,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    padding: 10,
-  },
-  input: {
-    backgroundColor: colors.canvas,
-    borderRadius: radii.pill,
-    color: colors.ink,
-    flex: 1,
-    fontSize: 13,
-    minHeight: 42,
-    paddingHorizontal: 15,
-    paddingVertical: 9,
-  },
-  sendButton: {
-    alignItems: 'center',
-    backgroundColor: colors.accent,
-    borderRadius: radii.pill,
-    height: 38,
-    justifyContent: 'center',
-    marginLeft: 8,
-    width: 38,
-  },
-  sendText: { color: colors.surface, fontSize: 20, fontWeight: '800' },
-  sendDisabled: { opacity: 0.45 },
   error: { color: colors.danger, fontSize: 11, paddingHorizontal: 14, paddingBottom: 4 },
   state: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 28 },
   stateEmoji: { fontSize: 38, marginBottom: 12 },
   stateTitle: { color: colors.ink, fontSize: 18, fontWeight: '800' },
-  stateText: { color: colors.muted, fontSize: 13, marginTop: 10 },
+  stateText: { color: colors.muted, fontSize: 13, marginTop: 10, textAlign: 'center' },
   darkButton: {
     backgroundColor: colors.ink,
     borderRadius: radii.pill,
     marginTop: 18,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingVertical: 11,
   },
-  darkButtonText: { color: colors.surface, fontSize: 13, fontWeight: '800' },
+  darkButtonText: { color: colors.surface, fontSize: 14, fontWeight: '800' },
 });

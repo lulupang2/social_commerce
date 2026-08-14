@@ -64,5 +64,9 @@ const styles = StyleSheet.create({
   eyebrow: { color: colors.accent, textTransform: 'uppercase' },
   title: { color: colors.text },
   subtitle: { color: colors.textMuted },
-  action: { marginLeft: spacing.md, minHeight: interaction.minimumTarget, justifyContent: 'center' },
+  action: {
+    marginLeft: spacing.md,
+    minHeight: interaction.minimumTarget,
+    justifyContent: 'center',
+  },
 });

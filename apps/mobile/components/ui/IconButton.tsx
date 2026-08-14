@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  type PressableProps,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import { colors, interaction, radii, stateStyles } from '../../lib/theme';
 import { AppIcon, type AppIconName } from './AppIcon';
@@ -30,7 +36,13 @@ export function IconButton({
 }: IconButtonProps) {
   const [focused, setFocused] = useState(false);
   const backgroundColor =
-    tone === 'surface' ? colors.surface : tone === 'accent' ? colors.accentSoft : tone === 'danger' ? colors.errorSoft : colors.transparent;
+    tone === 'surface'
+      ? colors.surface
+      : tone === 'accent'
+        ? colors.accentSoft
+        : tone === 'danger'
+          ? colors.errorSoft
+          : colors.transparent;
   const iconColor =
     selected || tone === 'accent' ? colors.accent : tone === 'danger' ? colors.error : colors.text;
 
@@ -52,14 +64,22 @@ export function IconButton({
       }}
       style={({ pressed }) => [
         styles.base,
-        { backgroundColor, height: Math.max(size, interaction.minimumTarget), width: Math.max(size, interaction.minimumTarget) },
+        {
+          backgroundColor,
+          height: Math.max(size, interaction.minimumTarget),
+          width: Math.max(size, interaction.minimumTarget),
+        },
         pressed && !disabled && styles.pressed,
         focused && stateStyles.focus,
         disabled && styles.disabled,
         style,
       ]}
     >
-      <AppIcon color={iconColor} name={selected && icon === 'heart' ? 'heartFilled' : icon} size={iconSize} />
+      <AppIcon
+        color={iconColor}
+        name={selected && icon === 'heart' ? 'heartFilled' : icon}
+        size={iconSize}
+      />
     </Pressable>
   );
 }

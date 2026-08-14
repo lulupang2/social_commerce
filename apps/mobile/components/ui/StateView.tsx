@@ -1,6 +1,6 @@
 import { ActivityIndicator, StyleSheet, View, type ViewProps } from 'react-native';
 
-import { colors, spacing } from '../../lib/theme';
+import { colors, radii, spacing } from '../../lib/theme';
 import { AppText } from '../../lib/typography';
 import { AppIcon, type AppIconName } from './AppIcon';
 import { Button } from './Button';
@@ -32,7 +32,8 @@ export function StateView({
   style,
   ...props
 }: StateViewProps) {
-  const tone = kind === 'error' ? colors.error : kind === 'success' ? colors.success : colors.textMuted;
+  const tone =
+    kind === 'error' ? colors.error : kind === 'success' ? colors.success : colors.textMuted;
 
   return (
     <View
@@ -44,7 +45,19 @@ export function StateView({
       {kind === 'loading' ? (
         <ActivityIndicator color={colors.accent} size="large" />
       ) : (
-        <View style={[styles.icon, { backgroundColor: kind === 'error' ? colors.errorSoft : kind === 'success' ? colors.successSoft : colors.surfaceSubtle }]}>
+        <View
+          style={[
+            styles.icon,
+            {
+              backgroundColor:
+                kind === 'error'
+                  ? colors.errorSoft
+                  : kind === 'success'
+                    ? colors.successSoft
+                    : colors.surfaceSubtle,
+            },
+          ]}
+        >
           <AppIcon color={tone} name={icon ?? defaultIcons[kind]} size={28} />
         </View>
       )}
@@ -72,12 +85,23 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     alignSelf: 'stretch',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.xl,
+    borderWidth: 1,
     gap: spacing.md,
     justifyContent: 'center',
-    minHeight: 240,
+    marginVertical: spacing.md,
+    minHeight: 220,
     padding: spacing.xxl,
   },
-  icon: { alignItems: 'center', borderRadius: 28, height: 56, justifyContent: 'center', width: 56 },
+  icon: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    height: 60,
+    justifyContent: 'center',
+    width: 60,
+  },
   title: { color: colors.text, textAlign: 'center' },
-  message: { color: colors.textMuted, maxWidth: 360, textAlign: 'center' },
+  message: { color: colors.textMuted, maxWidth: 320, textAlign: 'center' },
 });

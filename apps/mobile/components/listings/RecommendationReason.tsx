@@ -9,7 +9,12 @@ export interface RecommendationReasonProps extends ViewProps {
   compact?: boolean;
 }
 
-export function RecommendationReason({ reason, compact = false, style, ...props }: RecommendationReasonProps) {
+export function RecommendationReason({
+  reason,
+  compact = false,
+  style,
+  ...props
+}: RecommendationReasonProps) {
   return (
     <View
       {...props}
@@ -25,7 +30,18 @@ export function RecommendationReason({ reason, compact = false, style, ...props 
 }
 
 const styles = StyleSheet.create({
-  container: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: colors.infoSoft, borderRadius: radii.sm, flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  container: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.infoSoft,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+  },
   compact: { maxWidth: '100%' },
-  text: { color: colors.info, flexShrink: 1 },
+  text: { color: colors.info, flexShrink: 1, fontWeight: '600' },
 });

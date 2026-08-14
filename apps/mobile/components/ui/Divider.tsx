@@ -10,11 +10,21 @@ export interface DividerProps extends ViewProps {
 
 export function Divider({ label, inset = false, style, ...props }: DividerProps) {
   if (!label) {
-    return <View {...props} accessibilityRole="none" style={[styles.line, inset && styles.inset, style]} />;
+    return (
+      <View
+        {...props}
+        accessibilityRole="none"
+        style={[styles.line, inset && styles.inset, style]}
+      />
+    );
   }
 
   return (
-    <View {...props} accessibilityRole="none" style={[styles.labeled, inset && styles.inset, style]}>
+    <View
+      {...props}
+      accessibilityRole="none"
+      style={[styles.labeled, inset && styles.inset, style]}
+    >
       <View style={styles.flexLine} />
       <AppText style={styles.label} variant="caption">
         {label}

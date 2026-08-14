@@ -90,6 +90,10 @@ end,
 handle = case id
   when 'a1000000-0000-4000-8000-000000000001'::uuid then 'profile_owner'
   else handle
+end,
+bio = case id
+  when 'a1000000-0000-4000-8000-000000000001'::uuid then 'private profile biography'
+  else bio
 end;
 
 insert into public.community_posts (
@@ -121,6 +125,27 @@ values
     null
   );
 
+insert into public.community_posts (
+  id,
+  author_id,
+  sport_id,
+  post_type,
+  title,
+  body,
+  status,
+  published_at
+)
+values (
+  'b1000000-0000-4000-8000-000000000003',
+  'a1000000-0000-4000-8000-000000000002',
+  (select id from public.sports where slug = 'hockey'),
+  'question',
+  'Other author draft',
+  'This draft must not expose its author.',
+  'draft',
+  null
+);
+
 insert into public.listings (
   id,
   seller_id,
@@ -138,6 +163,54 @@ values (
   100,
   'active',
   now()
+);
+
+select results_eq(
+  $sql$
+    select enumlabel::text
+    from pg_enum
+    where enumtypid = 'public.community_post_type'::regtype
+    order by enumsortorder
+  $sql$,
+  $values$
+    values
+      ('discussion'::text),
+      ('question'::text),
+      ('guide'::text),
+      ('meetup'::text),
+      ('review'::text)
+  $values$,
+  'community post types match the shared domain contract'
+);
+
+select is(
+  (
+    select post_type::text
+    from public.community_posts
+    where id = 'b1000000-0000-4000-8000-000000000001'
+  ),
+  'discussion'::text,
+  'community posts default to the discussion type'
+);
+
+select is(
+  pg_temp.sqlstate_of($sql$
+    insert into public.community_posts (author_id, post_type, title, body)
+    values (
+      'a1000000-0000-4000-8000-000000000001',
+      'announcement',
+      'Invalid type',
+      'Unsupported community post types must fail.'
+    )
+  $sql$),
+  '22P02',
+  'unsupported community post types are rejected'
+);
+
+select is(
+  to_regclass('public.community_posts_active_type_created_idx')::text,
+  'community_posts_active_type_created_idx'::text,
+  'active community posts have a type filter index'
 );
 
 -- Owner: canonical preferences, strict validation, and onboarding completion.
@@ -430,6 +503,26 @@ select is(
   'an active listing exposes the shaped public seller projection'
 );
 
+select is(
+  (
+    select display_name
+    from public.public_community_authors
+    where id = 'a1000000-0000-4000-8000-000000000001'
+  ),
+  'Profile Owner'::text,
+  'anonymous callers can resolve an active post author'
+);
+
+select is(
+  (
+    select count(*)::bigint
+    from public.public_community_authors
+    where id = 'a1000000-0000-4000-8000-000000000002'
+  ),
+  0::bigint,
+  'a draft-only author is absent from the public projection'
+);
+
 reset role;
 
 select results_eq(
@@ -444,6 +537,30 @@ select results_eq(
     values ('id'::text), ('handle'::text), ('display_name'::text), ('avatar_url'::text)
   $values$,
   'the public seller projection contains only its four approved fields'
+);
+
+select results_eq(
+  $sql$
+    select column_name::text
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_community_authors'
+    order by ordinal_position
+  $sql$,
+  $values$
+    values ('id'::text), ('display_name'::text), ('avatar_url'::text)
+  $values$,
+  'the public author projection excludes bio, role, and ban state'
+);
+
+select ok(
+  has_table_privilege('anon', 'public.public_community_authors', 'select'),
+  'anonymous callers have explicit access to the public author projection'
+);
+
+select ok(
+  has_table_privilege('authenticated', 'public.public_community_authors', 'select'),
+  'authenticated callers have explicit access to the public author projection'
 );
 
 select is(

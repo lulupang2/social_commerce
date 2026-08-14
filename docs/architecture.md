@@ -1,7 +1,6 @@
 # IceGear MVP 아키텍처
 
-**상태:** `T00`의 MVP 보안·publication 결정은 완료했습니다. 현재 저장소에는 `packages/domain`, Next.js 웹 앱,
-Expo Router 모바일 앱, Supabase migration/seed가 있지만, 기존 RLS와 `getPublicUrl` 경로는 확정 정책에 맞춘 후속 구현이 필요합니다.
+ **상태:** `T00`~`T60` 및 `T90` 아키텍처 구현이 완료되었습니다. private Storage/signed URL 경계, Realtime chat, RLS 정책, domain 계약 및 repository 통합 검증을 완료했습니다.
 
 이 문서는 기술 스택을 실제 경계와 책임으로 구체화합니다. 화면 구조나 시각 디자인은 정의하지 않습니다.
 결정 근거와 demo/production 결과는 [ADR 002](adr/002-mobile-mvp-safety-boundaries.md)에 기록합니다.

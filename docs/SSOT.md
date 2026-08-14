@@ -1,6 +1,6 @@
 # IceGear MVP 단일 기준 문서(SSOT)
 
-**상태:** 모바일 MVP 구현 전 결정 게이트(`T00`)를 확정했습니다. 현재 코드와 최초 migration에는 아래 정책과 다른 부분이 있으므로 후속 migration/RLS·repository·UI 작업이 필요합니다.
+ **상태:** `T00`~`T60` 및 `T90` 모바일 MVP 구현, migration(0002_profile_reactions.sql, 0003_storage_realtime.sql), RLS, repository, UI 및 통합 검증이 완료되었습니다.
 
 **최종 검토일:** 2026-08-14
 

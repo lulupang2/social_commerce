@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
@@ -10,9 +10,27 @@ import {
   View,
 } from 'react-native';
 
-import { listChats, type ChatSummary } from '../../lib/chat/repository';
+import { useSession } from '../../lib/auth/session';
+import { createDemoChatTransport } from '../../lib/chat/demo-transport';
+import { chatRepository, type ChatSummary } from '../../lib/chat/repository';
 import { colors, radii } from '../../lib/theme';
 import { AppText as Text, fontFamilies } from '../../lib/typography';
+
+const isDevelopmentRuntime = typeof __DEV__ !== 'undefined' && __DEV__ === true;
+
+function ConnectionPill({ unreadTotal, isDemo }: { unreadTotal: number; isDemo: boolean }) {
+  return (
+    <View style={styles.statusPill}>
+      <View style={[styles.statusDot, isDemo ? styles.statusDotDemo : styles.statusDotLive]} />
+      <Text style={styles.statusText}>{isDemo ? '개발 테스트 데모' : '실시간 연결됨'}</Text>
+      {unreadTotal > 0 ? (
+        <View style={styles.totalBadge}>
+          <Text style={styles.totalBadgeText}>{unreadTotal > 99 ? '99+' : unreadTotal}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 function ChatRow({ chat, onPress }: { chat: ChatSummary; onPress: () => void }) {
   return (
@@ -32,9 +50,9 @@ function ChatRow({ chat, onPress }: { chat: ChatSummary; onPress: () => void }) 
           {chat.preview}
         </Text>
       </View>
-      {chat.unreadCount ? (
+      {chat.unreadCount > 0 ? (
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{chat.unreadCount}</Text>
+          <Text style={styles.badgeText}>{chat.unreadCount > 99 ? '99+' : chat.unreadCount}</Text>
         </View>
       ) : null}
     </Pressable>
@@ -43,21 +61,74 @@ function ChatRow({ chat, onPress }: { chat: ChatSummary; onPress: () => void }) 
 
 export default function ChatsScreen() {
   const router = useRouter();
+  const session = useSession();
   const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [unreadTotal, setUnreadTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
 
-  const loadChats = useCallback(async (refresh = false) => {
-    if (refresh) setRefreshing(true);
-    else setLoading(true);
-    setChats(await listChats());
-    setLoading(false);
-    setRefreshing(false);
-  }, []);
+  const isAuthenticated = session.state.status === 'authenticated';
+
+  const loadChats = useCallback(
+    async (refresh = false) => {
+      if (refresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+
+      if (!isAuthenticated && (!isDevelopmentRuntime || !demoMode)) {
+        setChats([]);
+        setUnreadTotal(0);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      if (!isAuthenticated && isDevelopmentRuntime && demoMode) {
+        const demoTransport = createDemoChatTransport();
+        const convs = await demoTransport.listConversations();
+        const unread = await demoTransport.getUnreadSummary();
+        setChats(convs.data?.items ?? []);
+        setUnreadTotal(unread.data?.total ?? 0);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      const [convs, unread] = await Promise.all([
+        chatRepository.listConversations(),
+        chatRepository.getUnreadSummary(),
+      ]);
+
+      if (convs.error) {
+        setError(convs.error.message);
+        setChats([]);
+      } else {
+        setChats(convs.data.items);
+      }
+
+      if (!unread.error && unread.data) {
+        setUnreadTotal(unread.data.total);
+      } else if (convs.data) {
+        const total = convs.data.items.reduce((sum, item) => sum + item.unreadCount, 0);
+        setUnreadTotal(total);
+      }
+
+      setLoading(false);
+      setRefreshing(false);
+    },
+    [isAuthenticated, demoMode],
+  );
 
   useEffect(() => {
     void loadChats();
   }, [loadChats]);
+
+  const activeUnreadTotal = useMemo(() => {
+    if (!isAuthenticated && !demoMode) return 0;
+    return unreadTotal;
+  }, [isAuthenticated, demoMode, unreadTotal]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -73,7 +144,31 @@ export default function ChatsScreen() {
           />
         }
         ListEmptyComponent={
-          loading ? (
+          !isAuthenticated && (!isDevelopmentRuntime || !demoMode) ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyEmoji}>🔒</Text>
+              <Text style={styles.emptyTitle}>로그인이 필요해요</Text>
+              <Text style={styles.emptyText}>
+                대화 목록을 확인하려면 IceGear 계정에 로그인해 주세요.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push('/auth')}
+                style={styles.actionButton}
+              >
+                <Text style={styles.actionButtonText}>로그인하기</Text>
+              </Pressable>
+              {isDevelopmentRuntime ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setDemoMode(true)}
+                  style={styles.demoToggle}
+                >
+                  <Text style={styles.demoToggleText}>[개발 전용] 데모 대화 보기</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : loading ? (
             <View style={styles.empty}>
               <ActivityIndicator color={colors.accent} />
               <Text style={styles.emptyText}>채팅을 불러오는 중이에요.</Text>
@@ -85,18 +180,43 @@ export default function ChatsScreen() {
               <Text style={styles.emptyText}>
                 관심 있는 상품의 판매자에게 먼저 인사를 건네보세요.
               </Text>
+              {!isAuthenticated && demoMode ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setDemoMode(false)}
+                  style={styles.demoToggle}
+                >
+                  <Text style={styles.demoToggleText}>데모 끄고 로그인 안내로 돌아가기</Text>
+                </Pressable>
+              ) : null}
             </View>
           )
         }
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.eyebrow}>ICEGEAR MESSAGE</Text>
+            <View style={styles.headerTop}>
+              <Text style={styles.eyebrow}>ICEGEAR MESSAGE</Text>
+              {isAuthenticated || demoMode ? (
+                <ConnectionPill
+                  isDemo={!isAuthenticated && demoMode}
+                  unreadTotal={activeUnreadTotal}
+                />
+              ) : null}
+            </View>
             <Text style={styles.title}>채팅</Text>
             <Text style={styles.subtitle}>안전한 거래를 위해 IceGear 안에서 대화해요.</Text>
+            {error ? <Text style={styles.headerError}>{error}</Text> : null}
           </View>
         }
         renderItem={({ item }) => (
-          <ChatRow chat={item} onPress={() => router.push(`/chat/${item.id}`)} />
+          <ChatRow
+            chat={item}
+            onPress={() =>
+              router.push(
+                !isAuthenticated && demoMode ? `/chat/${item.id}?demo=true` : `/chat/${item.id}`,
+              )
+            }
+          />
         )}
         showsVerticalScrollIndicator={false}
       />
@@ -108,6 +228,11 @@ const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.canvas, flex: 1 },
   content: { paddingBottom: 30, paddingHorizontal: 18 },
   header: { paddingTop: 14, paddingBottom: 18 },
+  headerTop: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   eyebrow: {
     color: colors.accent,
     fontFamily: fontFamilies.accentBold,
@@ -115,6 +240,35 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1.4,
   },
+  statusPill: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.line,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusDot: {
+    borderRadius: radii.pill,
+    height: 7,
+    width: 7,
+  },
+  statusDotLive: { backgroundColor: colors.accent },
+  statusDotDemo: { backgroundColor: colors.warning },
+  statusText: { color: colors.muted, fontSize: 11, fontWeight: '700' },
+  totalBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+    borderRadius: radii.pill,
+    height: 16,
+    justifyContent: 'center',
+    minWidth: 16,
+    paddingHorizontal: 4,
+  },
+  totalBadgeText: { color: colors.surface, fontSize: 10, fontWeight: '800' },
   title: {
     color: colors.ink,
     fontFamily: fontFamilies.displayExtraBold,
@@ -123,6 +277,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   subtitle: { color: colors.muted, fontSize: 13, marginTop: 7 },
+  headerError: { color: colors.danger, fontSize: 12, marginTop: 8 },
   row: {
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -166,5 +321,24 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 8,
     textAlign: 'center',
+  },
+  actionButton: {
+    backgroundColor: colors.ink,
+    borderRadius: radii.pill,
+    marginTop: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+  },
+  actionButtonText: { color: colors.surface, fontSize: 14, fontWeight: '800' },
+  demoToggle: {
+    marginTop: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  demoToggleText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
 });

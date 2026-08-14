@@ -30,7 +30,6 @@ export function RecommendationRail({
   style,
   ...props
 }: RecommendationRailProps) {
-
   return (
     <View {...props} style={[styles.container, style]}>
       <View style={styles.header}>

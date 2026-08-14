@@ -1,7 +1,6 @@
 # IceGear MVP 데이터 모델
 
-**상태:** `T00`의 MVP 데이터 결정을 확정했습니다. 현재 적용 기준인 `supabase/migrations/0001_init.sql`에는
-`profile_sports`/like/Storage 정책이 없고 publication RLS가 확정 정책보다 넓으므로, 이 문서의 목표 모델은 후속 순서형 migration에서 구현해야 합니다.
+ **상태:** `T00`~`T60` 및 `T90` 데이터 모델 구현이 완료되었습니다. `0002_profile_reactions.sql` 및 `0003_storage_realtime.sql` 마이그레이션, `profile_sports`, one-like, signed storage 정책, publication RLS가 반영되고 검증되었습니다.
 
 현재 `packages/domain` 계약은 저장소의 가장 강한 구현 근거입니다. ski/hockey sport, 판매자 소유 listing,
 seller와 transaction, community post/comment/reaction, report, profile/onboarding을 모델링합니다.
