@@ -619,7 +619,7 @@ set search_path = public
 as $$
 declare
   current_actor uuid := auth.uid();
-  current_role public.app_role;
+  current_app_role public.app_role;
   event_action text;
   event_target_type text;
 begin
@@ -628,13 +628,13 @@ begin
   end if;
 
   select profile.role
-  into current_role
+  into current_app_role
   from public.profiles profile
   where profile.id = current_actor
     and profile.role in ('moderator', 'admin')
     and not profile.is_banned;
 
-  if current_role is null then
+  if current_app_role is null then
     return new;
   end if;
 
@@ -663,7 +663,7 @@ begin
     )
     values (
       current_actor,
-      current_role,
+      current_app_role,
       event_target_type,
       new.id,
       event_action,

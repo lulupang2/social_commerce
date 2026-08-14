@@ -167,18 +167,18 @@ values (
 
 select results_eq(
   $sql$
-    select enumlabel::text
+    select enumlabel::text collate "C"
     from pg_enum
     where enumtypid = 'public.community_post_type'::regtype
     order by enumsortorder
   $sql$,
   $values$
     values
-      ('discussion'::text),
-      ('question'::text),
-      ('guide'::text),
-      ('meetup'::text),
-      ('review'::text)
+      ('discussion'::text collate "C"),
+      ('question'::text collate "C"),
+      ('guide'::text collate "C"),
+      ('meetup'::text collate "C"),
+      ('review'::text collate "C")
   $values$,
   'community post types match the shared domain contract'
 );
@@ -527,28 +527,28 @@ reset role;
 
 select results_eq(
   $sql$
-    select column_name::text
+    select column_name::text collate "C"
     from information_schema.columns
     where table_schema = 'public'
       and table_name = 'public_seller_profiles'
     order by ordinal_position
   $sql$,
   $values$
-    values ('id'::text), ('handle'::text), ('display_name'::text), ('avatar_url'::text)
+    values ('id'::text collate "C"), ('handle'::text collate "C"), ('display_name'::text collate "C"), ('avatar_url'::text collate "C")
   $values$,
   'the public seller projection contains only its four approved fields'
 );
 
 select results_eq(
   $sql$
-    select column_name::text
+    select column_name::text collate "C"
     from information_schema.columns
     where table_schema = 'public'
       and table_name = 'public_community_authors'
     order by ordinal_position
   $sql$,
   $values$
-    values ('id'::text), ('display_name'::text), ('avatar_url'::text)
+    values ('id'::text collate "C"), ('display_name'::text collate "C"), ('avatar_url'::text collate "C")
   $values$,
   'the public author projection excludes bio, role, and ban state'
 );
