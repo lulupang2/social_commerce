@@ -38,7 +38,7 @@ export function HomeListingCard({
   const navigationLabel = `${listing.title}, ${formatPrice(listing)}, ${location}`;
 
   return (
-    <View style={[styles.shell, rail && styles.rail, style]}>
+    <View style={[rail ? styles.railShell : styles.gridShell, style]}>
       <Pressable
         accessibilityHint="상품 상세 화면으로 이동합니다"
         accessibilityLabel={navigationLabel}
@@ -99,7 +99,7 @@ export function HomeListingCard({
 }
 
 const styles = StyleSheet.create({
-  shell: {
+  gridShell: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radii.lg,
@@ -110,9 +110,18 @@ const styles = StyleSheet.create({
     position: 'relative',
     ...elevation.low,
   },
-  rail: {
-    flex: 0,
+  railShell: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 224,
+    overflow: 'hidden',
+    position: 'relative',
     width: 224,
+    ...elevation.low,
   },
   navigation: {
     borderRadius: radii.lg,
