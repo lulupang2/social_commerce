@@ -54,7 +54,9 @@ export function HomeListingCard({
       >
         <ListingImage
           aspectRatio={rail ? 1.14 : 1.08}
+          category={listing.category}
           image={listing.images[0]}
+          sport={listing.sport}
           status={listing.status}
           title={listing.title}
         />

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { sportLabels, statusLabels } from '../../lib/format';
+import { getListingPlaceholderImage } from '../../lib/media/placeholders';
 import { colors, radii, spacing } from '../../lib/theme';
 import { AppText } from '../../lib/typography';
 import { AppIcon } from '../ui/AppIcon';
@@ -28,10 +29,12 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export function ListingDetailGallery({ images, sport, title, status }: ListingDetailGalleryProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [failedIndices, setFailedIndices] = useState<Record<number, boolean>>({});
+  const [placeholderFailed, setPlaceholderFailed] = useState(false);
 
   const validImages = images ?? [];
   const hasImages = validImages.length > 0;
   const isUnavailable = status === 'sold' || status === 'reserved' || status === 'removed';
+  const placeholderUri = getListingPlaceholderImage({ sport, title });
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffset = event.nativeEvent.contentOffset.x;
@@ -61,14 +64,12 @@ export function ListingDetailGallery({ images, sport, title, status }: ListingDe
             {validImages.map((img, idx) => {
               const uri = img.url;
               const isFailed = failedIndices[idx];
-              const altText =
-                img.altText || `${title} 상품 이미지 ${idx + 1}/${validImages.length}`;
 
               return (
-                <View key={img.url + idx} style={styles.slide}>
-                  {uri && !isFailed ? (
+                <View key={`${uri}-${idx}`} style={styles.slide}>
+                  {!isFailed ? (
                     <Image
-                      accessibilityLabel={altText}
+                      accessibilityLabel={img.altText || `${title} 사진 ${idx + 1}`}
                       onError={() => handleImageError(idx)}
                       resizeMode="cover"
                       source={{ uri }}
@@ -76,13 +77,13 @@ export function ListingDetailGallery({ images, sport, title, status }: ListingDe
                     />
                   ) : (
                     <View
-                      accessibilityLabel={`${title} 이미지 로드 실패`}
+                      accessibilityLabel={`${title} 사진 로드 실패`}
                       accessibilityRole="image"
-                      style={styles.fallbackSlide}
+                      style={styles.fallbackContainer}
                     >
-                      <AppIcon color={colors.textSubtle} name="image" size={48} />
+                      <AppIcon color={colors.textSubtle} name="warning" size={40} />
                       <AppText style={styles.fallbackText} variant="caption">
-                        {sportLabels[sport]} 장비 이미지
+                        이미지를 불러올 수 없습니다
                       </AppText>
                     </View>
                   )}
@@ -99,6 +100,14 @@ export function ListingDetailGallery({ images, sport, title, status }: ListingDe
             </View>
           ) : null}
         </View>
+      ) : !placeholderFailed ? (
+        <Image
+          accessibilityLabel={`${title} 대표 사진`}
+          onError={() => setPlaceholderFailed(true)}
+          resizeMode="cover"
+          source={{ uri: placeholderUri }}
+          style={styles.image}
+        />
       ) : (
         <View
           accessibilityLabel={`${title} 이미지 없음`}

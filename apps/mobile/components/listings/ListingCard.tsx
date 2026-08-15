@@ -60,7 +60,9 @@ export function ListingCard({
       >
         <ListingImage
           aspectRatio={horizontal ? 1 : 1.08}
+          category={listing.category}
           image={listing.images[0]}
+          sport={listing.sport}
           status={listing.status}
           style={horizontal ? styles.horizontalImage : undefined}
           title={listing.title}
