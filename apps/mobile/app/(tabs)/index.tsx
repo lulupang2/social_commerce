@@ -214,7 +214,7 @@ export default function MarketHomeScreen() {
                 query={query}
               />
 
-              {!query && recommendedListings.length > 0 ? (
+              {!query ? (
                 <HomeRecommendationRail
                   favoriteIds={favoriteIds}
                   listings={recommendedListings}
