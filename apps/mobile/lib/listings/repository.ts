@@ -198,7 +198,7 @@ function serializeLocation(location: CreateListingPayload['location']): string |
 
 function getPriceAndCurrency(payload: CreateListingPayload): { amount: number; currency: string } {
   if (typeof payload.price === 'number') {
-    return { amount: payload.price, currency: 'USD' };
+    return { amount: payload.price, currency: (payload.currency ?? 'USD').toUpperCase() };
   }
 
   return {

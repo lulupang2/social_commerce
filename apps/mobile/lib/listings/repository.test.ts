@@ -260,3 +260,81 @@ test('createListingRepository create rolls back draft listing if image row inser
   assert.equal(result.error?.code, 'request_failed');
   assert.equal(deletedListingId, VALID_LISTING_ID);
 });
+
+test('createListingRepository create preserves selected currency for numeric price payloads', async () => {
+  let insertedListing: Record<string, unknown> | null = null;
+
+  const mockClient = {
+    auth: {
+      async getUser() {
+        return { data: { user: { id: VALID_SELLER_ID } }, error: null };
+      },
+    },
+    from(tableName: string) {
+      if (tableName === 'sports') {
+        return {
+          select() {
+            return {
+              eq() {
+                return this;
+              },
+              maybeSingle() {
+                return Promise.resolve({ data: { id: VALID_SPORT_ID }, error: null });
+              },
+            };
+          },
+        };
+      }
+      if (tableName === 'listings') {
+        return {
+          insert(row: Record<string, unknown>) {
+            insertedListing = row;
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({
+                      data: {
+                        ...row,
+                        id: VALID_LISTING_ID,
+                        created_at: '2026-08-14T10:00:00.000Z',
+                        updated_at: '2026-08-14T10:00:00.000Z',
+                        sports: { slug: 'ski' },
+                      },
+                      error: null,
+                    });
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+      if (tableName === 'listing_images') {
+        return {
+          async insert() {
+            return { error: null };
+          },
+        };
+      }
+      throw new Error(`Unexpected table ${tableName}`);
+    },
+  } as unknown as SupabaseClient;
+
+  const repo = createListingRepository(mockClient);
+  const result = await repo.create({
+    sport: 'ski',
+    category: 'equipment',
+    title: 'KRW Ski',
+    description: 'A ski listed in KRW',
+    price: 350000,
+    currency: 'krw',
+    condition: 'good',
+    details: { sport: 'ski' },
+  });
+
+  assert.equal(result.error, null);
+  assert.ok(insertedListing);
+  assert.equal((insertedListing as Record<string, unknown>).currency, 'KRW');
+  assert.equal(result.data?.price.currency, 'KRW');
+});
