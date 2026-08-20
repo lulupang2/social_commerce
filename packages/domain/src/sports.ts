@@ -1,66 +1,68 @@
 import { z } from 'zod';
 
-export const SPORTS = ['ski', 'hockey'] as const;
+export const SPORTS = ['surf', 'tennis'] as const;
 export type Sport = (typeof SPORTS)[number];
 export const sportSchema = z.enum(SPORTS);
 
 export const SPORT_LABELS: Record<Sport, string> = {
-  ski: 'Ski',
-  hockey: 'Hockey',
+  surf: '서핑',
+  tennis: '테니스',
 };
 
-export const SKI_DISCIPLINES = [
-  'alpine',
-  'cross_country',
-  'freeride',
-  'freestyle',
-  'touring',
-  'telemark',
+export const SURF_DISCIPLINES = [
+  'shortboard',
+  'longboard',
+  'funboard',
+  'fish',
+  'sup',
+  'bodyboard',
+  'foil',
   'other',
 ] as const;
-export type SkiDiscipline = (typeof SKI_DISCIPLINES)[number];
-export const skiDisciplineSchema = z.enum(SKI_DISCIPLINES);
+export type SurfDiscipline = (typeof SURF_DISCIPLINES)[number];
+export const surfDisciplineSchema = z.enum(SURF_DISCIPLINES);
 
-export const HOCKEY_FORMATS = ['ice', 'street', 'roller', 'other'] as const;
-export type HockeyFormat = (typeof HOCKEY_FORMATS)[number];
-export const hockeyFormatSchema = z.enum(HOCKEY_FORMATS);
+export const SURF_EQUIPMENT_TYPES = [
+  'surfboard',
+  'wetsuit',
+  'fins',
+  'leash',
+  'boardbag',
+  'wax_accessories',
+  'other',
+] as const;
+export type SurfEquipmentType = (typeof SURF_EQUIPMENT_TYPES)[number];
+export const surfEquipmentTypeSchema = z.enum(SURF_EQUIPMENT_TYPES);
 
-export const SKI_EQUIPMENT_TYPES = [
-  'skis',
-  'boots',
-  'bindings',
-  'poles',
-  'helmet',
-  'goggles',
-  'jacket',
-  'pants',
-  'gloves',
+export const FIN_SYSTEMS = ['fcs', 'fcs2', 'futures', 'single_box', 'other'] as const;
+export type FinSystem = (typeof FIN_SYSTEMS)[number];
+export const finSystemSchema = z.enum(FIN_SYSTEMS);
+
+export const WETSUIT_THICKNESSES = ['2mm', '3_2mm', '4_3mm', '5_4mm', 'other'] as const;
+export type WetsuitThickness = (typeof WETSUIT_THICKNESSES)[number];
+export const wetsuitThicknessSchema = z.enum(WETSUIT_THICKNESSES);
+
+export const TENNIS_EQUIPMENT_TYPES = [
+  'racket',
   'bag',
+  'shoes',
+  'apparel',
+  'balls',
+  'strings_grips',
   'other',
 ] as const;
-export type SkiEquipmentType = (typeof SKI_EQUIPMENT_TYPES)[number];
-export const skiEquipmentTypeSchema = z.enum(SKI_EQUIPMENT_TYPES);
+export type TennisEquipmentType = (typeof TENNIS_EQUIPMENT_TYPES)[number];
+export const tennisEquipmentTypeSchema = z.enum(TENNIS_EQUIPMENT_TYPES);
 
-export const HOCKEY_EQUIPMENT_TYPES = [
-  'stick',
-  'skates',
-  'helmet',
-  'gloves',
-  'shoulder_pads',
-  'elbow_pads',
-  'shin_guards',
-  'pants',
-  'jersey',
-  'bag',
-  'goalie_gear',
+export const TENNIS_PLAY_STYLES = [
+  'baseline_aggressive',
+  'all_court',
+  'serve_volley',
+  'recreational',
   'other',
 ] as const;
-export type HockeyEquipmentType = (typeof HOCKEY_EQUIPMENT_TYPES)[number];
-export const hockeyEquipmentTypeSchema = z.enum(HOCKEY_EQUIPMENT_TYPES);
-
-export const HOCKEY_POSITIONS = ['forward', 'defense', 'goalie', 'any'] as const;
-export type HockeyPosition = (typeof HOCKEY_POSITIONS)[number];
-export const hockeyPositionSchema = z.enum(HOCKEY_POSITIONS);
+export type TennisPlayStyle = (typeof TENNIS_PLAY_STYLES)[number];
+export const tennisPlayStyleSchema = z.enum(TENNIS_PLAY_STYLES);
 
 export const HANDEDNESSES = ['left', 'right'] as const;
 export type Handedness = (typeof HANDEDNESSES)[number];
@@ -74,8 +76,8 @@ export const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'expert'] a
 export type SkillLevel = (typeof SKILL_LEVELS)[number];
 export const skillLevelSchema = z.enum(SKILL_LEVELS);
 
-export const SKI_LISTING_REQUIRED_DETAIL_FIELDS = ['sport'] as const;
-export const SKI_LISTING_OPTIONAL_DETAIL_FIELDS = [
+export const SURF_LISTING_REQUIRED_DETAIL_FIELDS = ['sport'] as const;
+export const SURF_LISTING_OPTIONAL_DETAIL_FIELDS = [
   'brand',
   'model',
   'year',
@@ -85,16 +87,16 @@ export const SKI_LISTING_OPTIONAL_DETAIL_FIELDS = [
   'notes',
   'equipmentType',
   'discipline',
-  'lengthCm',
-  'waistWidthMm',
-  'radiusM',
-  'bootMondopointMm',
-  'bootFlex',
-  'bindingIncluded',
+  'boardLengthFeet',
+  'boardLengthCm',
+  'volumeLiters',
+  'finSystem',
+  'finIncluded',
+  'wetsuitThickness',
 ] as const;
 
-export const HOCKEY_LISTING_REQUIRED_DETAIL_FIELDS = ['sport'] as const;
-export const HOCKEY_LISTING_OPTIONAL_DETAIL_FIELDS = [
+export const TENNIS_LISTING_REQUIRED_DETAIL_FIELDS = ['sport'] as const;
+export const TENNIS_LISTING_OPTIONAL_DETAIL_FIELDS = [
   'brand',
   'model',
   'year',
@@ -103,35 +105,33 @@ export const HOCKEY_LISTING_OPTIONAL_DETAIL_FIELDS = [
   'skillLevel',
   'notes',
   'equipmentType',
-  'format',
-  'position',
+  'playStyle',
   'handedness',
-  'stickFlex',
-  'stickLengthCm',
-  'curve',
-  'kickPoint',
-  'skateSize',
-  'skateWidth',
+  'headSizeSqIn',
+  'weightGrams',
+  'gripSize',
+  'stringPattern',
+  'strung',
 ] as const;
 
-export type SkiListingRequiredDetailField =
-  (typeof SKI_LISTING_REQUIRED_DETAIL_FIELDS)[number];
-export type SkiListingOptionalDetailField =
-  (typeof SKI_LISTING_OPTIONAL_DETAIL_FIELDS)[number];
-export type HockeyListingRequiredDetailField =
-  (typeof HOCKEY_LISTING_REQUIRED_DETAIL_FIELDS)[number];
-export type HockeyListingOptionalDetailField =
-  (typeof HOCKEY_LISTING_OPTIONAL_DETAIL_FIELDS)[number];
+export type SurfListingRequiredDetailField =
+  (typeof SURF_LISTING_REQUIRED_DETAIL_FIELDS)[number];
+export type SurfListingOptionalDetailField =
+  (typeof SURF_LISTING_OPTIONAL_DETAIL_FIELDS)[number];
+export type TennisListingRequiredDetailField =
+  (typeof TENNIS_LISTING_REQUIRED_DETAIL_FIELDS)[number];
+export type TennisListingOptionalDetailField =
+  (typeof TENNIS_LISTING_OPTIONAL_DETAIL_FIELDS)[number];
 
 /** UI-safe field discovery without guessing JSON keys. */
 export const LISTING_DETAIL_FIELDS_BY_SPORT = {
-  ski: {
-    required: SKI_LISTING_REQUIRED_DETAIL_FIELDS,
-    optional: SKI_LISTING_OPTIONAL_DETAIL_FIELDS,
+  surf: {
+    required: SURF_LISTING_REQUIRED_DETAIL_FIELDS,
+    optional: SURF_LISTING_OPTIONAL_DETAIL_FIELDS,
   },
-  hockey: {
-    required: HOCKEY_LISTING_REQUIRED_DETAIL_FIELDS,
-    optional: HOCKEY_LISTING_OPTIONAL_DETAIL_FIELDS,
+  tennis: {
+    required: TENNIS_LISTING_REQUIRED_DETAIL_FIELDS,
+    optional: TENNIS_LISTING_OPTIONAL_DETAIL_FIELDS,
   },
 } as const satisfies Record<
   Sport,
@@ -152,49 +152,43 @@ const listingDetailBaseFields = {
   notes: z.string().trim().min(1).max(1_000).optional(),
 };
 
-/**
- * `sport` is required in validated output. The default keeps the existing
- * mobile create payload valid while giving repositories a canonical discriminator.
- */
-export const skiListingDetailsSchema = z
+export const surfListingDetailsSchema = z
   .object({
     ...listingDetailBaseFields,
-    sport: z.literal('ski').default('ski'),
-    equipmentType: skiEquipmentTypeSchema.optional(),
-    discipline: skiDisciplineSchema.optional(),
-    lengthCm: z.number().finite().positive().max(300).optional(),
-    waistWidthMm: z.number().finite().positive().max(200).optional(),
-    radiusM: z.number().finite().positive().max(100).optional(),
-    bootMondopointMm: z.number().int().min(100).max(400).optional(),
-    bootFlex: z.number().int().positive().max(200).optional(),
-    bindingIncluded: z.boolean().optional(),
+    sport: z.literal('surf').default('surf'),
+    equipmentType: surfEquipmentTypeSchema.optional(),
+    discipline: surfDisciplineSchema.optional(),
+    boardLengthFeet: z.number().finite().positive().max(20).optional(),
+    boardLengthCm: z.number().finite().positive().max(600).optional(),
+    volumeLiters: z.number().finite().positive().max(300).optional(),
+    finSystem: finSystemSchema.optional(),
+    finIncluded: z.boolean().optional(),
+    wetsuitThickness: wetsuitThicknessSchema.optional(),
   })
   .strict();
 
-export type SkiListingDetails = z.infer<typeof skiListingDetailsSchema>;
+export type SurfListingDetails = z.infer<typeof surfListingDetailsSchema>;
 
-export const hockeyListingDetailsSchema = z
+export const tennisListingDetailsSchema = z
   .object({
     ...listingDetailBaseFields,
-    sport: z.literal('hockey').default('hockey'),
-    equipmentType: hockeyEquipmentTypeSchema.optional(),
-    format: hockeyFormatSchema.optional(),
-    position: hockeyPositionSchema.optional(),
+    sport: z.literal('tennis').default('tennis'),
+    equipmentType: tennisEquipmentTypeSchema.optional(),
+    playStyle: tennisPlayStyleSchema.optional(),
     handedness: handednessSchema.optional(),
-    stickFlex: z.number().int().positive().max(200).optional(),
-    stickLengthCm: z.number().finite().positive().max(250).optional(),
-    curve: z.string().trim().min(1).max(80).optional(),
-    kickPoint: z.string().trim().min(1).max(80).optional(),
-    skateSize: z.number().finite().positive().max(20).optional(),
-    skateWidth: z.string().trim().min(1).max(20).optional(),
+    headSizeSqIn: z.number().finite().positive().max(150).optional(),
+    weightGrams: z.number().finite().positive().max(600).optional(),
+    gripSize: z.string().trim().min(1).max(20).optional(),
+    stringPattern: z.string().trim().min(1).max(20).optional(),
+    strung: z.boolean().optional(),
   })
   .strict();
 
-export type HockeyListingDetails = z.infer<typeof hockeyListingDetailsSchema>;
+export type TennisListingDetails = z.infer<typeof tennisListingDetailsSchema>;
 
-export type SportListingDetails = SkiListingDetails | HockeyListingDetails;
+export type SportListingDetails = SurfListingDetails | TennisListingDetails;
 
 export const listingDetailsSchemaBySport = {
-  ski: skiListingDetailsSchema,
-  hockey: hockeyListingDetailsSchema,
+  surf: surfListingDetailsSchema,
+  tennis: tennisListingDetailsSchema,
 } satisfies Record<Sport, z.ZodTypeAny>;

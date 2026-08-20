@@ -8,9 +8,9 @@ import {
 import { listingConditionSchema } from './listings.js';
 import { profileSportPreferenceSchema } from './profiles.js';
 import {
-  hockeyListingDetailsSchema,
-  skiListingDetailsSchema,
   SPORTS,
+  surfListingDetailsSchema,
+  tennisListingDetailsSchema,
 } from './sports.js';
 
 export const RECOMMENDATION_REASON_CODES = [
@@ -84,33 +84,33 @@ const recommendationListingCoreFields = {
   favoriteCount: z.number().int().nonnegative(),
 };
 
-export const skiRecommendationListingInputSchema = z
+export const surfRecommendationListingInputSchema = z
   .object({
     ...recommendationListingCoreFields,
-    sport: z.literal('ski'),
-    details: skiListingDetailsSchema,
+    sport: z.literal('surf'),
+    details: surfListingDetailsSchema,
   })
   .strict();
 
-export type SkiRecommendationListingInput = z.infer<
-  typeof skiRecommendationListingInputSchema
+export type SurfRecommendationListingInput = z.infer<
+  typeof surfRecommendationListingInputSchema
 >;
 
-export const hockeyRecommendationListingInputSchema = z
+export const tennisRecommendationListingInputSchema = z
   .object({
     ...recommendationListingCoreFields,
-    sport: z.literal('hockey'),
-    details: hockeyListingDetailsSchema,
+    sport: z.literal('tennis'),
+    details: tennisListingDetailsSchema,
   })
   .strict();
 
-export type HockeyRecommendationListingInput = z.infer<
-  typeof hockeyRecommendationListingInputSchema
+export type TennisRecommendationListingInput = z.infer<
+  typeof tennisRecommendationListingInputSchema
 >;
 
 export const recommendationListingInputSchema = z.discriminatedUnion('sport', [
-  skiRecommendationListingInputSchema,
-  hockeyRecommendationListingInputSchema,
+  surfRecommendationListingInputSchema,
+  tennisRecommendationListingInputSchema,
 ]);
 
 export type RecommendationListingInput = z.infer<

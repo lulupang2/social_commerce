@@ -21,40 +21,41 @@ const SECOND_MEDIA_ID = '88888888-8888-4888-8888-888888888888';
 const NOW = '2026-08-14T00:00:00.000Z';
 
 const existingMobileCreatePayload = {
-  sport: 'ski',
-  title: 'All-mountain skis',
-  description: 'Skis used for one season.',
+  sport: 'surf',
+  title: '숏보드 서프보드 6.0ft',
+  description: '한 시즌 사용한 상태 좋은 서프보드입니다.',
   category: 'equipment',
   condition: 'good',
-  price: 350_000,
+  price: 450_000,
   currency: 'krw',
-  location: 'Seoul',
+  location: 'Yangyang',
   details: {
-    brand: 'Salomon',
-    model: 'QST 98',
-    size: '176 cm',
+    brand: 'Channel Islands',
+    model: 'Happy Everyday',
+    boardLengthFeet: 6.0,
+    volumeLiters: 32.5,
   },
 } satisfies CreateListingPayload;
 
 const existingPublicImage = {
   url: 'https://signed.example.invalid/image?token=opaque',
+  position: 0,
+  isPrimary: true,
   expiresAt: '2026-08-14T00:10:00.000Z',
-  altText: 'A pair of skis',
-  sortOrder: 0,
 } satisfies ListingImage;
 
 const existingPublicListing = {
   id: LISTING_ID,
   sellerId: USER_ID,
-  sport: 'ski',
+  sport: 'surf',
   category: 'equipment',
   status: 'active',
   condition: 'good',
-  title: 'All-mountain skis',
-  description: 'Skis used for one season.',
-  price: { amount: 350_000, currency: 'KRW' },
+  title: '숏보드 서프보드 6.0ft',
+  description: '한 시즌 사용한 상태 좋은 서프보드입니다.',
+  price: { amount: 450_000, currency: 'KRW' },
   images: [existingPublicImage],
-  details: { sport: 'ski', brand: 'Salomon', lengthCm: 176 },
+  details: { sport: 'surf', brand: 'Channel Islands', boardLengthFeet: 6.0, volumeLiters: 32.5 },
   createdAt: NOW,
   updatedAt: NOW,
 } satisfies Listing;
@@ -62,62 +63,63 @@ const existingPublicListing = {
 const existingCommunityPostType: CommunityPostType = 'discussion';
 
 test('sport detail contracts expose explicit fields and validate canonical output', () => {
-  assert.deepEqual(domain.LISTING_DETAIL_FIELDS_BY_SPORT.ski.required, ['sport']);
+  assert.deepEqual(domain.LISTING_DETAIL_FIELDS_BY_SPORT.surf.required, ['sport']);
   assert.equal(
-    domain.LISTING_DETAIL_FIELDS_BY_SPORT.ski.optional.includes('waistWidthMm'),
+    domain.LISTING_DETAIL_FIELDS_BY_SPORT.surf.optional.includes('volumeLiters'),
     true,
   );
   assert.equal(
-    domain.LISTING_DETAIL_FIELDS_BY_SPORT.hockey.optional.includes('stickFlex'),
+    domain.LISTING_DETAIL_FIELDS_BY_SPORT.tennis.optional.includes('headSizeSqIn'),
     true,
   );
 
-  const ski = domain.skiListingDetailsSchema.parse({
-    equipmentType: 'skis',
-    discipline: 'freeride',
+  const surf = domain.surfListingDetailsSchema.parse({
+    equipmentType: 'surfboard',
+    discipline: 'shortboard',
     skillLevel: 'intermediate',
-    lengthCm: 176,
-    waistWidthMm: 98,
+    boardLengthFeet: 6.0,
+    volumeLiters: 32.5,
   });
-  assert.equal(ski.sport, 'ski');
+  assert.equal(surf.sport, 'surf');
 
-  const hockey = domain.hockeyListingDetailsSchema.parse({
-    sport: 'hockey',
-    equipmentType: 'stick',
-    format: 'ice',
-    handedness: 'left',
-    stickFlex: 77,
+  const tennis = domain.tennisListingDetailsSchema.parse({
+    sport: 'tennis',
+    equipmentType: 'racket',
+    playStyle: 'all_court',
+    handedness: 'right',
+    headSizeSqIn: 100,
+    weightGrams: 300,
   });
-  assert.equal(hockey.sport, 'hockey');
+  assert.equal(tennis.sport, 'tennis');
 });
 
 test('sport detail contracts reject mismatches, unknown keys, and unsafe numbers', () => {
   assert.equal(
-    domain.skiListingDetailsSchema.safeParse({ sport: 'hockey', lengthCm: 176 }).success,
+    domain.surfListingDetailsSchema.safeParse({ sport: 'tennis', boardLengthFeet: 6.0 }).success,
     false,
   );
   assert.equal(
-    domain.skiListingDetailsSchema.safeParse({ sport: 'ski', hiddenRole: 'admin' }).success,
+    domain.surfListingDetailsSchema.safeParse({ sport: 'surf', hiddenRole: 'admin' }).success,
     false,
   );
   assert.equal(
-    domain.hockeyListingDetailsSchema.safeParse({
-      sport: 'hockey',
-      equipmentType: 'stick',
-      stickFlex: Number.POSITIVE_INFINITY,
+    domain.tennisListingDetailsSchema.safeParse({
+      sport: 'tennis',
+      equipmentType: 'racket',
+      weightGrams: Number.POSITIVE_INFINITY,
     }).success,
     false,
   );
   assert.equal(
-    domain.hockeyListingDetailsSchema.safeParse({ sport: 'hockey', skateSize: -1 }).success,
+    domain.tennisListingDetailsSchema.safeParse({ sport: 'tennis', headSizeSqIn: -1 }).success,
     false,
   );
 });
 
 test('existing mobile create and public listing shapes remain supported', () => {
   const created = domain.createListingSchema.parse(existingMobileCreatePayload);
-  assert.equal(created.sport, 'ski');
-  assert.equal(created.details.sport, 'ski');
+  assert.equal(created.sport, 'surf');
+  assert.equal(created.details.sport, 'surf');
   assert.equal(created.currency, 'KRW');
 
   assert.equal(domain.listingImageSchema.safeParse(existingPublicImage).success, true);
@@ -143,8 +145,8 @@ test('listing creation rejects client authority, unsafe values, and mismatched d
   assert.equal(
     domain.createListingSchema.safeParse({
       ...existingMobileCreatePayload,
-      sport: 'hockey',
-      details: { sport: 'ski', equipmentType: 'skis' },
+      sport: 'tennis',
+      details: { sport: 'surf', equipmentType: 'surfboard' },
     }).success,
     false,
   );
@@ -157,16 +159,16 @@ test('canonical onboarding accepts sport-specific skill, size, and equipment pre
       {
         sportId: PROFILE_SPORT_ID,
         skillLevel: 'intermediate',
-        sizePreferences: { bootMondopointMm: 255, skiLengthCm: 170 },
-        preferences: { discipline: 'all_mountain' },
+        sizePreferences: { boardLengthFeet: 6.0, volumeLiters: 33 },
+        preferences: { surfDiscipline: 'shortboard' },
       },
     ],
     acceptTerms: true,
   });
 
   assert.equal(result.sports[0]?.skillLevel, 'intermediate');
-  assert.equal(result.sports[0]?.sizePreferences?.bootMondopointMm, 255);
-  assert.equal(result.sports[0]?.preferences?.discipline, 'all_mountain');
+  assert.equal(result.sports[0]?.sizePreferences?.boardLengthFeet, 6.0);
+  assert.equal(result.sports[0]?.preferences?.surfDiscipline, 'shortboard');
 });
 
 test('profile preference contracts reject duplicates, invalid values, and authority keys', () => {
@@ -182,7 +184,7 @@ test('profile preference contracts reject duplicates, invalid values, and author
   assert.equal(
     domain.profileSportPreferenceSchema.safeParse({
       sportId: SECOND_SPORT_ID,
-      preferences: { discipline: 'all_mountain', role: 'admin' },
+      preferences: { surfDiscipline: 'shortboard', role: 'admin' },
     }).success,
     false,
   );
@@ -267,14 +269,13 @@ test('publication transitions enforce seller, author, and operator boundaries', 
     true,
   );
 });
-
 test('signed media contracts never accept public fallback paths and reject duplicate state', () => {
   const signed = {
     id: MEDIA_ID,
     state: 'signed',
     url: 'https://signed.example.invalid/image?token=opaque',
     expiresAt: '2026-08-14T00:10:00.000Z',
-    altText: 'All-mountain skis',
+    altText: 'Shortboard surfboard',
     sortOrder: 0,
   } as const;
 
@@ -301,6 +302,13 @@ test('signed media contracts never accept public fallback paths and reject dupli
   assert.equal(
     domain.listingMediaCollectionSchema.safeParse([
       signed,
+      { ...signed, id: SECOND_MEDIA_ID, sortOrder: 1 },
+    ]).success,
+    true,
+  );
+  assert.equal(
+    domain.listingMediaCollectionSchema.safeParse([
+      signed,
       { ...signed, id: SECOND_MEDIA_ID },
     ]).success,
     false,
@@ -312,24 +320,24 @@ const recommendationInput = {
     {
       sportId: PROFILE_SPORT_ID,
       skillLevel: 'intermediate',
-      sizePreferences: { skiLengthCm: 170 },
-      preferences: { discipline: 'all_mountain' },
+      sizePreferences: { boardLengthFeet: 6.0 },
+      preferences: { surfDiscipline: 'shortboard' },
     },
   ],
   listings: [
     {
       listingId: LISTING_ID,
       sportId: PROFILE_SPORT_ID,
-      sport: 'ski',
+      sport: 'surf',
       status: 'active',
       condition: 'good',
       createdAt: NOW,
       favoriteCount: 5,
       details: {
-        equipmentType: 'skis',
-        discipline: 'freeride',
+        equipmentType: 'surfboard',
+        discipline: 'shortboard',
         skillLevel: 'intermediate',
-        lengthCm: 172,
+        boardLengthFeet: 6.0,
       },
     },
   ],
@@ -340,7 +348,7 @@ test('recommendation input is strict, deterministic, and safe for rule evaluatio
   const first = domain.recommendationInputSchema.parse(recommendationInput);
   const second = domain.recommendationInputSchema.parse(recommendationInput);
   assert.deepEqual(first, second);
-  assert.equal(first.listings[0]?.details.sport, 'ski');
+  assert.equal(first.listings[0]?.details.sport, 'surf');
 
   assert.equal(
     domain.recommendationInputSchema.safeParse({

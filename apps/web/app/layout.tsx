@@ -1,10 +1,18 @@
-import type { Metadata } from 'next';
-
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'IceGear',
-  description: 'IceGear web foundation',
+  title: 'SummerGear - 하계 스포츠 장비 중고거래 & 커뮤니티',
+  description:
+    '서핑, 테니스 등 하계 스포츠 장비 거래와 맞춤 추천, 커뮤니티까지 한 곳에서 즐기세요.',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#0284c7',
 };
 
 export default function RootLayout({
@@ -13,7 +21,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body>{children}</body>
     </html>
   );

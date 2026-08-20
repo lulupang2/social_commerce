@@ -12,6 +12,15 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts", "env.d.ts"],
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/webview/**/*.ts",
+    "components/webview/**/*.tsx",
+    "lib/format.ts",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "env.d.ts"
+  ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.mts"]
 }

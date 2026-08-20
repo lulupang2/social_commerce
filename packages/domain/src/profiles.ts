@@ -4,34 +4,29 @@ import { httpsUrlSchema, isoTimestampSchema, uuidSchema } from './common.js';
 import { locationObjectSchema } from './listings.js';
 import {
   handednessSchema,
-  hockeyFormatSchema,
-  hockeyPositionSchema,
-  SKI_DISCIPLINES,
   skillLevelSchema,
   SPORTS,
+  surfDisciplineSchema,
+  tennisPlayStyleSchema,
+  wetsuitThicknessSchema,
 } from './sports.js';
 
 export const APPAREL_SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL'] as const;
 export type ApparelSize = (typeof APPAREL_SIZES)[number];
 export const apparelSizeSchema = z.enum(APPAREL_SIZES);
 
-export const PROTECTIVE_GEAR_SIZES = ['youth', 'junior', 'senior_s', 'senior_m', 'senior_l'] as const;
-export type ProtectiveGearSize = (typeof PROTECTIVE_GEAR_SIZES)[number];
-export const protectiveGearSizeSchema = z.enum(PROTECTIVE_GEAR_SIZES);
-
-export const PROFILE_SKI_DISCIPLINES = ['all_mountain', ...SKI_DISCIPLINES] as const;
-export type ProfileSkiDiscipline = (typeof PROFILE_SKI_DISCIPLINES)[number];
-export const profileSkiDisciplineSchema = z.enum(PROFILE_SKI_DISCIPLINES);
+export const SHOE_SIZES_MM = [220, 230, 240, 250, 260, 270, 280, 290, 300] as const;
 
 export const profileSizePreferencesSchema = z
   .object({
-    footLengthMm: z.number().int().min(100).max(400).optional(),
-    bootMondopointMm: z.number().int().min(100).max(400).optional(),
-    skiLengthCm: z.number().int().min(60).max(230).optional(),
-    skateSize: z.number().finite().positive().max(20).optional(),
-    skateWidth: z.string().trim().min(1).max(20).optional(),
+    shoeSizeMm: z.number().int().min(100).max(400).optional(),
     apparelSize: apparelSizeSchema.optional(),
-    protectiveGearSize: protectiveGearSizeSchema.optional(),
+    boardLengthFeet: z.number().finite().positive().max(20).optional(),
+    volumeLiters: z.number().finite().positive().max(300).optional(),
+    wetsuitThickness: wetsuitThicknessSchema.optional(),
+    headSizeSqIn: z.number().finite().positive().max(150).optional(),
+    weightGrams: z.number().finite().positive().max(600).optional(),
+    gripSize: z.string().trim().min(1).max(20).optional(),
   })
   .strict();
 
@@ -39,9 +34,8 @@ export type ProfileSizePreferences = z.infer<typeof profileSizePreferencesSchema
 
 export const profileEquipmentPreferencesSchema = z
   .object({
-    discipline: profileSkiDisciplineSchema.optional(),
-    format: hockeyFormatSchema.optional(),
-    position: hockeyPositionSchema.optional(),
+    surfDiscipline: surfDisciplineSchema.optional(),
+    tennisPlayStyle: tennisPlayStyleSchema.optional(),
     handedness: handednessSchema.optional(),
   })
   .strict();

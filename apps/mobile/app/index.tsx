@@ -1,5 +1,6 @@
-import { Redirect } from 'expo-router';
+import React from 'react';
+import { SummerGearWebView } from '../components/webview/SummerGearWebView';
 
 export default function RootIndex() {
-  return <Redirect href="/(tabs)" />;
+  return <SummerGearWebView />;
 }

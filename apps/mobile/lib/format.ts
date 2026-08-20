@@ -9,16 +9,16 @@ import type {
 } from '@icegear/domain';
 
 export const sportLabels: Record<Sport, string> = {
-  ski: '스키',
-  hockey: '아이스하키',
+  surf: '서핑',
+  tennis: '테니스',
 };
 
 export const categoryLabels: Record<ListingCategory, string> = {
   equipment: '장비',
   apparel: '의류',
-  protective_gear: '보호장비',
-  accessories: '액세서리',
-  parts: '부품',
+  footwear: '신발',
+  protective: '보호대',
+  accessories: '용품/액세서리',
   other: '기타',
 };
 
@@ -37,6 +37,7 @@ export const statusLabels: Record<ListingStatus, string> = {
   reserved: '예약 중',
   sold: '판매 완료',
   archived: '보관됨',
+  rejected: '반려됨',
   removed: '삭제됨',
 };
 
@@ -76,5 +77,5 @@ export function formatTime(value: string, now = Date.now()): string {
 }
 
 export function initials(name: string): string {
-  return name.trim().slice(0, 1).toUpperCase() || 'I';
+  return name.trim().slice(0, 1).toUpperCase() || 'S';
 }

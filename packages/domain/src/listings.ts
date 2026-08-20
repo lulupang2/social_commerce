@@ -7,16 +7,16 @@ import {
   uuidSchema,
 } from './common.js';
 import {
-  hockeyListingDetailsSchema,
-  skiListingDetailsSchema,
+  surfListingDetailsSchema,
+  tennisListingDetailsSchema,
 } from './sports.js';
 
 export const LISTING_CATEGORIES = [
   'equipment',
   'apparel',
-  'protective_gear',
+  'footwear',
+  'protective',
   'accessories',
-  'parts',
   'other',
 ] as const;
 export type ListingCategory = (typeof LISTING_CATEGORIES)[number];
@@ -29,6 +29,7 @@ export const LISTING_STATUSES = [
   'reserved',
   'sold',
   'archived',
+  'rejected',
   'removed',
 ] as const;
 export type ListingStatus = (typeof LISTING_STATUSES)[number];
@@ -59,17 +60,13 @@ export type ListingPriceInput = z.input<typeof listingPriceInputSchema>;
 
 export const locationObjectSchema = z
   .object({
-    city: z.string().trim().min(1).max(100).optional(),
-    region: z.string().trim().min(1).max(100).optional(),
-    countryCode: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .regex(/^[A-Z]{2}$/)
-      .optional(),
-    postalCode: z.string().trim().min(1).max(20).optional(),
+    city: nonEmptyTrimmedTextSchema.max(80).optional(),
+    region: nonEmptyTrimmedTextSchema.max(80).optional(),
+    country: nonEmptyTrimmedTextSchema.max(80).optional(),
+    postalCode: nonEmptyTrimmedTextSchema.max(20).optional(),
     latitude: z.number().finite().min(-90).max(90).optional(),
     longitude: z.number().finite().min(-180).max(180).optional(),
+    raw: nonEmptyTrimmedTextSchema.max(160).optional(),
   })
   .strict();
 
@@ -82,9 +79,9 @@ export type LocationInput = z.input<typeof locationSchema>;
 export const listingImageSchema = z
   .object({
     url: httpsUrlSchema,
+    position: z.number().int().min(0).max(20),
+    isPrimary: z.boolean().default(false),
     expiresAt: isoTimestampSchema.optional(),
-    altText: z.string().trim().min(1).max(160).optional(),
-    sortOrder: z.number().int().nonnegative().optional(),
   })
   .strict();
 export type ListingImage = z.infer<typeof listingImageSchema>;
@@ -111,27 +108,27 @@ const listingCoreFields = {
   updatedAt: isoTimestampSchema,
 };
 
-export const skiListingSchema = z
+export const surfListingSchema = z
   .object({
     ...listingCoreFields,
-    sport: z.literal('ski'),
-    details: skiListingDetailsSchema,
+    sport: z.literal('surf'),
+    details: surfListingDetailsSchema,
   })
   .strict();
-export type SkiListing = z.infer<typeof skiListingSchema>;
+export type SurfListing = z.infer<typeof surfListingSchema>;
 
-export const hockeyListingSchema = z
+export const tennisListingSchema = z
   .object({
     ...listingCoreFields,
-    sport: z.literal('hockey'),
-    details: hockeyListingDetailsSchema,
+    sport: z.literal('tennis'),
+    details: tennisListingDetailsSchema,
   })
   .strict();
-export type HockeyListing = z.infer<typeof hockeyListingSchema>;
+export type TennisListing = z.infer<typeof tennisListingSchema>;
 
 export const listingSchema = z.discriminatedUnion('sport', [
-  skiListingSchema,
-  hockeyListingSchema,
+  surfListingSchema,
+  tennisListingSchema,
 ]);
 export type Listing = z.infer<typeof listingSchema>;
 
@@ -152,18 +149,14 @@ const commonCreateListingSchema = z
   })
   .strict();
 
-/**
- * Framework-agnostic write boundary shared by mobile and web. Existing clients
- * may omit details.sport; validation supplies the matching outer discriminator.
- */
 export const createListingSchema = z.discriminatedUnion('sport', [
   commonCreateListingSchema.extend({
-    sport: z.literal('ski'),
-    details: skiListingDetailsSchema,
+    sport: z.literal('surf'),
+    details: surfListingDetailsSchema,
   }),
   commonCreateListingSchema.extend({
-    sport: z.literal('hockey'),
-    details: hockeyListingDetailsSchema,
+    sport: z.literal('tennis'),
+    details: tennisListingDetailsSchema,
   }),
 ]);
 

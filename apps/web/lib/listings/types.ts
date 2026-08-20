@@ -1,7 +1,13 @@
 import type { ListingImageRow, ListingRow, ProfileRow, SportRow } from '../supabase/database.types';
+import {
+  SPORTS,
+  type Sport,
+  type SurfListingDetails,
+  type TennisListingDetails,
+} from '@icegear/domain';
 
-export const SPORTS = ['ski', 'hockey'] as const;
-export type SportSlug = (typeof SPORTS)[number];
+export { SPORTS };
+export type SportSlug = Sport;
 
 export const LISTING_CATEGORIES = [
   'equipment',
@@ -50,7 +56,7 @@ export interface MarketListing {
     amount: number;
     currency: string;
   };
-  details: Record<string, unknown>;
+  details: SurfListingDetails | TennisListingDetails | Record<string, unknown>;
   location: string | null;
   images: ListingImage[];
   publishedAt: string | null;
