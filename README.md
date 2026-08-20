@@ -98,6 +98,7 @@ cp apps/mobile/.env.example apps/mobile/.env
 ```
 
 ### 주요 환경변수
+
 - `apps/web`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `apps/mobile`: `EXPO_PUBLIC_WEB_URL` (기본값: `http://localhost:3000`), `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
