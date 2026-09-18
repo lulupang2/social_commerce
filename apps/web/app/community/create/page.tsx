@@ -1,133 +1,228 @@
 'use client';
 
-import React, { useState } from 'react';
+import type { CommunityPostType } from '@icegear/domain';
+import { CheckCircle2, LoaderCircle, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
+
 import { MobileShell } from '@/components/layout/MobileShell';
-import { Camera, Send, Waves, Trophy } from 'lucide-react';
+import { saveLocalPost } from '@/lib/data/local-store';
+import { SUMMER_COMMUNITY_POSTS, type MockCommunityPost } from '@/lib/data/summer-mock-data';
+import { triggerNativeHaptic } from '@/lib/native-bridge';
+import { createCommunityPost } from '@/lib/supabase/mutations';
+
+type Sport = 'surf' | 'tennis';
+type EditorCategory = 'tip' | 'review' | 'meetup' | 'discussion';
+
+const POST_TYPE_BY_CATEGORY: Record<EditorCategory, CommunityPostType> = {
+  tip: 'guide',
+  review: 'review',
+  meetup: 'meetup',
+  discussion: 'discussion',
+};
+
+const CATEGORY_LABELS: Record<EditorCategory, string> = {
+  tip: '스포츠 꿀팁 / 노하우',
+  review: '장비 사용기 / 시타기',
+  meetup: '세션 / 카풀 / 모임 모집',
+  discussion: '자유 수다 / Q&A',
+};
 
 export default function CommunityCreatePage() {
   const router = useRouter();
-  const [sport, setSport] = useState<'surf' | 'tennis'>('surf');
-  const [category, setCategory] = useState<'tip' | 'review' | 'meetup' | 'discussion'>('tip');
+  const [sport, setSport] = useState<Sport>('surf');
+  const [category, setCategory] = useState<EditorCategory>('tip');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [completion, setCompletion] = useState<'supabase' | 'local' | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
-
-    alert('게시글이 등록되었습니다!');
-    router.push('/community');
+  const saveDemoPost = () => {
+    const fallback =
+      SUMMER_COMMUNITY_POSTS.find((post) => post.sport === sport) ?? SUMMER_COMMUNITY_POSTS[0];
+    const post: MockCommunityPost = {
+      id: `local-post-${Date.now()}`,
+      sport,
+      sportLabel: sport === 'surf' ? '서핑' : '테니스',
+      category,
+      categoryLabel: CATEGORY_LABELS[category],
+      title: title.trim(),
+      content: content.trim(),
+      author: {
+        name: '나 (기기 데모)',
+        avatar: fallback.author.avatar,
+        level: sport === 'surf' ? '서핑 크루' : '테니스 크루',
+      },
+      likes: 0,
+      comments: 0,
+      createdAt: '방금 전',
+    };
+    return saveLocalPost(post);
   };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+
+    if (title.trim().length < 4) {
+      setError('제목을 4자 이상 입력해 주세요.');
+      triggerNativeHaptic('error');
+      return;
+    }
+    if (content.trim().length < 10) {
+      setError('다른 크루가 이해할 수 있도록 내용을 10자 이상 입력해 주세요.');
+      triggerNativeHaptic('error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const result = await createCommunityPost({
+        sport,
+        type: POST_TYPE_BY_CATEGORY[category],
+        title: title.trim(),
+        body: content.trim(),
+      });
+      if (result.ok) {
+        setCompletion('supabase');
+        triggerNativeHaptic('success');
+        return;
+      }
+      if (result.reason === 'unconfigured' || result.reason === 'unavailable') {
+        if (!saveDemoPost()) {
+          setError('브라우저 저장 공간이 부족해 데모 게시글을 저장하지 못했어요.');
+          triggerNativeHaptic('error');
+          return;
+        }
+        setCompletion('local');
+        triggerNativeHaptic('success');
+        return;
+      }
+      if (result.reason === 'unauthenticated') {
+        setError('실제 커뮤니티 글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.');
+      } else {
+        setError(result.message);
+      }
+      triggerNativeHaptic('error');
+    } catch {
+      setError('게시글을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      triggerNativeHaptic('error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (completion) {
+    return (
+      <MobileShell title="게시글 등록 완료" hideNav>
+        <div className="completion-state">
+          <div className="completion-icon">
+            <CheckCircle2 size={44} />
+          </div>
+          <p className="completion-kicker">
+            {completion === 'supabase' ? '검토 대기 중' : '기기 데모 저장 완료'}
+          </p>
+          <h1>이야기를 저장했어요</h1>
+          <p>
+            {completion === 'supabase'
+              ? '운영자 검토가 끝나면 라운지에 공개돼요.'
+              : '이 브라우저의 커뮤니티에서 바로 확인할 수 있어요.'}
+          </p>
+          <button className="btn-primary" onClick={() => router.push('/community')} type="button">
+            커뮤니티로 이동
+          </button>
+        </div>
+      </MobileShell>
+    );
+  }
 
   return (
     <MobileShell title="라운지 글쓰기" showBack hideNav>
-      <form onSubmit={handleSubmit} style={{ padding: '16px 16px 80px' }}>
-        {/* Sport Selection */}
-        <div className="form-group">
-          <label className="form-label">스포츠 라운지 선택</label>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              type="button"
-              onClick={() => setSport('surf')}
-              style={{
-                flex: 1,
-                padding: '12px',
-                borderRadius: 'var(--radius-sm)',
-                border: sport === 'surf' ? '2px solid var(--primary)' : '1px solid var(--border)',
-                background: sport === 'surf' ? 'var(--primary-light)' : 'var(--surface)',
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-              }}
-            >
-              🏄‍♂️ 서핑 (Surf)
-            </button>
-            <button
-              type="button"
-              onClick={() => setSport('tennis')}
-              style={{
-                flex: 1,
-                padding: '12px',
-                borderRadius: 'var(--radius-sm)',
-                border: sport === 'tennis' ? '2px solid var(--primary)' : '1px solid var(--border)',
-                background: sport === 'tennis' ? 'var(--primary-light)' : 'var(--surface)',
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-              }}
-            >
-              🎾 테니스 (Tennis)
-            </button>
-          </div>
-        </div>
-
-        {/* Category */}
-        <div className="form-group">
-          <label className="form-label">주제 카테고리</label>
-          <select
-            className="form-select"
-            value={category}
-            onChange={(e) =>
-              setCategory(e.target.value as 'tip' | 'review' | 'meetup' | 'discussion')
-            }
-          >
-            <option value="tip">스포츠 꿀팁 / 노하우</option>
-            <option value="review">장비 사용기 / 시타기</option>
-            <option value="meetup">세션 / 카풀 / 모임 모집</option>
-            <option value="discussion">자유 수다 / Q&A</option>
-          </select>
-        </div>
-
-        {/* Title */}
-        <div className="form-group">
-          <label className="form-label">제목</label>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="제목을 입력해주세요"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
-        </div>
-
-        {/* Content */}
-        <div className="form-group">
-          <label className="form-label">내용</label>
-          <textarea
-            className="form-textarea"
-            rows={8}
-            placeholder="하계 스포츠인들과 나누고 싶은 이야기, 장비 후기, 모임 소식을 자유롭게 공유해보세요."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            required
-          />
-        </div>
-
-        {/* Photo Upload Placeholder */}
-        <div className="form-group">
-          <div
-            style={{
-              border: '2px dashed var(--border-strong)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '16px',
-              textAlign: 'center',
-              cursor: 'pointer',
-            }}
-          >
-            <Camera size={22} color="var(--text-muted)" style={{ marginBottom: 4 }} />
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              사진 첨부하기 (선택)
+      <form onSubmit={(event) => void handleSubmit(event)}>
+        <div className="sell-form-content">
+          <div className="form-group">
+            <span className="form-label">스포츠 라운지</span>
+            <div className="segmented-control" role="group" aria-label="스포츠 라운지">
+              <button
+                aria-pressed={sport === 'surf'}
+                className={sport === 'surf' ? 'active' : ''}
+                onClick={() => setSport('surf')}
+                type="button"
+              >
+                🏄‍♂️ 서핑
+              </button>
+              <button
+                aria-pressed={sport === 'tennis'}
+                className={sport === 'tennis' ? 'active' : ''}
+                onClick={() => setSport('tennis')}
+                type="button"
+              >
+                🎾 테니스
+              </button>
             </div>
           </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="post-category">
+              주제
+            </label>
+            <select
+              className="form-select"
+              id="post-category"
+              onChange={(event) => setCategory(event.target.value as EditorCategory)}
+              value={category}
+            >
+              {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="post-title">
+              제목
+            </label>
+            <input
+              className="form-input"
+              id="post-title"
+              maxLength={160}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="무엇을 나누고 싶나요?"
+              value={title}
+            />
+            <div className="field-counter">{title.length}/160</div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="post-content">
+              내용
+            </label>
+            <textarea
+              className="form-textarea"
+              id="post-content"
+              maxLength={10000}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="장비 후기, 세션 정보, 모임 시간처럼 크루에게 필요한 내용을 구체적으로 적어주세요."
+              rows={9}
+              value={content}
+            />
+            <div className="field-counter">{content.length.toLocaleString()}/10,000</div>
+          </div>
+
+          {error ? (
+            <p className="form-error form-submit-error" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
 
-        {/* Action Button */}
         <div className="sticky-bottom-action">
-          <button type="submit" className="btn-primary">
-            <Send size={18} />
-            <span>게시글 등록하기</span>
+          <button className="btn-primary" disabled={isSubmitting} type="submit">
+            {isSubmitting ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}
+            <span>{isSubmitting ? '저장 중' : '게시글 검토 요청'}</span>
           </button>
         </div>
       </form>

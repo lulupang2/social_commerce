@@ -1,8 +1,15 @@
 import React from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { SummerGearWebView } from '../../components/webview/SummerGearWebView';
+import {
+  resolveSummerGearWebUrl,
+  SummerGearWebView,
+} from '../../components/webview/SummerGearWebView';
 
 export default function CommunityDetailRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  return <SummerGearWebView initialUrl={`http://localhost:3000/community/${id || ''}`} />;
+  return (
+    <SummerGearWebView
+      initialUrl={resolveSummerGearWebUrl(`/community/${encodeURIComponent(id || '')}`)}
+    />
+  );
 }

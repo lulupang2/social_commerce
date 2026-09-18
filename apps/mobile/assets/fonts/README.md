@@ -1,4 +1,4 @@
-# IceGear 모바일 폰트
+# SummerGear 모바일 폰트
 
 이 폴더에는 앱 번들에 포함되는 정적 폰트 파일만 보관합니다. Variable Font 대신 실제 사용하는
 굵기만 포함해 Expo Go, native build, web에서 동일한 typography 이름을 사용합니다.

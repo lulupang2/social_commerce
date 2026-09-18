@@ -17,3 +17,7 @@ coverage/
 
 .DS_Store
 Thumbs.db
+
+# Private signing/SSH keys must not be committed.
+*.pem
+*.key

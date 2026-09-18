@@ -1,87 +1,301 @@
 'use client';
 
-import React, { useState } from 'react';
+import type { CreateListing, ListingCategory, ListingCondition } from '@icegear/domain';
+import { ArrowRight, CheckCircle2, LoaderCircle, Trophy, Waves } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
+
+import {
+  MediaPicker,
+  selectedMediaToFile,
+  type SelectedMedia,
+} from '@/components/media/MediaPicker';
 import { MobileShell } from '@/components/layout/MobileShell';
-import { Camera, CheckCircle2, ChevronRight, Waves, Trophy, ArrowRight } from 'lucide-react';
+import { saveLocalListing } from '@/lib/data/local-store';
+import { SUMMER_LISTINGS, type MockListing } from '@/lib/data/summer-mock-data';
+import { triggerNativeHaptic } from '@/lib/native-bridge';
+import { createListing } from '@/lib/supabase/mutations';
+
+type Sport = 'surf' | 'tennis';
+
+interface SellFormData {
+  title: string;
+  category: ListingCategory;
+  brand: string;
+  model: string;
+  condition: ListingCondition;
+  price: string;
+  location: string;
+  description: string;
+  surfDiscipline: 'shortboard' | 'longboard' | 'funboard' | 'fish' | 'sup';
+  boardLengthFeet: string;
+  volumeLiters: string;
+  finSystem: 'fcs2' | 'futures' | 'fcs' | 'single_box';
+  headSizeSqIn: string;
+  weightGrams: string;
+  gripSize: '1' | '2' | '3';
+  playStyle: 'all_court' | 'baseline_aggressive' | 'serve_volley';
+}
+
+const CATEGORY_LABELS: Record<ListingCategory, string> = {
+  equipment: '보드 / 라켓 / 장비',
+  apparel: '의류 / 웻슈트',
+  footwear: '신발',
+  protective: '보호 장비',
+  accessories: '액세서리',
+  other: '기타',
+};
+
+const CONDITION_LABELS: Record<ListingCondition, string> = {
+  new: '새 상품',
+  like_new: '거의 새것',
+  good: '사용감 있음',
+  fair: '사용감 많음',
+  poor: '수리 필요',
+};
+
+const INITIAL_FORM: SellFormData = {
+  title: '',
+  category: 'equipment',
+  brand: '',
+  model: '',
+  condition: 'like_new',
+  price: '',
+  location: '',
+  description: '',
+  surfDiscipline: 'shortboard',
+  boardLengthFeet: '5.11',
+  volumeLiters: '32.5',
+  finSystem: 'fcs2',
+  headSizeSqIn: '100',
+  weightGrams: '300',
+  gripSize: '2',
+  playStyle: 'all_court',
+};
 
 export default function SellPage() {
   const router = useRouter();
-  const [step, setStep] = useState<number>(1);
-  const [sport, setSport] = useState<'surf' | 'tennis'>('surf');
-  const [formData, setFormData] = useState({
-    title: '',
-    category: 'equipment',
-    brand: '',
-    model: '',
-    condition: 'like_new',
-    price: '',
-    location: '',
-    description: '',
-    // Surf specific
-    surfDiscipline: 'shortboard',
-    boardLengthFeet: '5.11',
-    volumeLiters: '32.5',
-    finSystem: 'fcs2',
-    // Tennis specific
-    headSizeSqIn: '100',
-    weightGrams: '300',
-    gripSize: '2',
-    playStyle: 'all_court',
-  });
+  const [step, setStep] = useState(1);
+  const [sport, setSport] = useState<Sport>('surf');
+  const [formData, setFormData] = useState<SellFormData>(INITIAL_FORM);
+  const [media, setMedia] = useState<SelectedMedia[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [submission, setSubmission] = useState<{
+    mode: 'supabase' | 'local';
+    listingId: string;
+  } | null>(null);
 
-  const [submitted, setSubmitted] = useState(false);
+  const update = <K extends keyof SellFormData>(key: K, value: SellFormData[K]) => {
+    setFormData((current) => ({ ...current, [key]: value }));
+    setFormError('');
+  };
 
-  const handleNext = () => {
-    if (step < 3) {
-      setStep(step + 1);
-    } else {
-      setSubmitted(true);
+  const selectSport = (nextSport: Sport) => {
+    setSport(nextSport);
+    setFormData((current) => ({ ...current, category: 'equipment' }));
+    triggerNativeHaptic('selection');
+  };
+
+  const validateBasicInfo = () => {
+    const price = Number(formData.price);
+    if (formData.title.trim().length < 4) return '제목을 4자 이상 입력해 주세요.';
+    if (formData.title.trim().length > 120) return '제목은 120자까지 입력할 수 있어요.';
+    if (!Number.isFinite(price) || price < 0) return '판매 가격을 정확히 입력해 주세요.';
+    if (formData.location.trim().length === 0) return '희망 거래 장소를 입력해 주세요.';
+    return '';
+  };
+
+  const buildPayload = (): CreateListing => {
+    const common = {
+      title: formData.title.trim(),
+      description: formData.description.trim(),
+      category: formData.category,
+      condition: formData.condition,
+      price: Number(formData.price),
+      currency: 'KRW',
+      location: formData.location.trim(),
+      localPickupAvailable: true,
+    } as const;
+
+    if (sport === 'surf') {
+      return {
+        ...common,
+        sport: 'surf',
+        details: {
+          sport: 'surf',
+          brand: formData.brand.trim() || undefined,
+          model: formData.model.trim() || undefined,
+          equipmentType: formData.category === 'apparel' ? 'wetsuit' : 'surfboard',
+          discipline: formData.surfDiscipline,
+          boardLengthFeet: Number(formData.boardLengthFeet),
+          volumeLiters: Number(formData.volumeLiters),
+          finSystem: formData.finSystem,
+        },
+      };
+    }
+
+    return {
+      ...common,
+      sport: 'tennis',
+      details: {
+        sport: 'tennis',
+        brand: formData.brand.trim() || undefined,
+        model: formData.model.trim() || undefined,
+        equipmentType: formData.category === 'footwear' ? 'shoes' : 'racket',
+        headSizeSqIn: Number(formData.headSizeSqIn),
+        weightGrams: Number(formData.weightGrams),
+        gripSize: formData.gripSize,
+        playStyle: formData.playStyle,
+      },
+    };
+  };
+
+  const saveDemoListing = () => {
+    const fallback =
+      SUMMER_LISTINGS.find((item) => item.sport === sport && item.category === formData.category) ??
+      SUMMER_LISTINGS.find((item) => item.sport === sport) ??
+      SUMMER_LISTINGS[0];
+    const listingId = `local-listing-${Date.now()}`;
+    const specs: Record<string, string> =
+      sport === 'surf'
+        ? {
+            '보드 종류': formData.surfDiscipline.replaceAll('_', ' '),
+            길이: `${formData.boardLengthFeet} ft`,
+            부력: `${formData.volumeLiters} L`,
+            '핀 시스템': formData.finSystem.toUpperCase(),
+          }
+        : {
+            '헤드 사이즈': `${formData.headSizeSqIn} sq.in`,
+            무게: `${formData.weightGrams} g`,
+            그립: `G${formData.gripSize}`,
+            '플레이 스타일': formData.playStyle.replaceAll('_', ' '),
+          };
+
+    const listing: MockListing = {
+      id: listingId,
+      sport,
+      sportLabel: sport === 'surf' ? '서핑' : '테니스',
+      category:
+        formData.category === 'equipment' ||
+        formData.category === 'apparel' ||
+        formData.category === 'footwear' ||
+        formData.category === 'accessories'
+          ? formData.category
+          : 'accessories',
+      title: formData.title.trim(),
+      price: Number(formData.price),
+      currency: 'KRW',
+      condition:
+        formData.condition === 'new'
+          ? 'like_new'
+          : formData.condition === 'poor'
+            ? 'fair'
+            : formData.condition,
+      conditionLabel: CONDITION_LABELS[formData.condition],
+      location: formData.location.trim(),
+      seller: {
+        name: '나 (기기 데모)',
+        avatar: fallback.seller.avatar,
+        rating: 5,
+        transactionCount: 0,
+      },
+      images: fallback.images,
+      specs,
+      description: formData.description.trim(),
+      favoriteCount: 0,
+      chatCount: 0,
+      createdAt: '방금 전',
+    };
+    return saveLocalListing(listing) ? listingId : null;
+  };
+
+  const handleAdvance = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setFormError('');
+
+    if (step === 1) {
+      setStep(2);
+      triggerNativeHaptic('selection');
+      return;
+    }
+
+    if (step === 2) {
+      const error = validateBasicInfo();
+      if (error) {
+        setFormError(error);
+        triggerNativeHaptic('error');
+        return;
+      }
+      setStep(3);
+      triggerNativeHaptic('selection');
+      return;
+    }
+
+    if (formData.description.trim().length < 10) {
+      setFormError('상태와 사용 이력을 알 수 있도록 설명을 10자 이상 입력해 주세요.');
+      triggerNativeHaptic('error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const files = await Promise.all(media.map(selectedMediaToFile));
+      const result = await createListing(buildPayload(), files);
+      if (result.ok) {
+        setSubmission({ mode: 'supabase', listingId: result.data.id });
+        triggerNativeHaptic('success');
+        return;
+      }
+
+      if (result.reason === 'unconfigured' || result.reason === 'unavailable') {
+        const listingId = saveDemoListing();
+        if (!listingId) {
+          setFormError('브라우저 저장 공간이 부족해 데모 매물을 저장하지 못했어요.');
+          triggerNativeHaptic('error');
+          return;
+        }
+        setSubmission({ mode: 'local', listingId });
+        triggerNativeHaptic('success');
+        return;
+      }
+
+      if (result.reason === 'unauthenticated') {
+        setFormError('실제 판매글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.');
+      } else {
+        setFormError(result.message);
+      }
+      triggerNativeHaptic('error');
+    } catch {
+      setFormError('사진을 처리하지 못했어요. 다른 사진을 선택하거나 다시 시도해 주세요.');
+      triggerNativeHaptic('error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (submitted) {
+  if (submission) {
     return (
       <MobileShell title="판매 등록 완료" hideNav>
-        <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-          <div
-            style={{
-              width: 72,
-              height: 72,
-              borderRadius: '50%',
-              background: 'var(--primary-light)',
-              color: 'var(--primary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 20px',
-            }}
-          >
+        <div className="completion-state">
+          <div className="completion-icon">
             <CheckCircle2 size={44} />
           </div>
-
-          <h2 style={{ fontSize: '1.35rem', fontWeight: 800, marginBottom: 8 }}>
-            장비 등록이 완료되었습니다!
-          </h2>
-          <p
-            style={{
-              fontSize: '0.9rem',
-              color: 'var(--text-muted)',
-              lineHeight: 1.5,
-              marginBottom: 30,
-            }}
-          >
-            검토 후 신뢰도 높은 구매자들에게 우선 노출됩니다.
-            <br />
-            {sport === 'surf' ? '🏄‍♂️ 서핑' : '🎾 테니스'} 마켓 피드에서 확인하실 수 있습니다.
+          <p className="completion-kicker">
+            {submission.mode === 'supabase' ? '검토 요청 완료' : '기기 데모 저장 완료'}
           </p>
-
+          <h1>장비 등록을 마쳤어요</h1>
+          <p>
+            {submission.mode === 'supabase'
+              ? '운영자 검토 후 마켓에 공개돼요. MY에서 진행 상태를 확인할 수 있어요.'
+              : 'Supabase에 연결되면 실제 등록을 사용할 수 있어요. 지금은 이 브라우저의 마켓에서 확인할 수 있어요.'}
+          </p>
           <button
-            onClick={() => router.push('/market')}
             className="btn-primary"
-            style={{ maxWidth: 300, margin: '0 auto' }}
+            onClick={() => router.push(`/market/${submission.listingId}`)}
+            type="button"
           >
-            마켓 피드로 이동
+            등록한 장비 보기
           </button>
         </div>
       </MobileShell>
@@ -90,363 +304,366 @@ export default function SellPage() {
 
   return (
     <MobileShell title="내 장비 판매하기" showBack hideNav>
-      <div style={{ padding: '16px 16px 90px' }}>
-        {/* Progress Bar */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
-          {[1, 2, 3].map((s) => (
-            <div
-              key={s}
-              style={{
-                flex: 1,
-                height: 4,
-                borderRadius: 2,
-                background: s <= step ? 'var(--primary)' : 'var(--border)',
-                transition: 'background 0.2s',
-              }}
-            />
-          ))}
+      <form onSubmit={(event) => void handleAdvance(event)}>
+        <div className="sell-form-content">
+          <div aria-label={`판매 등록 ${step}/3단계`} className="form-progress">
+            {[1, 2, 3].map((item) => (
+              <span className={item <= step ? 'active' : ''} key={item} />
+            ))}
+          </div>
+
+          {step === 1 ? (
+            <section>
+              <h1 className="form-step-title">어떤 하계 스포츠 장비인가요?</h1>
+              <p className="form-step-description">
+                종목에 맞는 상세 스펙만 골라서 입력할 수 있어요.
+              </p>
+              <div className="sport-choice-list">
+                <button
+                  aria-pressed={sport === 'surf'}
+                  className={`sport-choice ${sport === 'surf' ? 'active' : ''}`}
+                  onClick={() => selectSport('surf')}
+                  type="button"
+                >
+                  <span className="sport-choice-icon">
+                    <Waves size={24} />
+                  </span>
+                  <span>
+                    <strong>서핑</strong>
+                    <small>숏보드, 롱보드, 웻슈트, 핀, 리시</small>
+                  </span>
+                </button>
+                <button
+                  aria-pressed={sport === 'tennis'}
+                  className={`sport-choice ${sport === 'tennis' ? 'active' : ''}`}
+                  onClick={() => selectSport('tennis')}
+                  type="button"
+                >
+                  <span className="sport-choice-icon">
+                    <Trophy size={24} />
+                  </span>
+                  <span>
+                    <strong>테니스</strong>
+                    <small>라켓, 테니스화, 가방, 스트링, 그립</small>
+                  </span>
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {step === 2 ? (
+            <section>
+              <h1 className="form-step-title">사진과 기본 정보를 알려주세요</h1>
+              <p className="form-step-description">
+                구매자가 한눈에 상태를 알 수 있는 사진과 제목이 좋아요.
+              </p>
+
+              <div className="form-group">
+                <MediaPicker label="장비 사진" maxCount={10} onChange={setMedia} value={media} />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="listing-title">
+                  제목
+                </label>
+                <input
+                  className="form-input"
+                  id="listing-title"
+                  maxLength={120}
+                  onChange={(event) => update('title', event.target.value)}
+                  placeholder={
+                    sport === 'surf'
+                      ? "예: Channel Islands Happy Everyday 5'11 숏보드"
+                      : '예: Wilson Pro Staff 97 v14 315g G2'
+                  }
+                  value={formData.title}
+                />
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="listing-brand">
+                    브랜드
+                  </label>
+                  <input
+                    className="form-input"
+                    id="listing-brand"
+                    onChange={(event) => update('brand', event.target.value)}
+                    placeholder={sport === 'surf' ? 'Channel Islands' : 'Wilson'}
+                    value={formData.brand}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="listing-model">
+                    모델명
+                  </label>
+                  <input
+                    className="form-input"
+                    id="listing-model"
+                    onChange={(event) => update('model', event.target.value)}
+                    placeholder="모델명"
+                    value={formData.model}
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="listing-category">
+                    카테고리
+                  </label>
+                  <select
+                    className="form-select"
+                    id="listing-category"
+                    onChange={(event) => update('category', event.target.value as ListingCategory)}
+                    value={formData.category}
+                  >
+                    {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="listing-condition">
+                    상태
+                  </label>
+                  <select
+                    className="form-select"
+                    id="listing-condition"
+                    onChange={(event) =>
+                      update('condition', event.target.value as ListingCondition)
+                    }
+                    value={formData.condition}
+                  >
+                    {Object.entries(CONDITION_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="listing-price">
+                    판매 가격
+                  </label>
+                  <div className="input-with-suffix">
+                    <input
+                      className="form-input"
+                      id="listing-price"
+                      inputMode="numeric"
+                      min="0"
+                      onChange={(event) => update('price', event.target.value)}
+                      placeholder="250000"
+                      type="number"
+                      value={formData.price}
+                    />
+                    <span>원</span>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="listing-location">
+                    거래 장소
+                  </label>
+                  <input
+                    className="form-input"
+                    id="listing-location"
+                    onChange={(event) => update('location', event.target.value)}
+                    placeholder={sport === 'surf' ? '양양 죽도' : '서울 송파구'}
+                    value={formData.location}
+                  />
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {step === 3 ? (
+            <section>
+              <h1 className="form-step-title">
+                {sport === 'surf' ? '서핑' : '테니스'} 스펙을 확인해 주세요
+              </h1>
+              <p className="form-step-description">
+                정확한 스펙은 맞춤 추천과 빠른 거래에 활용돼요.
+              </p>
+
+              {sport === 'surf' ? (
+                <>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="surf-discipline">
+                      보드 종류
+                    </label>
+                    <select
+                      className="form-select"
+                      id="surf-discipline"
+                      onChange={(event) =>
+                        update(
+                          'surfDiscipline',
+                          event.target.value as SellFormData['surfDiscipline'],
+                        )
+                      }
+                      value={formData.surfDiscipline}
+                    >
+                      <option value="shortboard">숏보드</option>
+                      <option value="longboard">롱보드</option>
+                      <option value="funboard">펀보드 / 미드렝스</option>
+                      <option value="fish">피쉬보드</option>
+                      <option value="sup">SUP / 패들보드</option>
+                    </select>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="board-length">
+                        길이 (ft)
+                      </label>
+                      <input
+                        className="form-input"
+                        id="board-length"
+                        inputMode="decimal"
+                        onChange={(event) => update('boardLengthFeet', event.target.value)}
+                        value={formData.boardLengthFeet}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="board-volume">
+                        부력 (L)
+                      </label>
+                      <input
+                        className="form-input"
+                        id="board-volume"
+                        inputMode="decimal"
+                        onChange={(event) => update('volumeLiters', event.target.value)}
+                        value={formData.volumeLiters}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="fin-system">
+                      핀 시스템
+                    </label>
+                    <select
+                      className="form-select"
+                      id="fin-system"
+                      onChange={(event) =>
+                        update('finSystem', event.target.value as SellFormData['finSystem'])
+                      }
+                      value={formData.finSystem}
+                    >
+                      <option value="fcs2">FCS II</option>
+                      <option value="futures">Futures</option>
+                      <option value="fcs">FCS 1</option>
+                      <option value="single_box">Single Fin Box</option>
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="head-size">
+                        헤드 (sq.in)
+                      </label>
+                      <input
+                        className="form-input"
+                        id="head-size"
+                        inputMode="numeric"
+                        onChange={(event) => update('headSizeSqIn', event.target.value)}
+                        value={formData.headSizeSqIn}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="racket-weight">
+                        무게 (g)
+                      </label>
+                      <input
+                        className="form-input"
+                        id="racket-weight"
+                        inputMode="numeric"
+                        onChange={(event) => update('weightGrams', event.target.value)}
+                        value={formData.weightGrams}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="grip-size">
+                        그립
+                      </label>
+                      <select
+                        className="form-select"
+                        id="grip-size"
+                        onChange={(event) =>
+                          update('gripSize', event.target.value as SellFormData['gripSize'])
+                        }
+                        value={formData.gripSize}
+                      >
+                        <option value="1">G1 · 4 1/8</option>
+                        <option value="2">G2 · 4 1/4</option>
+                        <option value="3">G3 · 4 3/8</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="play-style">
+                        플레이 스타일
+                      </label>
+                      <select
+                        className="form-select"
+                        id="play-style"
+                        onChange={(event) =>
+                          update('playStyle', event.target.value as SellFormData['playStyle'])
+                        }
+                        value={formData.playStyle}
+                      >
+                        <option value="all_court">올라운드</option>
+                        <option value="baseline_aggressive">공격형 베이스라인</option>
+                        <option value="serve_volley">서브 & 발리</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="listing-description">
+                  상세 설명
+                </label>
+                <textarea
+                  className="form-textarea"
+                  id="listing-description"
+                  maxLength={5000}
+                  onChange={(event) => update('description', event.target.value)}
+                  placeholder="구입 시기, 사용 횟수, 파손이나 수리 내역, 포함 구성품을 알려주세요."
+                  rows={5}
+                  value={formData.description}
+                />
+              </div>
+            </section>
+          ) : null}
+
+          {formError ? (
+            <p className="form-error form-submit-error" role="alert">
+              {formError}
+            </p>
+          ) : null}
         </div>
 
-        {/* Step 1: Sport Selection */}
-        {step === 1 && (
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: 6 }}>
-              어떤 하계 스포츠 장비인가요?
-            </h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 20 }}>
-              종목에 딱 맞는 상세 스펙 입력을 지원해 드립니다.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div
-                onClick={() => setSport('surf')}
-                style={{
-                  padding: '18px 16px',
-                  borderRadius: 'var(--radius-md)',
-                  border: sport === 'surf' ? '2px solid var(--primary)' : '1px solid var(--border)',
-                  background: sport === 'surf' ? 'var(--primary-light)' : 'var(--surface)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
-                }}
-              >
-                <div
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Waves size={24} color="var(--primary)" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '1rem', fontWeight: 800 }}>서핑 (Surf / Watersports)</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    숏보드, 롱보드, 펀보드, 웻슈트, 핀, 리시 등
-                  </div>
-                </div>
-              </div>
-
-              <div
-                onClick={() => setSport('tennis')}
-                style={{
-                  padding: '18px 16px',
-                  borderRadius: 'var(--radius-md)',
-                  border:
-                    sport === 'tennis' ? '2px solid var(--primary)' : '1px solid var(--border)',
-                  background: sport === 'tennis' ? 'var(--primary-light)' : 'var(--surface)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 14,
-                }}
-              >
-                <div
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Trophy size={24} color="var(--primary)" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '1rem', fontWeight: 800 }}>테니스 (Tennis / Racket)</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    라켓, 테니스 가방, 테니스화, 스트링/그립 등
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Basic Info */}
-        {step === 2 && (
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: 6 }}>
-              기본 정보 및 가격
-            </h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 20 }}>
-              구매자가 쉽게 찾을 수 있도록 정확히 입력해주세요.
-            </p>
-
-            <div className="form-group">
-              <label className="form-label">장비 사진 첨부</label>
-              <div
-                style={{
-                  border: '2px dashed var(--border-strong)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '24px 16px',
-                  textAlign: 'center',
-                  background: 'var(--surface)',
-                  cursor: 'pointer',
-                }}
-              >
-                <Camera size={28} color="var(--text-subtle)" style={{ marginBottom: 6 }} />
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                  사진 등록하기 (최대 10장)
-                </div>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">제목</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder={
-                  sport === 'surf'
-                    ? '예: Channel Islands Happy Everyday 숏보드 5\'11"'
-                    : '예: Wilson Pro Staff 97 v14 라켓 (315g, G2)'
-                }
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">브랜드</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder={
-                    sport === 'surf' ? '예: Channel Islands, Torq' : '예: Wilson, Head, Babolat'
-                  }
-                  value={formData.brand}
-                  onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                />
-              </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">모델명</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="예: Pro Staff 97"
-                  value={formData.model}
-                  onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">판매 가격 (원)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  placeholder="예: 250000"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                />
-              </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">장비 상태</label>
-                <select
-                  className="form-select"
-                  value={formData.condition}
-                  onChange={(e) => setFormData({ ...formData, condition: e.target.value })}
-                >
-                  <option value="like_new">거의 새것</option>
-                  <option value="good">사용감 있음</option>
-                  <option value="fair">사용감 많음</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">희망 거래 장소</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder={
-                  sport === 'surf'
-                    ? '예: 강원도 양양군 죽도해변 직거래'
-                    : '예: 서울 강남구 / 택배거래 가능'
-                }
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Specific Sport Specs */}
-        {step === 3 && (
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: 6 }}>
-              {sport === 'surf' ? '🏄‍♂️ 서핑' : '🎾 테니스'} 장비 세부 스펙
-            </h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 20 }}>
-              상세 스펙을 입력하면 맞춤 추천 알고리즘을 통해 더 빨리 판매됩니다.
-            </p>
-
-            {sport === 'surf' ? (
-              <>
-                <div className="form-group">
-                  <label className="form-label">보드 종류</label>
-                  <select
-                    className="form-select"
-                    value={formData.surfDiscipline}
-                    onChange={(e) => setFormData({ ...formData, surfDiscipline: e.target.value })}
-                  >
-                    <option value="shortboard">숏보드 (Shortboard)</option>
-                    <option value="longboard">롱보드 (Longboard)</option>
-                    <option value="funboard">펀보드 / 미드렝스 (Funboard)</option>
-                    <option value="fish">피쉬보드 (Fish)</option>
-                    <option value="sup">SUP / 패들보드</option>
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label className="form-label">길이 (Feet)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="예: 5.11, 7.2, 9.2"
-                      value={formData.boardLengthFeet}
-                      onChange={(e) =>
-                        setFormData({ ...formData, boardLengthFeet: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label className="form-label">부력 Volume (L)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="예: 32.5, 47.0"
-                      value={formData.volumeLiters}
-                      onChange={(e) => setFormData({ ...formData, volumeLiters: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">핀 시스템</label>
-                  <select
-                    className="form-select"
-                    value={formData.finSystem}
-                    onChange={(e) => setFormData({ ...formData, finSystem: e.target.value })}
-                  >
-                    <option value="fcs2">FCS II</option>
-                    <option value="futures">Futures</option>
-                    <option value="fcs">FCS 1</option>
-                    <option value="single_box">Single Fin Box</option>
-                  </select>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label className="form-label">헤드 사이즈 (sq.in)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="예: 97, 98, 100, 104"
-                      value={formData.headSizeSqIn}
-                      onChange={(e) => setFormData({ ...formData, headSizeSqIn: e.target.value })}
-                    />
-                  </div>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label className="form-label">무게 (g)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="예: 280, 300, 315"
-                      value={formData.weightGrams}
-                      onChange={(e) => setFormData({ ...formData, weightGrams: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label className="form-label">그립 사이즈</label>
-                    <select
-                      className="form-select"
-                      value={formData.gripSize}
-                      onChange={(e) => setFormData({ ...formData, gripSize: e.target.value })}
-                    >
-                      <option value="1">1 (4 1/8)</option>
-                      <option value="2">2 (4 1/4 - 표준)</option>
-                      <option value="3">3 (4 3/8)</option>
-                    </select>
-                  </div>
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <label className="form-label">플레이 스타일</label>
-                    <select
-                      className="form-select"
-                      value={formData.playStyle}
-                      onChange={(e) => setFormData({ ...formData, playStyle: e.target.value })}
-                    >
-                      <option value="all_court">올라운드 (All-Court)</option>
-                      <option value="baseline_aggressive">베이스라인 파워형</option>
-                      <option value="serve_volley">서브 & 발리형</option>
-                    </select>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className="form-group">
-              <label className="form-label">상세 설명</label>
-              <textarea
-                className="form-textarea"
-                rows={4}
-                placeholder="구입 시기, 사용 횟수, 파손/수리 내역, 추가 구성품 등을 자세히 적어주세요."
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Action Footer */}
-      <div className="sticky-bottom-action">
-        {step > 1 && (
-          <button onClick={() => setStep(step - 1)} className="btn-outline" style={{ width: 100 }}>
-            이전
+        <div className="sticky-bottom-action">
+          {step > 1 ? (
+            <button
+              className="btn-outline"
+              disabled={isSubmitting}
+              onClick={() => setStep(step - 1)}
+              type="button"
+            >
+              이전
+            </button>
+          ) : null}
+          <button className="btn-primary" disabled={isSubmitting} type="submit">
+            {isSubmitting ? <LoaderCircle className="spin" size={18} /> : null}
+            <span>{step === 3 ? (isSubmitting ? '등록 중' : '검토 요청하기') : '다음 단계'}</span>
+            {!isSubmitting ? <ArrowRight size={18} /> : null}
           </button>
-        )}
-        <button onClick={handleNext} className="btn-primary">
-          <span>{step === 3 ? '등록 완료하기' : '다음 단계'}</span>
-          <ArrowRight size={18} />
-        </button>
-      </div>
+        </div>
+      </form>
     </MobileShell>
   );
 }

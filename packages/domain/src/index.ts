@@ -7,3 +7,5 @@ export * from './media.js';
 export * from './community.js';
 export * from './recommendations.js';
 export * from './actors.js';
+export * from './native-bridge.js';
+export * from './chat.js';

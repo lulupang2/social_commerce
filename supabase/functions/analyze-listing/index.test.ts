@@ -12,14 +12,22 @@ function createMockDeps(overrides: Partial<Dependencies> = {}): Dependencies {
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return {
           subject: null,
-          errorResponse: { code: "authentication_required", message: "Token required", status: 401 },
+          errorResponse: {
+            code: "authentication_required",
+            message: "Token required",
+            status: 401,
+          },
         };
       }
       const token = authHeader.substring(7);
       if (token === "banned-token") {
         return {
           subject: null,
-          errorResponse: { code: "forbidden", message: "Banned user", status: 403 },
+          errorResponse: {
+            code: "forbidden",
+            message: "Banned user",
+            status: 403,
+          },
         };
       }
       if (token === "valid-token") {
@@ -30,7 +38,11 @@ function createMockDeps(overrides: Partial<Dependencies> = {}): Dependencies {
       }
       return {
         subject: null,
-        errorResponse: { code: "authentication_required", message: "Invalid token", status: 401 },
+        errorResponse: {
+          code: "authentication_required",
+          message: "Invalid token",
+          status: 401,
+        },
       };
     },
     checkAndConsumeQuota: async (_client, _op) => {
@@ -45,7 +57,8 @@ function createMockDeps(overrides: Partial<Dependencies> = {}): Dependencies {
     },
     createSignedUrl: async (_client, _bucket, _path, _expiresIn) => {
       return {
-        signedUrl: "https://example.supabase.co/storage/v1/object/sign/listing-images/sample.jpg?token=123",
+        signedUrl:
+          "https://example.supabase.co/storage/v1/object/sign/listing-images/sample.jpg?token=123",
         error: null,
       };
     },
@@ -53,12 +66,17 @@ function createMockDeps(overrides: Partial<Dependencies> = {}): Dependencies {
       const mockVisionOutput = {
         suggestedListing: {
           category: "equipment",
-          sport: "ski",
-          title: "Salomon S/Max 12 Skis 165cm",
-          description: "Used ski equipment in good condition with minor scratches.",
+          sport: "surf",
+          title: "Channel Islands Happy Everyday 5'11 surfboard",
+          description:
+            "A lightly used surfboard with no visible dings or repairs.",
           condition: "good",
-          estimatedPrice: { amount: 250000, currency: "KRW" },
-          details: { lengthCm: 165 },
+          estimatedPrice: { amount: 680000, currency: "KRW" },
+          details: {
+            discipline: "shortboard",
+            boardLengthFeet: 5.11,
+            volumeLiters: 32.6,
+          },
           confidence: 0.92,
         },
       };
@@ -82,20 +100,24 @@ function createSamplePayload(overrides: Record<string, unknown> = {}) {
     bucket: "listing-images",
     mimeType: "image/jpeg",
     fileSize: 1024 * 1024,
-    sport: "ski",
+    sport: "surf",
     ...overrides,
   };
 }
 
 Deno.test("CORS preflight (OPTIONS) returns 200 OK with CORS headers", async () => {
-  const req = new Request("http://localhost/analyze-listing", { method: "OPTIONS" });
+  const req = new Request("http://localhost/analyze-listing", {
+    method: "OPTIONS",
+  });
   const res = await handleAnalyzeListing(req, createMockDeps());
   assertEquals(res.status, 200);
   assertEquals(res.headers.get("Access-Control-Allow-Origin"), "*");
 });
 
 Deno.test("Non-POST method returns 400 invalid_request error envelope", async () => {
-  const req = new Request("http://localhost/analyze-listing", { method: "GET" });
+  const req = new Request("http://localhost/analyze-listing", {
+    method: "GET",
+  });
   const res = await handleAnalyzeListing(req, createMockDeps());
   assertEquals(res.status, 400);
   const data = await res.json();
@@ -137,7 +159,11 @@ Deno.test("Quota exceeded returns 429 rate_limited", async () => {
       resetAt: new Date().toISOString(),
       limitValue: 3,
       windowSeconds: 300,
-      errorResponse: { code: "rate_limited", message: "Quota limit exceeded", status: 429 },
+      errorResponse: {
+        code: "rate_limited",
+        message: "Quota limit exceeded",
+        status: 429,
+      },
     }),
   });
   const req = new Request("http://localhost/analyze-listing", {
@@ -161,7 +187,11 @@ Deno.test("Accessing storage path owned by another user returns 403 forbidden", 
       "Content-Type": "application/json",
       "Authorization": "Bearer valid-token",
     },
-    body: JSON.stringify(createSamplePayload({ storagePath: `${OTHER_USER_ID}/listing_123/gear.jpg` })),
+    body: JSON.stringify(
+      createSamplePayload({
+        storagePath: `${OTHER_USER_ID}/listing_123/gear.jpg`,
+      }),
+    ),
   });
   const res = await handleAnalyzeListing(req, createMockDeps());
   assertEquals(res.status, 403);
@@ -202,7 +232,7 @@ Deno.test("Unconfigured AI falls back to manual entry with allowManualEntry: tru
   assertEquals(data.allowManualEntry, true);
   assertEquals(data.fallback, true);
   assertEquals(typeof data.privacyNotice, "string");
-  assertEquals(data.suggestedListing.sport, "ski");
+  assertEquals(data.suggestedListing.sport, "surf");
 });
 
 Deno.test("Configured AI vision success returns source: ai and suggested listing", async () => {
@@ -224,8 +254,11 @@ Deno.test("Configured AI vision success returns source: ai and suggested listing
     assertEquals(data.source, "ai");
     assertEquals(data.allowManualEntry, true);
     assertEquals(data.fallback, false);
-    assertEquals(data.suggestedListing.title, "Salomon S/Max 12 Skis 165cm");
-    assertEquals(data.suggestedListing.estimatedPrice.amount, 250000);
+    assertEquals(
+      data.suggestedListing.title,
+      "Channel Islands Happy Everyday 5'11 surfboard",
+    );
+    assertEquals(data.suggestedListing.estimatedPrice.amount, 680000);
   } finally {
     Deno.env.delete("OPENAI_API_KEY");
   }

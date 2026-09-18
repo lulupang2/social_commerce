@@ -1,21 +1,22 @@
 {
   "expo": {
-    "name": "IceGear",
-    "slug": "icegear",
-    "version": "0.1.0",
+    "name": "SummerGear",
+    "slug": "summergear",
+    "version": "0.2.0",
     "orientation": "portrait",
-    "scheme": "icegear",
+    "scheme": "summergear",
     "userInterfaceStyle": "automatic",
     "plugins": [
       "expo-router",
       [
         "expo-image-picker",
         {
-          "photosPermission": "IceGear needs access to your photos so you can add images to a listing.",
-          "cameraPermission": false,
+          "photosPermission": "판매글과 커뮤니티에 사진을 추가하려면 사진 접근 권한이 필요합니다.",
+          "cameraPermission": "장비 사진을 바로 촬영하려면 카메라 접근 권한이 필요합니다.",
           "microphonePermission": false
         }
       ],
+      "expo-notifications",
       [
         "expo-font",
         {

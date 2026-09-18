@@ -1,231 +1,275 @@
 'use client';
 
-import React, { useState, use } from 'react';
+import { Heart, LoaderCircle, Send, Share2 } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import React, { use, useEffect, useState } from 'react';
+
 import { MobileShell } from '@/components/layout/MobileShell';
-import { SUMMER_COMMUNITY_POSTS } from '@/lib/data/summer-mock-data';
-import { Heart, MessageSquare, Send, Share2, MoreVertical } from 'lucide-react';
+import {
+  addCommunityComment,
+  loadCommunityComments,
+  setCommunityLike,
+} from '@/lib/community/actions';
+import { useCommunityPosts } from '@/lib/data/use-community-posts';
+import { triggerNativeHaptic } from '@/lib/native-bridge';
+
+interface CommentItem {
+  id: string;
+  author: string;
+  avatar: string;
+  text: string;
+  time: string;
+}
+
+const DEMO_COMMENTS: CommentItem[] = [
+  {
+    id: 'demo-comment-1',
+    author: '바다사나이',
+    avatar:
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
+    text: '정말 유익한 정보 감사합니다! 이번 주말 세션 전에 꼭 다시 볼게요.',
+    time: '2시간 전',
+  },
+  {
+    id: 'demo-comment-2',
+    author: '서프초보',
+    avatar:
+      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80',
+    text: '헷갈렸던 부분을 깔끔하게 이해했어요.',
+    time: '1시간 전',
+  },
+];
+
+function commentTime(timestamp: string): string {
+  const value = new Date(timestamp).getTime();
+  if (!Number.isFinite(value)) return '방금 전';
+  const minutes = Math.max(0, Math.floor((Date.now() - value) / 60_000));
+  if (minutes < 1) return '방금 전';
+  if (minutes < 60) return `${minutes}분 전`;
+  return `${Math.floor(minutes / 60)}시간 전`;
+}
 
 export default function CommunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const post =
-    SUMMER_COMMUNITY_POSTS.find((p) => p.id === resolvedParams.id) || SUMMER_COMMUNITY_POSTS[0];
-
+  const { id } = use(params);
+  const posts = useCommunityPosts();
+  const post = posts.find((item) => item.id === id) ?? null;
   const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(post.likes);
+  const [likeDelta, setLikeDelta] = useState(0);
   const [commentInput, setCommentInput] = useState('');
-  const [comments, setComments] = useState([
-    {
-      id: 'c1',
-      author: '바다사나이',
-      avatar:
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
-      text: '정말 유익한 정보 감사합니다! 이번 주말에 양양 갈 예정인데 꼭 참고할게요.',
-      time: '2시간 전',
-    },
-    {
-      id: 'c2',
-      author: '서프초보',
-      avatar:
-        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80',
-      text: '피크 우선권 헷갈렸는데 깔끔하게 이해됐습니다 ㅎㅎ',
-      time: '1시간 전',
-    },
-  ]);
+  const [comments, setComments] = useState<CommentItem[]>(
+    id.startsWith('post-') ? DEMO_COMMENTS : [],
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [actionError, setActionError] = useState('');
 
-  const handleLike = () => {
-    if (liked) {
-      setLikeCount(likeCount - 1);
-      setLiked(false);
-    } else {
-      setLikeCount(likeCount + 1);
-      setLiked(true);
+  useEffect(() => {
+    if (!post) return;
+
+    let active = true;
+    void loadCommunityComments(post.id).then((items) => {
+      if (!active || items === null) return;
+      setComments(
+        items.map((comment) => ({
+          id: comment.id,
+          author: comment.author,
+          avatar: post.author.avatar,
+          text: comment.body,
+          time: commentTime(comment.createdAt),
+        })),
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [post]);
+
+  if (!post) {
+    return (
+      <MobileShell title="게시글을 찾을 수 없어요" showBack hideNav>
+        <div className="empty-state">
+          <p>삭제되었거나 존재하지 않는 게시글이에요.</p>
+          <Link className="btn-primary" href="/community">
+            커뮤니티로 돌아가기
+          </Link>
+        </div>
+      </MobileShell>
+    );
+  }
+
+  const likeCount = post.likes + likeDelta;
+
+  const toggleLike = async () => {
+    const nextLiked = !liked;
+    setLiked(nextLiked);
+    setLikeDelta((delta) => delta + (nextLiked ? 1 : -1));
+    setActionError('');
+    triggerNativeHaptic('selection');
+
+    const result = await setCommunityLike(post.id, nextLiked);
+    if (!result.ok) {
+      setLiked(!nextLiked);
+      setLikeDelta((delta) => delta + (nextLiked ? -1 : 1));
+      setActionError(result.message);
+      triggerNativeHaptic('error');
     }
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!commentInput.trim()) return;
+  const addComment = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const body = commentInput.trim();
+    if (!body || isSubmitting) return;
+    setActionError('');
+    setIsSubmitting(true);
 
-    setComments([
-      ...comments,
-      {
-        id: `c-${Date.now()}`,
-        author: '나 (게스트)',
-        avatar:
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-        text: commentInput,
-        time: '방금 전',
-      },
-    ]);
-    setCommentInput('');
+    const result = await addCommunityComment(post.id, body);
+    if (result.ok) {
+      setComments((current) => [
+        ...current,
+        {
+          id: result.comment.id,
+          author: result.comment.author,
+          avatar: post.author.avatar,
+          text: result.comment.body,
+          time: '방금 전',
+        },
+      ]);
+      setCommentInput('');
+      triggerNativeHaptic('success');
+    } else if (post.id.startsWith('post-') || post.id.startsWith('local-post-')) {
+      setComments((current) => [
+        ...current,
+        {
+          id: `local-comment-${Date.now()}`,
+          author: '나 (기기 데모)',
+          avatar: post.author.avatar,
+          text: body,
+          time: '방금 전',
+        },
+      ]);
+      setCommentInput('');
+      triggerNativeHaptic('success');
+    } else {
+      setActionError(result.message);
+      triggerNativeHaptic('error');
+    }
+    setIsSubmitting(false);
+  };
+
+  const sharePost = async () => {
+    try {
+      if (navigator.share)
+        await navigator.share({ title: post.title, text: post.title, url: window.location.href });
+      else await navigator.clipboard.writeText(window.location.href);
+      triggerNativeHaptic('success');
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError'))
+        setActionError('게시글을 공유하지 못했어요.');
+    }
   };
 
   return (
     <MobileShell showBack hideNav>
-      <div style={{ paddingBottom: 80 }}>
-        {/* Post Main */}
-        <div
-          style={{
-            padding: '16px 16px 20px',
-            borderBottom: '8px solid var(--surface-subtle)',
-            background: 'var(--surface)',
-          }}
-        >
-          {/* Author */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <img
-              src={post.author.avatar}
-              alt={post.author.name}
-              style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }}
-            />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.92rem', fontWeight: 800 }}>{post.author.name}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                {post.author.level} · {post.createdAt}
-              </div>
-            </div>
-            <span
-              style={{
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                color: 'var(--accent-hover)',
-                background: 'var(--accent-light)',
-                padding: '3px 8px',
-                borderRadius: 'var(--radius-full)',
-              }}
-            >
-              {post.categoryLabel}
+      <article className="community-detail">
+        <header className="community-author-row">
+          <Image
+            alt={post.author.name}
+            height={44}
+            src={post.author.avatar}
+            unoptimized
+            width={44}
+          />
+          <div>
+            <strong>{post.author.name}</strong>
+            <span>
+              {post.author.level} · {post.createdAt}
             </span>
           </div>
+          <b>{post.categoryLabel}</b>
+        </header>
 
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1.35, marginBottom: 12 }}>
-            {post.title}
-          </h1>
-
-          <p
-            style={{
-              fontSize: '0.94rem',
-              lineHeight: 1.65,
-              color: 'var(--text-main)',
-              whiteSpace: 'pre-line',
-              marginBottom: 16,
-            }}
-          >
-            {post.content}
-          </p>
-
-          {post.image && (
-            <div
-              style={{
-                width: '100%',
-                borderRadius: 'var(--radius-md)',
-                overflow: 'hidden',
-                marginBottom: 16,
-              }}
-            >
-              <img
-                src={post.image}
-                alt="content"
-                style={{ width: '100%', height: 'auto', display: 'block' }}
-              />
-            </div>
-          )}
-
-          {/* Like / Share Bar */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              paddingTop: 12,
-              borderTop: '1px solid var(--border)',
-            }}
-          >
-            <button
-              onClick={handleLike}
-              style={{
-                background: liked ? 'var(--accent-light)' : 'var(--surface-subtle)',
-                border: 'none',
-                padding: '8px 16px',
-                borderRadius: 'var(--radius-full)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                color: liked ? 'var(--danger)' : 'var(--text-main)',
-                cursor: 'pointer',
-              }}
-            >
-              <Heart
-                size={16}
-                fill={liked ? 'var(--danger)' : 'none'}
-                color={liked ? 'var(--danger)' : 'currentColor'}
-              />
-              <span>좋아요 {likeCount}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Comment Section */}
-        <div style={{ padding: '16px', background: 'var(--surface)' }}>
-          <h3 style={{ fontSize: '0.95rem', fontWeight: 800, marginBottom: 14 }}>
-            댓글 <span style={{ color: 'var(--primary)' }}>{comments.length}</span>
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {comments.map((c) => (
-              <div key={c.id} style={{ display: 'flex', gap: 10 }}>
-                <img
-                  src={c.avatar}
-                  alt={c.author}
-                  style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }}
-                />
-                <div
-                  style={{
-                    flex: 1,
-                    background: 'var(--surface-subtle)',
-                    padding: '10px 12px',
-                    borderRadius: 'var(--radius-sm)',
-                  }}
-                >
-                  <div
-                    style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}
-                  >
-                    <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>{c.author}</span>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
-                      {c.time}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: '0.86rem', color: 'var(--text-main)', lineHeight: 1.4 }}>
-                    {c.text}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Sticky Comment Input Bar */}
-        <form onSubmit={handleAddComment} className="sticky-bottom-action" style={{ gap: 8 }}>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="댓글을 입력해보세요..."
-            value={commentInput}
-            onChange={(e) => setCommentInput(e.target.value)}
-            style={{ borderRadius: 'var(--radius-full)', padding: '10px 16px' }}
+        <h1>{post.title}</h1>
+        <p className="community-post-body">{post.content}</p>
+        {post.image ? (
+          <Image
+            alt={`${post.title} 첨부 사진`}
+            className="community-hero-image"
+            height={560}
+            src={post.image}
+            unoptimized
+            width={840}
           />
+        ) : null}
+
+        <div className="community-action-row">
           <button
-            type="submit"
-            className="btn-primary"
-            style={{ width: 44, height: 44, padding: 0, borderRadius: '50%', flexShrink: 0 }}
-            aria-label="댓글 작성"
+            aria-pressed={liked}
+            className={liked ? 'liked' : ''}
+            onClick={() => void toggleLike()}
+            type="button"
           >
-            <Send size={18} />
+            <Heart fill={liked ? 'currentColor' : 'none'} size={17} />
+            좋아요 {likeCount}
           </button>
-        </form>
-      </div>
+          <button onClick={() => void sharePost()} type="button">
+            <Share2 size={17} />
+            공유
+          </button>
+        </div>
+      </article>
+
+      <section className="comment-section">
+        <h2>
+          댓글 <strong>{comments.length}</strong>
+        </h2>
+        {comments.length === 0 ? (
+          <p className="comment-empty">첫 댓글로 이야기를 이어가 보세요.</p>
+        ) : null}
+        <div className="comment-list">
+          {comments.map((comment) => (
+            <article key={comment.id}>
+              <Image alt="" height={36} src={comment.avatar} unoptimized width={36} />
+              <div>
+                <header>
+                  <strong>{comment.author}</strong>
+                  <time>{comment.time}</time>
+                </header>
+                <p>{comment.text}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {actionError ? (
+        <p className="chat-error community-error" role="alert">
+          {actionError}
+        </p>
+      ) : null}
+      <form
+        className="sticky-bottom-action comment-composer"
+        onSubmit={(event) => void addComment(event)}
+      >
+        <label className="visually-hidden" htmlFor="comment-input">
+          댓글
+        </label>
+        <input
+          className="form-input"
+          id="comment-input"
+          maxLength={5000}
+          onChange={(event) => setCommentInput(event.target.value)}
+          placeholder="댓글을 입력하세요"
+          value={commentInput}
+        />
+        <button
+          aria-label="댓글 작성"
+          className="btn-primary"
+          disabled={isSubmitting || !commentInput.trim()}
+          type="submit"
+        >
+          {isSubmitting ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}
+        </button>
+      </form>
     </MobileShell>
   );
 }

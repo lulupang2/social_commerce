@@ -3,7 +3,10 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/error.ts";
 import { authenticateSubject } from "../_shared/auth.ts";
 import { checkAndConsumeQuota } from "../_shared/quota.ts";
-import { callOpenAiChatCompletions, getEffectiveAiConfig } from "../_shared/openai.ts";
+import {
+  callOpenAiChatCompletions,
+  getEffectiveAiConfig,
+} from "../_shared/openai.ts";
 import type {
   AnalyzeListingRequest,
   AnalyzeListingResponse,
@@ -11,13 +14,30 @@ import type {
   SuggestedListing,
 } from "./types.ts";
 
-const ALLOWED_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-]);
+const ALLOWED_MIME_TYPES: Record<string, true> = {
+  "image/jpeg": true,
+  "image/jpg": true,
+  "image/png": true,
+  "image/webp": true,
+  "image/heic": true,
+};
+
+const VALID_CATEGORIES: Record<SuggestedListing["category"], true> = {
+  equipment: true,
+  apparel: true,
+  footwear: true,
+  protective: true,
+  accessories: true,
+  other: true,
+};
+
+const VALID_CONDITIONS: Record<SuggestedListing["condition"], true> = {
+  new: true,
+  like_new: true,
+  good: true,
+  fair: true,
+  poor: true,
+};
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -28,20 +48,31 @@ function validateRequestPayload(body: unknown): AnalyzeListingRequest | null {
   if (!body || typeof body !== "object") return null;
   const obj = body as Record<string, unknown>;
 
-  if (typeof obj.storagePath !== "string" || obj.storagePath.trim().length === 0) {
+  if (
+    typeof obj.storagePath !== "string" || obj.storagePath.trim().length === 0
+  ) {
     return null;
   }
-  if (typeof obj.mimeType !== "string" || !ALLOWED_MIME_TYPES.has(obj.mimeType.toLowerCase())) {
+  if (
+    typeof obj.mimeType !== "string" ||
+    ALLOWED_MIME_TYPES[obj.mimeType.toLowerCase()] !== true
+  ) {
     return null;
   }
-  if (typeof obj.fileSize !== "number" || obj.fileSize <= 0 || obj.fileSize > MAX_FILE_SIZE_BYTES) {
+  if (
+    typeof obj.fileSize !== "number" || obj.fileSize <= 0 ||
+    obj.fileSize > MAX_FILE_SIZE_BYTES
+  ) {
     return null;
   }
 
-  const bucket = typeof obj.bucket === "string" ? obj.bucket.trim() : "listing-images";
-  const sport = (obj.sport === "ski" || obj.sport === "hockey" || obj.sport === "other")
-    ? obj.sport
-    : "other";
+  const bucket = typeof obj.bucket === "string"
+    ? obj.bucket.trim()
+    : "listing-images";
+  const sport =
+    (obj.sport === "surf" || obj.sport === "tennis" || obj.sport === "other")
+      ? obj.sport
+      : "other";
 
   return {
     storagePath: obj.storagePath.trim(),
@@ -52,42 +83,59 @@ function validateRequestPayload(body: unknown): AnalyzeListingRequest | null {
   };
 }
 
-function validateAiVisionOutput(parsed: unknown, defaultSport: string): SuggestedListing | null {
+function validateAiVisionOutput(
+  parsed: unknown,
+  defaultSport: string,
+): SuggestedListing | null {
   if (!parsed || typeof parsed !== "object") return null;
   const obj = parsed as Record<string, unknown>;
   const suggestion = (obj.suggestedListing || obj) as Record<string, unknown>;
 
-  const validCategories = new Set([
-    "equipment",
-    "apparel",
-    "protective_gear",
-    "accessories",
-    "parts",
-    "other",
-  ]);
-  const category = (typeof suggestion.category === "string" && validCategories.has(suggestion.category))
+  const category = (
+      typeof suggestion.category === "string" &&
+      VALID_CATEGORIES[suggestion.category as SuggestedListing["category"]] ===
+        true
+    )
     ? (suggestion.category as SuggestedListing["category"])
     : "equipment";
 
-  const sport = (suggestion.sport === "ski" || suggestion.sport === "hockey" || suggestion.sport === "other")
+  const sport = (
+      suggestion.sport === "surf" ||
+      suggestion.sport === "tennis" ||
+      suggestion.sport === "other"
+    )
     ? suggestion.sport
-    : (defaultSport === "ski" || defaultSport === "hockey" ? defaultSport : "other");
+    : (defaultSport === "surf" || defaultSport === "tennis"
+      ? defaultSport
+      : "other");
 
-  const title = typeof suggestion.title === "string" ? suggestion.title.slice(0, 160) : "";
-  const description = typeof suggestion.description === "string" ? suggestion.description.slice(0, 2000) : "";
+  const title = typeof suggestion.title === "string"
+    ? suggestion.title.slice(0, 160)
+    : "";
+  const description = typeof suggestion.description === "string"
+    ? suggestion.description.slice(0, 2000)
+    : "";
 
-  const validConditions = new Set(["new", "like_new", "good", "fair", "poor"]);
-  const condition = (typeof suggestion.condition === "string" && validConditions.has(suggestion.condition))
+  const condition = (
+      typeof suggestion.condition === "string" &&
+      VALID_CONDITIONS[
+          suggestion.condition as SuggestedListing["condition"]
+        ] === true
+    )
     ? (suggestion.condition as SuggestedListing["condition"])
     : "good";
 
   let estimatedPrice: SuggestedListing["estimatedPrice"] = null;
-  if (suggestion.estimatedPrice && typeof suggestion.estimatedPrice === "object") {
+  if (
+    suggestion.estimatedPrice && typeof suggestion.estimatedPrice === "object"
+  ) {
     const priceObj = suggestion.estimatedPrice as Record<string, unknown>;
     if (typeof priceObj.amount === "number" && priceObj.amount >= 0) {
       estimatedPrice = {
         amount: Math.round(priceObj.amount),
-        currency: typeof priceObj.currency === "string" ? priceObj.currency.toUpperCase() : "KRW",
+        currency: typeof priceObj.currency === "string"
+          ? priceObj.currency.toUpperCase()
+          : "KRW",
       };
     }
   }
@@ -113,7 +161,9 @@ function validateAiVisionOutput(parsed: unknown, defaultSport: string): Suggeste
 }
 
 function buildManualEntryFallback(sportHint?: string): SuggestedListing {
-  const sport = (sportHint === "ski" || sportHint === "hockey") ? sportHint : "other";
+  const sport = (sportHint === "surf" || sportHint === "tennis")
+    ? sportHint
+    : "other";
   return {
     category: "equipment",
     sport,
@@ -128,37 +178,53 @@ function buildManualEntryFallback(sportHint?: string): SuggestedListing {
 
 export async function handleAnalyzeListing(
   req: Request,
-  deps: Dependencies = {}
+  deps: Dependencies = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   if (req.method !== "POST") {
-    return createErrorResponse("invalid_request", "Method not allowed. Use POST.", 400);
+    return createErrorResponse(
+      "invalid_request",
+      "Method not allowed. Use POST.",
+      400,
+    );
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "https://example.supabase.co";
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ||
+    "https://example.supabase.co";
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "mock-anon-key";
 
   const supabaseClient = deps.getSupabaseClient
     ? deps.getSupabaseClient(req)
     : createClient(supabaseUrl, supabaseAnonKey, {
-        global: {
-          headers: {
-            Authorization: req.headers.get("Authorization") || "",
-          },
+      global: {
+        headers: {
+          Authorization: req.headers.get("Authorization") || "",
         },
-      });
+      },
+    });
 
   // 1. Authenticate subject
   const authFn = deps.authenticateSubject ?? authenticateSubject;
-  const { subject, errorResponse: authError } = await authFn(req, supabaseClient);
+  const { subject, errorResponse: authError } = await authFn(
+    req,
+    supabaseClient,
+  );
   if (authError) {
-    return createErrorResponse(authError.code, authError.message, authError.status);
+    return createErrorResponse(
+      authError.code,
+      authError.message,
+      authError.status,
+    );
   }
   if (!subject) {
-    return createErrorResponse("authentication_required", "Subject authentication required", 401);
+    return createErrorResponse(
+      "authentication_required",
+      "Subject authentication required",
+      401,
+    );
   }
 
   // 2. Consume persistent quota
@@ -168,7 +234,7 @@ export async function handleAnalyzeListing(
     return createErrorResponse(
       quotaResult.errorResponse.code,
       quotaResult.errorResponse.message,
-      quotaResult.errorResponse.status
+      quotaResult.errorResponse.status,
     );
   }
 
@@ -185,7 +251,7 @@ export async function handleAnalyzeListing(
     return createErrorResponse(
       "invalid_request",
       "Invalid payload. Required: storagePath (string), mimeType (jpeg|png|webp|heic), fileSize (number <= 10MB)",
-      400
+      400,
     );
   }
 
@@ -196,14 +262,19 @@ export async function handleAnalyzeListing(
     return createErrorResponse(
       "forbidden",
       "Access denied. Cannot analyze storage object path owned by another user subject.",
-      403
+      403,
     );
   }
 
   // 5. Short-lived server read for image
   let signedUrl: string | null = null;
   if (deps.createSignedUrl) {
-    const res = await deps.createSignedUrl(supabaseClient, payload.bucket || "listing-images", payload.storagePath, 60);
+    const res = await deps.createSignedUrl(
+      supabaseClient,
+      payload.bucket || "listing-images",
+      payload.storagePath,
+      60,
+    );
     signedUrl = res.signedUrl;
   } else {
     try {
@@ -222,13 +293,18 @@ export async function handleAnalyzeListing(
 
   // 6. Try AI Vision Model analysis if API key is present and signedUrl is valid
   if (aiConfig.apiKeyPresent && signedUrl) {
-    const systemPrompt = `You are a sports equipment image analyzer. Analyze the provided image of sports gear and suggest structured listing details. Return JSON matching: {"suggestedListing": {"category": "equipment"|"apparel"|"protective_gear"|"accessories"|"parts"|"other", "sport": "ski"|"hockey"|"other", "title": string, "description": string, "condition": "new"|"like_new"|"good"|"fair"|"poor", "estimatedPrice": {"amount": number, "currency": "KRW"}, "details": object, "confidence": number (0-1)}}. Privacy & retention policy: Delete after single inference, no retention, no training.`;
+    const systemPrompt =
+      `You are a SummerGear image analyzer for surf and tennis equipment. Analyze the provided gear image and return JSON matching: {"suggestedListing": {"category": "equipment"|"apparel"|"footwear"|"protective"|"accessories"|"other", "sport": "surf"|"tennis"|"other", "title": string, "description": string, "condition": "new"|"like_new"|"good"|"fair"|"poor", "estimatedPrice": {"amount": number, "currency": "KRW"}, "details": object, "confidence": number (0-1)}}. For surf details use equipmentType, discipline, boardLengthFeet, volumeLiters, finSystem, wetsuitThickness. For tennis details use equipmentType, playStyle, handedness, headSizeSqIn, weightGrams, gripSize, stringPattern, strung. Delete image input after one inference; do not retain it or use it for training.`;
 
     const messages = [
       {
         role: "user" as const,
         content: [
-          { type: "text" as const, text: `Analyze this sports gear image for a user listing. Sport hint: ${payload.sport}` },
+          {
+            type: "text" as const,
+            text:
+              `Analyze this sports gear image for a user listing. Sport hint: ${payload.sport}`,
+          },
           { type: "image_url" as const, image_url: { url: signedUrl } },
         ],
       },
@@ -243,7 +319,7 @@ export async function handleAnalyzeListing(
         timeoutMs: 12000,
         maxRetries: 2,
       },
-      (parsed) => validateAiVisionOutput(parsed, payload.sport || "other")
+      (parsed) => validateAiVisionOutput(parsed, payload.sport || "other"),
     );
 
     if (aiResult.success && aiResult.data) {

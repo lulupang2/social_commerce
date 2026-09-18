@@ -1,6 +1,6 @@
 {
-  "name": "icegear",
-  "version": "0.1.0",
+  "name": "summergear",
+  "version": "0.2.0",
   "private": true,
   "packageManager": "pnpm@10.34.5",
   "engines": {
@@ -23,7 +23,7 @@
     "prettier": "3.9.6",
     "typescript": "6.0.3"
   },
-  "description": "IceGear is a TypeScript monorepo shipping a Next.js web MVP and an Expo Router mobile MVP with shared domain contracts and a Supabase schema.",
+  "description": "SummerGear is a Next.js and Expo WebView marketplace for surf and tennis gear, community, realtime chat, and Supabase-backed native bridges.",
   "main": "index.js",
   "directories": {
     "doc": "docs"

@@ -1,96 +1,71 @@
-# Supabase 스키마
+# SummerGear Supabase
 
-이 디렉터리는 IceGear MVP용 PostgreSQL 스키마를 담습니다.
+> 전환 참고: 현재 Supabase 기반 구현을 설명합니다. 인증과 서비스 API는 [Go 백엔드](../docs/backend-transition.md)로 이전할 예정이며, 기존 Auth·RLS 의존성은 단계별 검증 전까지 유지합니다. 최종 [ADR 005](../docs/adr/005-supabase-river-toss-test.md)에 따라 DB 호스팅은 Supabase를 유지하며 River를 추가합니다. 아래 내용은 기존 구현 기준이고 Go 인증·River는 구현 전입니다.
 
-- `migrations/0001_init.sql`은 테이블, enum, 인덱스, timestamp/status 트리거,
-  소유권 검사, Row Level Security(RLS) 정책을 생성합니다.
-- `seed.sql`은 초기 스포츠 카탈로그를 넣습니다. 실제 Supabase Auth 사용자와 연결되어야 하는
-  profile이나 사용자 콘텐츠는 의도적으로 만들지 않습니다.
+이 디렉터리는 SummerGear의 PostgreSQL 스키마, RLS 정책, private Storage, Realtime, Edge Function과 로컬 데모 데이터를 담습니다.
 
-## 전제조건
+## 마이그레이션
 
-1. migration은 `auth.users`와 `auth.uid()`가 존재하는 Supabase 프로젝트에서 실행합니다.
-   `socialapp_on_auth_user_created` 트리거가 Auth 사용자 생성 후 profile을 자동으로 만듭니다.
-   배포 환경이 profile을 직접 생성한다면 트리거를 제거하고 `profiles` 테이블만 유지할 수 있습니다.
-2. UUID는 PostgreSQL `pgcrypto` 확장의 `gen_random_uuid()`로 생성합니다.
-   Supabase에서 제공되는 이 확장만 migration에서 요청합니다.
-3. API는 Supabase Auth로 사용자를 인증하고, RLS는 `auth.uid()`와 소유권을 비교합니다.
-   신뢰된 서버/service-role 연결은 import와 moderation에 사용할 수 있지만 키를 클라이언트에 노출하면 안 됩니다.
-4. `profiles.role`이 `user`, `moderator`, `admin`의 기준입니다.
-   관리자 또는 신뢰된 서버만 role 승격이나 `is_banned` 변경을 수행해야 하며,
-   일반 사용자 세션의 변경은 트리거가 거부합니다.
-5. `reports.target_id`는 listing, post, comment, profile, message, review를 가리킬 수 있는
-   다형성 참조입니다. API는 삽입 전에 대상이 존재하고 `target_type`과 일치하는지 검증해야 합니다.
+- `0001_init.sql`: 프로필, 스포츠, 매물, 이미지, 찜, 대화, 메시지, 커뮤니티와 기본 RLS
+- `0002_profile_reactions.sql`: 종목별 프로필, 1인 1좋아요, 공개 projection, 게시 상태와 감사 이벤트
+- `0003_storage_realtime.sql`: private 이미지 namespace, signed URL 권한, 메시지 읽음 RPC, Realtime publication, Edge Function quota
+- `0004_summer_domain.sql`: 서핑·테니스 기준 ID 전환, 프로필 JSON 계약, 위치, 사용자 소유 푸시 토큰
+- `0005_summer_enums.sql`: 여름 카테고리와 `rejected` enum 추가
+- `0006_summer_enum_contracts.sql`: 구 카테고리 마이그레이션, 허용 카테고리 제약, 거절 상태 전이와 감사 이벤트
 
-## 공개 범위와 소유권
+이미 배포된 마이그레이션은 수정하지 않습니다. 이후 변경은 순서가 증가하는 새 파일로 추가합니다.
 
-- `listings.status = 'active'`와 `community_posts.status = 'active'`는 공개됩니다.
-  판매자/작성자는 자신의 비공개 행도 읽을 수 있고, moderator/admin은 전체를 검토할 수 있습니다.
-- profile은 기본적으로 소유자와 moderation 담당자에게만 공개됩니다.
-  listing/post 응답에서 판매자나 작성자 정보를 노출해야 한다면 명시적인 view 또는 서버 요약을 사용합니다.
-- listing image는 listing의 공개 범위를 따릅니다. favorites와 blocks는 소유자에게만 공개됩니다.
-- conversation과 message는 buyer/seller 참여자만 읽고 쓸 수 있으며, 신고 처리를 위해 moderation 읽기 권한을 둘 수 있습니다.
-  message 작성자는 자신의 message를 수정/삭제할 수 있고, 상대방은 읽음 상태만 변경할 수 있습니다.
-- comment는 comment 자체와 부모 post가 모두 active일 때만 공개됩니다. 게시된 review는 공개되며,
-  참여자는 자신의 숨김/삭제 행을 계속 확인할 수 있습니다.
+## 로컬 실행
 
-## JSON listing 상세 정보
-
-`listings.details`는 스포츠별 속성을 매번 migration하지 않고 확장할 수 있도록 필수 JSON object로 둡니다.
-초기 카탈로그는 `ski`와 `hockey`입니다.
-
-```json
-{
-  "brand": "CCM",
-  "size": "M",
-  "notes": "블레이드에 약간의 사용 흔적이 있습니다",
-  "position": "goalie"
-}
-```
-
-데이터베이스는 `details`가 object인지 확인하지만 스포츠별 단일 스키마까지 강제하지는 않습니다.
-API는 `sports.slug`를 기준으로 도메인 스키마를 적용해야 합니다.
-
-## 상태 전이
-
-트리거는 실수로 인한 상태 건너뛰기를 거부합니다.
-
-- Listing: `draft -> pending_review|active|archived|removed`,
-  `pending_review -> draft|active|archived|removed`,
-  `active -> reserved|sold|archived|removed`,
-  `reserved -> active|sold|archived|removed`, `sold -> archived`,
-  `archived -> active|removed`.
-- Community post: `draft -> active|deleted`, `active -> hidden|deleted`,
-  `hidden -> active|deleted`.
-- Report: `open -> in_review|resolved|dismissed`, 이후 `in_review -> resolved|dismissed`.
-
-콘텐츠 moderation은 행을 물리 삭제하기보다 status 필드로 숨김/삭제를 표현합니다.
-timestamp는 UTC `timestamptz`이고, 변경 가능한 테이블의 `updated_at`은 트리거가 갱신합니다.
-
-## 로컬 적용
-
-Supabase CLI를 설정한 뒤 다음 명령으로 로컬 데이터베이스를 초기화하고 migration과 seed를 적용합니다.
+Supabase CLI와 실행 중인 Docker가 필요합니다.
 
 ```bash
 supabase start
 supabase db reset
 ```
 
-호스팅 프로젝트에서는 프로젝트를 연결한 뒤 `supabase db push`를 사용합니다.
-배포된 `0001_init.sql`을 수정하지 말고, 이후 스키마 변경은 순서가 있는 새 migration 파일로 추가합니다.
+`config.toml`의 seed 순서는 다음과 같습니다.
 
-## 데모 상품 데이터
+1. `seed.sql`: 모든 환경에서 사용할 수 있는 `surf`, `tennis` 기준 데이터
+2. `seed.demo.sql`: 로컬 개발 전용 가상 사용자, 매물 6개, 커뮤니티 글 4개
 
-`seed.demo.sql`은 화면 시연을 위한 익명 판매자 3명, 활성 상품 14개, 커뮤니티 글 4개를 넣습니다.
-스키 7개와 하키 7개 상품, 스키·하키 각 2개의 게시글이 포함되며, 이미지를 업로드하지 않아도 확인할 수 있도록
-placeholder 이미지 URL을 사용합니다. 데모 판매자는 실제 로그인 계정이 아니므로
-운영 데이터베이스에서 재사용하지 않습니다.
+`seed.demo.sql`은 운영 프로젝트에 자동 적용하지 않습니다. 모든 계정과 콘텐츠는 가상 데이터이며 실제 이메일이나 자격 증명을 포함하지 않습니다.
 
-```bash
-# 로컬 Supabase에서 migration과 기준 seed를 적용
-supabase db reset
-# 이후 로컬 SQL 실행 경로에서 seed.demo.sql 내용을 적용
+## 공개 범위와 소유권
+
+- 익명 사용자는 `active` 매물과 게시글만 읽습니다.
+- 판매자·작성자는 자신의 비공개 행을 읽고 정해진 상태 전이만 요청할 수 있습니다.
+- 판매자 공개 정보는 `public_seller_profiles`, 게시글 작성자 공개 정보는 `public_community_authors` projection으로 제한합니다.
+- 찜, 반응, 푸시 토큰, 대화와 메시지는 `auth.uid()` 소유자 또는 참여자에게만 공개됩니다.
+- 일반 사용자는 매물을 `draft`로 만든 뒤 `pending_review`만 요청할 수 있습니다.
+- 운영자는 `pending_review -> active|rejected|archived|removed`를 처리하며 변경은 `publication_audit_events`에 기록됩니다.
+
+## 이미지
+
+`listing-images` 버킷은 private입니다. 객체 경로는 다음 namespace를 강제합니다.
+
+```text
+<seller_uuid>/<listing_uuid>/<file_name>
 ```
 
-호스팅 프로젝트에 적용할 때는 `seed.demo.sql`의 SQL을 검토한 뒤 관리자 SQL 실행 경로로
-한 번 실행합니다. 같은 demo ID를 기준으로 upsert하므로 반복 실행해도 상품이 중복되지 않습니다.
+판매자는 자신의 draft에만 객체와 `listing_images` 메타데이터를 추가할 수 있습니다. 읽기 URL은 `sign-listing-images` Edge Function이 권한을 확인한 뒤 최대 600초 signed URL로 반환합니다. 공개 URL fallback은 사용하지 않습니다.
+
+## Realtime 채팅
+
+- `messages` INSERT만 Realtime publication에 포함합니다.
+- 참여자만 대화와 메시지를 읽고 보낼 수 있습니다.
+- `mark_conversation_read` RPC가 상대방 메시지의 읽음 시각을 일괄 기록합니다.
+- `get_my_conversation_unread_counts` RPC는 사용자별 안 읽은 수만 반환합니다.
+- 클라이언트는 보낸 메시지와 Realtime 수신 메시지를 ID로 중복 제거합니다.
+
+## Edge Function 검증
+
+각 함수의 import map을 적용해 실행합니다.
+
+```bash
+deno test --config functions/recommend-listings/deno.json --allow-env functions/recommend-listings/index.test.ts
+deno test --config functions/analyze-listing/deno.json --allow-env functions/analyze-listing/index.test.ts
+deno test --config functions/sign-listing-images/deno.json --allow-env functions/sign-listing-images/index.test.ts
+```
+
+PostgreSQL/RLS 계약 테스트는 로컬 Supabase가 실행 중일 때 `supabase test db`로 실행합니다.

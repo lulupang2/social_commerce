@@ -1,25 +1,16 @@
-import type { ListingImageRow, ListingRow, ProfileRow, SportRow } from '../supabase/database.types';
+import type { ListingRow, SportRow } from '../supabase/database.types';
 import {
+  LISTING_CATEGORIES,
+  LISTING_CONDITIONS,
   SPORTS,
   type Sport,
   type SurfListingDetails,
   type TennisListingDetails,
 } from '@icegear/domain';
 
-export { SPORTS };
+export { LISTING_CATEGORIES, LISTING_CONDITIONS, SPORTS };
 export type SportSlug = Sport;
-
-export const LISTING_CATEGORIES = [
-  'equipment',
-  'apparel',
-  'protective_gear',
-  'accessories',
-  'parts',
-  'other',
-] as const;
 export type ListingCategory = (typeof LISTING_CATEGORIES)[number];
-
-export const LISTING_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'] as const;
 export type ListingCondition = (typeof LISTING_CONDITIONS)[number];
 
 export interface ListingSeller {
@@ -69,8 +60,6 @@ type Relation<T> = T | T[] | null;
 /** Shape returned by the nested Supabase select in repository.ts. */
 export type ListingQueryRow = ListingRow & {
   sports: Relation<SportRow>;
-  listing_images: Relation<ListingImageRow>;
-  profiles: Relation<ProfileRow>;
 };
 
 export interface ListingFilters {

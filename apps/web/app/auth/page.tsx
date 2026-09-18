@@ -1,111 +1,109 @@
 'use client';
 
-import React, { useState } from 'react';
+import { ArrowRight, LoaderCircle, Mail, ShieldCheck, Waves } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
+
 import { MobileShell } from '@/components/layout/MobileShell';
-import { Waves, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
+import { triggerNativeHaptic } from '@/lib/native-bridge';
+import { requestEmailSignIn } from '@/lib/supabase/auth';
 
 export default function AuthPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState('');
+  const [isUnconfigured, setIsUnconfigured] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) return;
-    setSent(true);
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setIsUnconfigured(false);
+    setIsSending(true);
+
+    const result = await requestEmailSignIn(email);
+    setIsSending(false);
+    if (result.ok) {
+      setSent(true);
+      triggerNativeHaptic('success');
+      return;
+    }
+
+    setError(result.message);
+    setIsUnconfigured(result.reason === 'unconfigured');
+    triggerNativeHaptic('error');
   };
 
   return (
     <MobileShell title="로그인 / 회원가입" showBack hideNav>
-      <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-        <div
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: '50%',
-            background: 'var(--primary-light)',
-            color: 'var(--primary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 16px',
-          }}
-        >
+      <div className="auth-content">
+        <div className="auth-mark">
           <Waves size={36} />
         </div>
-
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 900, marginBottom: 8 }}>
-          SummerGear 시작하기
-        </h1>
-        <p
-          style={{
-            fontSize: '0.88rem',
-            color: 'var(--text-muted)',
-            marginBottom: 30,
-            lineHeight: 1.4,
-          }}
-        >
-          서핑보드, 테니스 라켓 등 하계 스포츠 장비 거래와
-          <br />
-          커뮤니티를 안전하게 이용하세요.
+        <p className="auth-kicker">ONE ACCOUNT · ALL SUMMER</p>
+        <h1>SummerGear 시작하기</h1>
+        <p className="auth-description">
+          서핑보드와 테니스 라켓 거래부터 크루 커뮤니티까지 안전하게 이용하세요.
         </p>
 
         {sent ? (
-          <div
-            style={{
-              background: 'var(--surface)',
-              padding: '24px 16px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border)',
-            }}
-          >
-            <ShieldCheck size={40} color="var(--success)" style={{ marginBottom: 10 }} />
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: 6 }}>
-              인증 메일이 발송되었습니다
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 20 }}>
-              <strong>{email}</strong> 주소로 전송된 링크를 클릭하여 로그인을 완료해주세요.
+          <div className="auth-result" role="status">
+            <ShieldCheck size={40} />
+            <h2>메일함을 확인해 주세요</h2>
+            <p>
+              <strong>{email.trim()}</strong>로 보낸 링크를 누르면 로그인이 완료돼요.
             </p>
-            <button onClick={() => router.push('/')} className="btn-primary">
+            <button className="btn-outline" onClick={() => setSent(false)} type="button">
+              다른 이메일 사용
+            </button>
+            <button className="btn-primary" onClick={() => router.push('/')} type="button">
               홈으로 이동
             </button>
           </div>
         ) : (
-          <form
-            onSubmit={handleSubmit}
-            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
-          >
-            <div className="form-group" style={{ textAlign: 'left' }}>
-              <label className="form-label">이메일 주소</label>
+          <form className="auth-form" onSubmit={(event) => void handleSubmit(event)}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="auth-email">
+                이메일 주소
+              </label>
               <div className="search-input-wrapper">
-                <Mail size={18} className="search-icon" />
+                <Mail className="search-icon" size={18} />
                 <input
-                  type="email"
+                  autoComplete="email"
                   className="search-input"
+                  id="auth-email"
+                  maxLength={254}
+                  onChange={(event) => setEmail(event.target.value)}
                   placeholder="name@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
                   required
+                  type="email"
+                  value={email}
                 />
               </div>
             </div>
 
-            <button type="submit" className="btn-primary" style={{ padding: '14px' }}>
-              <span>이메일로 계속하기</span>
-              <ArrowRight size={18} />
+            {error ? (
+              <p className="form-error form-submit-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <button className="btn-primary" disabled={isSending} type="submit">
+              {isSending ? <LoaderCircle className="spin" size={18} /> : null}
+              <span>{isSending ? '메일 보내는 중' : '이메일로 계속하기'}</span>
+              {!isSending ? <ArrowRight size={18} /> : null}
             </button>
 
-            <div
-              style={{
-                marginTop: 20,
-                fontSize: '0.78rem',
-                color: 'var(--text-subtle)',
-                lineHeight: 1.5,
-              }}
-            >
-              로그인 시 SummerGear의 이용약관 및 개인정보 처리방침에 동의하게 됩니다.
-            </div>
+            {isUnconfigured ? (
+              <button className="btn-outline" onClick={() => router.push('/')} type="button">
+                로그인 없이 데모 둘러보기
+              </button>
+            ) : null}
+
+            <p className="auth-terms">
+              계속하면 SummerGear 이용약관과 개인정보 처리방침에 동의하게 돼요.
+            </p>
           </form>
         )}
       </div>

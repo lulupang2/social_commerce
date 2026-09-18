@@ -1,5 +1,6 @@
 export interface MockListing {
   id: string;
+  sellerId?: string;
   sport: 'surf' | 'tennis';
   sportLabel: string;
   category: 'equipment' | 'apparel' | 'footwear' | 'accessories';

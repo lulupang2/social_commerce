@@ -1,111 +1,56 @@
-# SummerGear (썸머기어) 🏄‍♂️🎾
+# SummerGear
 
-SummerGear는 서핑(Surf)과 테니스(Tennis)를 위한 하계 스포츠 버티컬 중고거래 & 커뮤니티 플랫폼입니다.  
-모바일 퍼스트 반응형 **Next.js Web App**과 고성능 **Expo/React Native WebView Shell**로 구성된 TypeScript 모노레포입니다.
+> 다음 단계: Go + Fiber 백엔드와 네이버·카카오 자체 인증, 입점사 거래로 확장합니다. 현재는 설계 단계이며 아래 실행 방법은 기존 앱 기준입니다. [전환 계획](docs/backend-transition.md) · [인증 설계](docs/authentication.md) · [로드맵](docs/plan.md)
 
----
+서핑과 테니스를 위한 중고 장비 거래·커뮤니티.
+Next.js 웹앱과 Expo WebView 앱이 화면과 도메인 계약을 공유합니다.
 
-## 🌟 주요 특징 및 기능
+[시작하기](docs/development.md) · [문서 둘러보기](docs/README.md) · [제품 기준](docs/SSOT.md) · [아키텍처](docs/architecture.md)
 
-- **하계 스포츠 버티컬 스펙 모델링 (`@icegear/domain`)**
-  - **서핑(Surf):** 숏보드 · 롱보드 · 펀보드, 보드 길이(ft), 부력 Volume(L), 핀 시스템(FCS II / Futures), 웻슈트 두께(2mm, 3/2mm 등)
-  - **테니스(Tennis):** 라켓 헤드 사이즈(sq.in), 무게(g), 그립 사이즈(G1~G3), 플레이 스타일(올코트/베이스라인/서브앤발리), 스트링 작업 여부
-- **모바일 퍼스트 반응형 웹 (`apps/web`)**
-  - 청량한 오션 블루 & 썬 오렌지 테마의 모바일 레이아웃 쉘 및 상단/하단 고정 네비게이션
-  - **홈 (`/`):** 맞춤 추천 레일, 종목별 필터(🏄‍♂️ 서핑 / 🎾 테니스), 2열 그리드 상품 피드
-  - **마켓 & 상세 (`/market`, `/market/[id]`):** 장비 상세 스펙 뱃지 그리드, 판매자 매너온도, 찜 & 1:1 거래 채팅 CTA
-  - **단계별 판매 등록 (`/sell`):** 종목 선택 -> 기본 정보 -> 종목별 정밀 스펙 입력 -> 가격 설정
-  - **커뮤니티 라운지 (`/community`):** 파도 예보/스팟 공유, 테니스 라켓 시타기, 번개 모임 모집 및 댓글/좋아요
-  - **실시간 채팅 (`/chats`, `/chat/[id]`):** 상단 거래 상품 정보 바, 1:1 메시지 송수신, 안전거래 안내
-  - **프로필 & 온보딩 (`/profile`, `/auth`):** 내 서핑/테니스 구력 및 선호 장비 설정 관리
-- **고성능 모바일 웹뷰 쉘 (`apps/mobile`)**
-  - `react-native-webview` 기반의 네이티브 래퍼
-  - 디바이스 Safe Area 인셋 자동 처리, 제스처 및 안드로이드 뒤로가기(BackHandler) 완벽 지원
-  - Pull-to-refresh 제스처 및 네트워크 오프라인 대응 화면
-- **견고한 데이터 & 보안 계약**
-  - RLS(Row Level Security)가 적용된 PostgreSQL/Supabase 마이그레이션
-  - 서핑 및 테니스 결정적 시드 데이터 (`supabase/seed.demo.sql`)
+배포·서버 테스트는 `nhn-rocky`, DB는 Supabase PostgreSQL, 작업 큐는 River, PG는 토스페이먼츠 테스트 환경입니다. [원격 환경 설계](docs/deployment.md) · [River 설계](docs/background-jobs.md) · [테스트 결제 준비](docs/payment-test-setup.md)
 
----
+## 빠른 시작
 
-## 📁 저장소 구조
+Node.js 22.13 이상과 pnpm 10.34.5가 필요합니다.
 
-```text
-apps/
-  web/          Next.js App Router 기반 모바일 퍼스트 웹 앱
-  mobile/       Expo / React Native 기반 WebView 쉘 앱
-packages/
-  domain/       서핑·테니스 도메인 모델 및 Zod 런타임 유효성 검증
-supabase/
-  migrations/   PostgreSQL 스키마 및 RLS 보안 정책
-  seed.sql      기준 스포츠 데이터 (surf, tennis)
-  seed.demo.sql 서핑·테니스 시연용 데모 장비 및 프로필 데이터
-```
-
----
-
-## 🛠️ 사전 요구사항
-
-- **Node.js**: 22.13 이상
-- **pnpm**: 10.34.5 (`packageManager` 필드로 고정)
-
-Corepack을 활성화한 뒤 워크스페이스 의존성을 설치합니다:
-
-```bash
+```sh
 corepack enable
 pnpm install
-```
-
----
-
-## 🚀 개발 및 실행 명령
-
-### 1. 개발 서버 실행
-
-```bash
-# Next.js 웹앱 실행 (http://localhost:3000)
 pnpm dev:web
-
-# Expo 모바일 웹뷰 쉘 실행
-pnpm dev:mobile
-
-# 전체 개발 서버 동시 실행
-pnpm dev
 ```
 
-> **Tip**: 브라우저에서 `http://localhost:3000` 접속 후 개발자 도구(F12)의 디바이스 툴바(모바일 뷰)를 켜면 최적화된 앱 UI를 확인할 수 있습니다.
+[localhost:3000](http://localhost:3000)에서 웹앱을 확인합니다.
+Supabase 설정이 없는 환경에서는 로컬 데모 데이터를 사용합니다.
+실제 데이터 연결과 모바일 실행은 [개발 가이드](docs/development.md)를 따릅니다.
 
-### 2. 검증 및 빌드 명령
+## 제품 구성
 
-```bash
-pnpm typecheck        # 전체 워크스페이스 TypeScript 타입 검사
-pnpm test             # 도메인, 웹, 모바일 전체 단위 테스트 실행
-pnpm lint             # ESLint 정적 분석
-pnpm build            # Next.js 및 도메인 프로덕션 빌드
-pnpm format           # Prettier 코드 포맷팅
-pnpm export:mobile:web # 모바일 웹 번들 빌드
+| 영역        | 주요 흐름                                      |
+| ----------- | ---------------------------------------------- |
+| 장비 거래   | 종목별 탐색, 상세 스펙, 찜, 단계별 판매 등록   |
+| 커뮤니티    | 장비 후기, 스팟 정보, 모임 모집, 댓글과 좋아요 |
+| 거래 채팅   | 1:1 메시지, Realtime 수신, 읽음 처리           |
+| 모바일 연동 | 사진 선택, 햅틱, 푸시 토큰, 오프라인 재시도    |
+
+## 코드 탐색
+
+| 경로                               | 역할                                        |
+| ---------------------------------- | ------------------------------------------- |
+| [apps/web](apps/web)               | Next.js App Router 기반 사용자 화면         |
+| [apps/mobile](apps/mobile)         | Expo / React Native WebView와 네이티브 기능 |
+| [packages/domain](packages/domain) | 공유 TypeScript 모델과 Zod 검증             |
+| [supabase](supabase)               | 데이터베이스, RLS, Storage, Edge Functions  |
+
+패키지 이름은 기존 `@icegear/*` 네임스페이스를 사용합니다.
+
+## 변경 검증
+
+```sh
+pnpm typecheck
+pnpm test
+pnpm lint
+pnpm build
 ```
 
----
-
-## 🗄️ 환경변수 및 Supabase 설정
-
-각 앱 디렉터리의 `.env.example`을 복사하여 로컬 환경변수를 설정합니다:
-
-```bash
-cp apps/web/.env.example apps/web/.env.local
-cp apps/mobile/.env.example apps/mobile/.env
-```
-
-### 주요 환경변수
-
-- `apps/web`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `apps/mobile`: `EXPO_PUBLIC_WEB_URL` (기본값: `http://localhost:3000`), `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-
-### 로컬 Supabase 데이터베이스 초기화
-
-```bash
-supabase db reset
-```
-
-기본 시드 적용 후 `supabase/seed.demo.sql`을 실행하면 서핑보드(Happy Everyday, Torq Mod Fun) 및 테니스 라켓(Pro Staff 97, Pure Aero) 등의 풍부한 데모 데이터를 즉시 확인할 수 있습니다.
+모바일 번들·DB·Edge Function 검증은 [개발 가이드](docs/development.md#변경-검증)를 확인합니다.
+문서를 수정할 때는 [작성 규칙](docs/writing.md)을 따릅니다.

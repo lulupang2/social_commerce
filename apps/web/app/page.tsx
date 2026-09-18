@@ -3,25 +3,19 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { WebListingCard } from '@/components/listings/WebListingCard';
 import { MobileShell } from '@/components/layout/MobileShell';
-import { SUMMER_LISTINGS } from '@/lib/data/summer-mock-data';
-import { Search, Heart, Sparkles, MapPin, ChevronRight, Waves, Flame } from 'lucide-react';
+import { useFavorites } from '@/lib/listings/use-favorites';
+import { useListings } from '@/lib/listings/use-listings';
+import { Search, Sparkles, ChevronRight, Waves, Flame } from 'lucide-react';
 
 export default function HomePage() {
+  const { listings: allListings } = useListings();
   const [selectedSport, setSelectedSport] = useState<'all' | 'surf' | 'tennis'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [favorites, setFavorites] = useState<Record<string, boolean>>({
-    'surf-001': true,
-    'tennis-001': false,
-  });
+  const { favorites, updateFavorite } = useFavorites();
 
-  const toggleFavorite = (id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setFavorites((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const filteredListings = SUMMER_LISTINGS.filter((item) => {
+  const filteredListings = allListings.filter((item) => {
     const matchesSport = selectedSport === 'all' || item.sport === selectedSport;
     const matchesSearch =
       item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -30,7 +24,7 @@ export default function HomePage() {
     return matchesSport && matchesSearch;
   });
 
-  const recommendedListings = SUMMER_LISTINGS.filter((item) => item.recommendationReason);
+  const recommendedListings = allListings.filter((item) => item.recommendationReason);
 
   return (
     <MobileShell>
@@ -111,7 +105,14 @@ export default function HomePage() {
           <div className="recommendation-rail">
             {recommendedListings.map((item) => (
               <Link href={`/market/${item.id}`} key={item.id} className="rec-card">
-                <img src={item.images[0]} alt={item.title} className="rec-card-image" />
+                <Image
+                  alt={item.title}
+                  className="rec-card-image"
+                  height={130}
+                  src={item.images[0]}
+                  unoptimized
+                  width={220}
+                />
                 <div className="rec-card-content">
                   <div className="rec-reason-badge">
                     <Sparkles size={11} />
@@ -160,47 +161,14 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="product-grid">
-            {filteredListings.map((item) => {
-              const isFav = favorites[item.id] ?? false;
-              return (
-                <Link href={`/market/${item.id}`} key={item.id} className="product-card">
-                  <div className="product-card-img-wrapper">
-                    <img src={item.images[0]} alt={item.title} className="product-card-img" />
-                    <button
-                      className="favorite-btn"
-                      onClick={(e) => toggleFavorite(item.id, e)}
-                      aria-label="찜하기"
-                    >
-                      <Heart
-                        size={17}
-                        color={isFav ? 'var(--danger)' : 'var(--text-muted)'}
-                        fill={isFav ? 'var(--danger)' : 'none'}
-                      />
-                    </button>
-                  </div>
-
-                  <div className="product-card-info">
-                    <div className="product-sport-tag">
-                      {item.sportLabel} · {item.conditionLabel}
-                    </div>
-                    <h3 className="product-title">{item.title}</h3>
-                    <div className="product-spec-row">
-                      <MapPin size={12} />
-                      <span
-                        style={{
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {item.location.split(' ')[0]} {item.location.split(' ')[1]}
-                      </span>
-                    </div>
-                    <div className="product-price">{item.price.toLocaleString()}원</div>
-                  </div>
-                </Link>
-              );
-            })}
+            {filteredListings.map((item) => (
+              <WebListingCard
+                favorite={favorites[item.id] ?? false}
+                key={item.id}
+                listing={item}
+                onFavorite={updateFavorite}
+              />
+            ))}
           </div>
         )}
       </section>

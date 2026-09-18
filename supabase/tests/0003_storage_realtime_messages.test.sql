@@ -32,7 +32,7 @@ $$;
 
 insert into public.sports (id, slug, name, description)
 values
-  ('11111111-1111-4111-8111-111111111111', 'ski', 'Ski', 'Test reference sport')
+  ('11111111-1111-4111-8111-111111111111', 'surf', '서핑', 'Test reference sport')
 on conflict (slug) do update
 set is_active = true;
 
@@ -124,7 +124,7 @@ values
   (
     'c3000000-0000-4000-8000-000000000001',
     'a3000000-0000-4000-8000-000000000001',
-    (select id from public.sports where slug = 'ski'),
+    (select id from public.sports where slug = 'surf'),
     'Draft media listing',
     10,
     'draft',
@@ -133,7 +133,7 @@ values
   (
     'c3000000-0000-4000-8000-000000000002',
     'a3000000-0000-4000-8000-000000000001',
-    (select id from public.sports where slug = 'ski'),
+    (select id from public.sports where slug = 'surf'),
     'Active media listing',
     20,
     'active',
@@ -142,7 +142,7 @@ values
   (
     'c3000000-0000-4000-8000-000000000003',
     'a3000000-0000-4000-8000-000000000001',
-    (select id from public.sports where slug = 'ski'),
+    (select id from public.sports where slug = 'surf'),
     'Pending media listing',
     30,
     'pending_review',

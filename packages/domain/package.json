@@ -1,7 +1,7 @@
 {
   "name": "@icegear/domain",
-  "version": "0.1.0",
-  "description": "Framework-agnostic domain types and validation schemas for IceGear",
+  "version": "0.2.0",
+  "description": "Framework-agnostic SummerGear contracts for surf, tennis, marketplace, community, chat, and native bridges",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
