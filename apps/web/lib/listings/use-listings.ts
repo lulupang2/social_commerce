@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { getLocalListings, LOCAL_STORE_EVENT } from '../data/local-store';
 import { SUMMER_LISTINGS, type MockListing } from '../data/summer-mock-data';
+import { listGoListings } from '../go-listings/client';
 import { createBrowserSupabaseClient } from '../supabase/browser';
 import { ListingRepository } from './repository';
 import type { MarketListing } from './types';
@@ -72,7 +73,7 @@ function relativeTime(value: string): string {
   return `${Math.floor(hours / 24)}일 전`;
 }
 
-function toMockListing(listing: MarketListing): MockListing | null {
+export function toMockListing(listing: MarketListing): MockListing | null {
   if (listing.sport.slug !== 'surf' && listing.sport.slug !== 'tennis') return null;
   const fallback =
     SUMMER_LISTINGS.find(
@@ -135,23 +136,24 @@ async function loadRemoteListings(): Promise<MockListing[] | null> {
   if (remoteCache) return remoteCache;
   if (remoteRequest) return remoteRequest;
 
-  const client = createBrowserSupabaseClient();
-  if (!client) return null;
-
-  remoteRequest = new ListingRepository(client)
-    .list()
-    .then((listings) => {
-      const mapped = listings.flatMap((listing) => {
-        const item = toMockListing(listing);
-        return item ? [item] : [];
-      });
-      remoteCache = mapped.length > 0 ? mapped : null;
-      return remoteCache;
-    })
-    .catch(() => null)
-    .finally(() => {
-      remoteRequest = null;
+  remoteRequest = (async () => {
+    const goListings = (await listGoListings()) ?? [];
+    const client = createBrowserSupabaseClient();
+    const legacyListings = client
+      ? await new ListingRepository(client).list().catch(() => [])
+      : [];
+    const seen = new Set<string>();
+    const mapped = [...goListings, ...legacyListings].flatMap((listing) => {
+      if (seen.has(listing.id)) return [];
+      seen.add(listing.id);
+      const item = toMockListing(listing);
+      return item ? [item] : [];
     });
+    remoteCache = mapped.length > 0 ? mapped : null;
+    return remoteCache;
+  })().finally(() => {
+    remoteRequest = null;
+  });
   return remoteRequest;
 }
 

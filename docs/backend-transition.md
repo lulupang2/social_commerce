@@ -1,8 +1,8 @@
 # Go 백엔드 전환 설계
 
-상태: 구현 전 · 기준일: 2026-09-18
+상태: Go API·River·서비스 세션과 매물 메타데이터 1차 이전 구현, 실제 소셜·이미지·나머지 거래 이전은 후속 · 기준일: 2026-09-20
 
-Go + Fiber로 API와 인증을 분리하고 입점사 거래 기능을 추가합니다. 확정된 기술 방향은 [ADR 003](adr/003-go-backend-and-social-auth.md), 구현 순서는 [로드맵](plan.md)을 따릅니다. 아래 디렉터리·API·데이터 구조는 생성 예정이며 아직 실행할 수 없습니다.
+Go + Fiber로 API와 인증을 분리하고 입점사 거래 기능을 추가합니다. 확정된 기술 방향은 [ADR 003](adr/003-go-backend-and-social-auth.md), 구현 순서는 [로드맵](plan.md)을 따릅니다. 현재 `apps/api`에는 health·worker·migration·서비스 세션·OAuth 코드와 첫 업무 모듈인 `internal/listings`가 있으며, 매물 등록·공개 조회·소유자 조회·수정을 Go 세션/RLS로 검증합니다. 이미지와 기존 `public.listings` 데이터 이관은 아직 기존 경로를 보존합니다. 실행·검증은 [기반 실행 안내](../ops/nhn-rocky/FOUNDATION.md)를 따릅니다.
 
 ## 현재와 목표
 
@@ -38,18 +38,20 @@ flowchart TD
 ## 모듈과 계약
 
 ```text
-apps/api/                  생성 예정: Go 모듈
+apps/api/                  기반 생성됨: Go 모듈
   cmd/api/                 HTTP 서버
   cmd/worker/              재시도·예약 만료·정산·대조 작업
   internal/auth/           외부 로그인과 서비스 세션
-  internal/members/        회원과 프로필
+  internal/listings/       Go 소유 매물 등록·조회·수정과 회원 컨텍스트/RLS
+  internal/members/        회원과 프로필 (예정)
   internal/sellers/        입점 신청·업체·구성원
   internal/catalog/        상품·판매 상태·재고
   internal/orders/         주문·배송·구매확정
   internal/payments/       승인·취소·웹훅·PG 어댑터
   internal/settlements/    원장·정산·지급
   internal/platform/       DB·설정·로깅 등 공통 기반
-packages/api-client/       생성 예정: OpenAPI 기반 TypeScript 클라이언트
+apps/web/lib/go-auth/      OpenAPI 생성 타입과 Go 인증 호출
+apps/web/lib/go-listings/  Go 매물 호출·응답 검증
 supabase/migrations/       앱 스키마 변경의 단일 이력; River migration은 별도 버전 추적
 ```
 
@@ -65,7 +67,7 @@ OpenAPI를 Go HTTP 계약의 기준으로 두고 프런트엔드 타입을 생�
 
 Go는 서버 전용 DB 계정을 사용합니다. 마이그레이션 계정과 런타임 계정을 분리하고 런타임에 superuser나 광범위한 RLS 우회 권한을 기본 부여하지 않습니다.
 
-새 세션은 Supabase JWT가 아니므로 기존 `auth.uid()`가 자동으로 채워지지 않습니다. 이전 테이블의 RLS는 Go가 트랜잭션 안에서 설정한 신뢰된 회원 컨텍스트를 읽는 방식으로 변경하는 것을 기본안으로 둡니다. 컨텍스트는 요청 바디가 아닌 검증된 세션에서 만들고 `SET LOCAL` 수준으로 한 트랜잭션에 한정합니다. 실제 역할·정책·컨텍스트 함수는 마이그레이션 단계에서 확정하고 연결 풀 간 누출을 테스트합니다.
+새 세션은 Supabase JWT가 아니므로 기존 `auth.uid()`가 자동으로 채워지지 않습니다. 신규 `summergear_app.listings`는 Go가 검증한 회원 ID를 트랜잭션 로컬 `summergear.member_id` 컨텍스트로 설정하고 RLS가 이를 읽도록 구현했습니다. 컨텍스트는 요청 바디가 아니라 서비스 세션에서 만들며 트랜잭션 밖으로 누출되지 않는 것을 격리 PostgreSQL 통합 테스트로 확인합니다. 기존 `public.*` 테이블은 기능별 전환 시 같은 원칙으로 옮깁니다.
 
 Go의 자원별 소유권·업체 구성원 검사를 먼저 수행하고, DB의 제약과 RLS로 추가 방어합니다. 입점사 A가 ID를 바꿔 B의 상품·주문·정산에 접근하는 것을 차단해야 합니다. worker·운영자 작업도 전용 권한과 감사 기록을 사용합니다.
 
@@ -108,4 +110,4 @@ Go의 자원별 소유권·업체 구성원 검사를 먼저 수행하고, DB의
 - 채팅의 Go 세션 연계 방식
 - 토스페이먼츠 테스트 키·콜백 설정; 실결제·지급대행 계약은 후속 범위
 
-Go·Fiber 패치 버전, SQL 접근 라이브러리와 작업 실행 방식은 API 기반 단계에서 고정합니다. 작업 큐는 [River](background-jobs.md)로 확정했으며 버전·연결·권한을 검증합니다. 현재 실행 방법은 [개발 가이드](development.md)를 사용합니다.
+Go·Fiber·River·pgx 버전과 실행 경로는 [기반 실행 안내](../ops/nhn-rocky/FOUNDATION.md)에 고정했습니다. 격리 fixture 검증과 아직 수행하지 않은 Supabase 실연결은 [검증 결과](foundation-verification.md)에서 구분합니다. 실제 회원 컨텍스트·인증 RLS 이전은 후속 작업입니다.

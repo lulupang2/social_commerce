@@ -13,8 +13,9 @@ import {
 import { MobileShell } from '@/components/layout/MobileShell';
 import { saveLocalListing } from '@/lib/data/local-store';
 import { SUMMER_LISTINGS, type MockListing } from '@/lib/data/summer-mock-data';
+import { createGoListing } from '@/lib/go-listings/client';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
-import { createListing } from '@/lib/supabase/mutations';
+import { createListing as createLegacyListing } from '@/lib/supabase/mutations';
 
 type Sport = 'surf' | 'tennis';
 
@@ -82,7 +83,7 @@ export default function SellPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [submission, setSubmission] = useState<{
-    mode: 'supabase' | 'local';
+    mode: 'go' | 'supabase' | 'local';
     listingId: string;
   } | null>(null);
 
@@ -241,14 +242,16 @@ export default function SellPage() {
     setIsSubmitting(true);
     try {
       const files = await Promise.all(media.map(selectedMediaToFile));
-      const result = await createListing(buildPayload(), files);
+      const payload = buildPayload();
+      const goResult = await createGoListing(payload, files);
+      const result = goResult ?? (await createLegacyListing(payload, files));
       if (result.ok) {
-        setSubmission({ mode: 'supabase', listingId: result.data.id });
+        setSubmission({ mode: goResult ? 'go' : 'supabase', listingId: result.data.id });
         triggerNativeHaptic('success');
         return;
       }
 
-      if (result.reason === 'unconfigured' || result.reason === 'unavailable') {
+      if (!goResult && (result.reason === 'unconfigured' || result.reason === 'unavailable')) {
         const listingId = saveDemoListing();
         if (!listingId) {
           setFormError('브라우저 저장 공간이 부족해 데모 매물을 저장하지 못했어요.');
@@ -282,13 +285,19 @@ export default function SellPage() {
             <CheckCircle2 size={44} />
           </div>
           <p className="completion-kicker">
-            {submission.mode === 'supabase' ? '검토 요청 완료' : '기기 데모 저장 완료'}
+            {submission.mode === 'go'
+              ? 'Go API 검토 요청 완료'
+              : submission.mode === 'supabase'
+                ? '기존 검토 요청 완료'
+                : '기기 데모 저장 완료'}
           </p>
           <h1>장비 등록을 마쳤어요</h1>
           <p>
-            {submission.mode === 'supabase'
-              ? '운영자 검토 후 마켓에 공개돼요. MY에서 진행 상태를 확인할 수 있어요.'
-              : 'Supabase에 연결되면 실제 등록을 사용할 수 있어요. 지금은 이 브라우저의 마켓에서 확인할 수 있어요.'}
+            {submission.mode === 'go'
+              ? 'Go 서비스 세션 소유자로 등록됐어요. 운영자 검토 후 공개되며, 사진 업로드는 다음 전환 단계에서 연결합니다.'
+              : submission.mode === 'supabase'
+                ? '운영자 검토 후 마켓에 공개돼요. MY에서 진행 상태를 확인할 수 있어요.'
+                : '백엔드에 연결되면 실제 등록을 사용할 수 있어요. 지금은 이 브라우저의 마켓에서 확인할 수 있어요.'}
           </p>
           <button
             className="btn-primary"

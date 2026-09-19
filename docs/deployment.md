@@ -1,6 +1,6 @@
 # nhn-rocky 배포·테스트 환경
 
-상태: 방향 확정, 서비스 배포 구성 구현 전 · 기준일: 2026-09-18
+상태: 격리 기반 테스트 구성 추가, 운영 배포 구현 전 · 기준일: 2026-09-18
 
 Go API·River worker·Next.js를 SSH 호스트 `nhn-rocky`에서 배포·테스트합니다. DB는 Supabase PostgreSQL을 유지합니다. Docker 운영 DB 계획은 [ADR 005](adr/005-supabase-river-toss-test.md)로 대체되었습니다.
 
@@ -72,4 +72,4 @@ Supabase 플랜별 백업·복구 기능을 확인하고 중요한 스키마 변
 
 ## 원격 작업 환경 준비
 
-저장소와 비밀 설정 파일을 준비하는 절차는 [nhn-rocky 작업 환경](../ops/nhn-rocky/README.md)에 있습니다. 준비 브랜치는 `codex/nhn-rocky-setup`, 원격 경로는 `/home/rocky/projects/socialapp`입니다. 실행·배포는 별도 단계이며 Go·River 구성은 아직 구현 전입니다.
+저장소와 비밀 설정 파일을 준비하는 절차는 [nhn-rocky 작업 환경](../ops/nhn-rocky/README.md)에 있습니다. 준비 브랜치는 `codex/nhn-rocky-setup`, 원격 경로는 `/home/rocky/projects/socialapp`입니다. Go·River 기반의 격리 실행은 [기반 안내](../ops/nhn-rocky/FOUNDATION.md), 실행 결과와 한계는 [검증 기록](foundation-verification.md)을 따릅니다. 실제 Supabase 테스트 연결과 운영 배포는 별도 단계입니다.

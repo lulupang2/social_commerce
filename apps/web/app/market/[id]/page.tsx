@@ -5,6 +5,7 @@ import {
   LoaderCircle,
   MapPin,
   MessageCircle,
+  Pencil,
   Share2,
   ShieldCheck,
   Sparkles,
@@ -13,24 +14,56 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import React, { use, useState } from 'react';
+import React, { use, useEffect, useState } from 'react';
 
 import { MobileShell } from '@/components/layout/MobileShell';
 import { startListingConversation } from '@/lib/chat/realtime';
 import { SUMMER_CHAT_ROOMS } from '@/lib/data/summer-mock-data';
+import { getGoSession } from '@/lib/go-auth/client';
+import { getGoListing } from '@/lib/go-listings/client';
 import { useFavorites } from '@/lib/listings/use-favorites';
-import { useListings } from '@/lib/listings/use-listings';
+import { toMockListing, useListings } from '@/lib/listings/use-listings';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
 
 export default function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { listings, isLoading } = useListings();
+  const { listings, isLoading: isFeedLoading } = useListings();
   const { favorites, updateFavorite } = useFavorites();
-  const listing = listings.find((item) => item.id === id) ?? null;
+  const feedListing = listings.find((item) => item.id === id) ?? null;
+  const [goLookup, setGoLookup] = useState<{
+    id: string;
+    listing: ReturnType<typeof toMockListing>;
+  } | null>(null);
+  const goListing = goLookup?.id === id ? goLookup.listing : null;
+  const listing = feedListing ?? goListing;
+  const isLoading = isFeedLoading || (!feedListing && goLookup?.id !== id);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [actionMessage, setActionMessage] = useState('');
   const [isOpeningChat, setIsOpeningChat] = useState(false);
+  const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getGoSession().then((result) => {
+      if (active && result.ok) setCurrentMemberId(result.session.member.id);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (feedListing) return;
+    let active = true;
+    void getGoListing(id).then((item) => {
+      if (!active) return;
+      setGoLookup({ id, listing: item ? toMockListing(item) : null });
+    });
+    return () => {
+      active = false;
+    };
+  }, [feedListing, id]);
 
   if (!listing && isLoading) {
     return (
@@ -204,9 +237,16 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
               희망 거래 장소 <strong>{listing.location}</strong>
             </span>
           </div>
-          <button className="detail-share" onClick={() => void shareListing()} type="button">
-            <Share2 size={16} />이 매물 공유하기
-          </button>
+          <div className="detail-share-actions">
+            <button className="detail-share" onClick={() => void shareListing()} type="button">
+              <Share2 size={16} />이 매물 공유하기
+            </button>
+            {currentMemberId && listing.sellerId === currentMemberId ? (
+              <Link className="detail-share" href={`/market/${listing.id}/edit`}>
+                <Pencil size={16} />내 매물 수정하기
+              </Link>
+            ) : null}
+          </div>
           {actionMessage ? (
             <p className="form-error detail-action-message" role="status">
               {actionMessage}

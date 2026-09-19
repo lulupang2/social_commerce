@@ -1,8 +1,25 @@
 # SummerGear MVP API 계약
 
-> 범위: 기존 Supabase·WebView 계약. 신규 인증 API는 [인증 설계](authentication.md), 거래 API 영역은 [입점사와 거래 설계](commerce.md)를 참고합니다. Go HTTP 계약은 구현 단계에서 OpenAPI로 확정하며 아래 계약과 혼용하지 않습니다.
+> 범위: Go HTTP 계약과 전환 전 Supabase·WebView 계약을 함께 설명합니다. Go 계약의 기준은 [OpenAPI](../apps/api/openapi.yaml)이며 인증 상세는 [인증 설계](authentication.md), 거래 확장은 [입점사와 거래 설계](commerce.md)를 참고합니다.
 
-**상태:** 웹, Supabase, Edge Function, WebView 브릿지가 `@icegear/domain`의 런타임 계약으로 연결됨.
+**상태:** 서비스 세션 인증과 첫 Go 소유 매물 등록·조회·수정 계약을 추가했습니다. 기존 Supabase 매물·Storage·Realtime 계약은 전환 완료 전까지 보존합니다.
+
+## Go HTTP 계약
+
+모든 브라우저 호출은 동일 출처 `/api/v1`을 사용합니다. 변경 요청은 서비스 세션 쿠키, 허용 Origin과 `X-CSRF-Token`을 검증합니다. 공통 오류는 `code`, `message`, `requestId`를 반환합니다.
+
+| 메서드·경로 | 역할 |
+| --- | --- |
+| `GET /api/v1/auth/session` | 현재 내부 회원과 세션·CSRF 조회 |
+| `POST /api/v1/auth/dev-login` | 테스트 환경에서만 고정 개발 회원의 실제 서비스 세션 발급 |
+| `GET /api/v1/listings` | 공개 `active` Go 매물 최대 24개 조회 |
+| `GET /api/v1/listings/{id}` | 공개 매물 또는 현재 회원이 소유한 비공개 매물 조회 |
+| `POST /api/v1/listings` | 인증 회원 소유 `pending_review` 매물 생성 |
+| `PATCH /api/v1/listings/{id}` | 소유자의 `draft`·`pending_review`·`rejected` 매물 수정 |
+
+Go 매물 생성은 현재 정수 KRW 가격과 도메인 `details`를 검증합니다. 이미지 업로드·서명 URL은 아직 기존 Storage 경로이므로 Go 매물 API에는 이미지 본문을 받지 않습니다. 웹은 Go API가 준비된 환경에서 이를 우선 사용하고, Go 경로 자체가 없는 전환 전 환경에서만 기존 Supabase 호출로 돌아갑니다.
+
+---
 
 ## 1. 원칙
 

@@ -1,0 +1,918 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SummerGear Go API",
+    "version": "0.3.0",
+    "description": "Go service-session authentication and the first Go-owned listings vertical slice. Social provider credentials may remain disabled in test environments; dev-login is test-only."
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "operationId": "liveness",
+        "responses": {
+          "200": {
+            "description": "Process is alive.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthLive"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "readiness",
+        "responses": {
+          "200": {
+            "description": "Database, auth tables, listings tables, and River foundation are ready.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReady"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service is not ready.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/providers": {
+      "get": {
+        "operationId": "authProviders",
+        "responses": {
+          "200": {
+            "description": "Provider configuration status without credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/session": {
+      "get": {
+        "operationId": "authSession",
+        "responses": {
+          "200": {
+            "description": "Current service session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid service session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/dev-login": {
+      "post": {
+        "operationId": "authDevLogin",
+        "description": "Test-only login. The route is registered only when AUTH_DEV_LOGIN_ENABLED=true.",
+        "responses": {
+          "200": {
+            "description": "Test member service session created or rotated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "authLogout",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CSRFToken"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Current service session revoked."
+          },
+          "401": {
+            "description": "No valid service session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout-all": {
+      "post": {
+        "operationId": "authLogoutAll",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CSRFToken"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "All member service sessions revoked after recent reauthentication."
+          },
+          "403": {
+            "description": "Reauthentication, origin, or CSRF requirement not met.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/reauthenticate": {
+      "post": {
+        "operationId": "authReauthenticate",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CSRFToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReauthenticateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Provider authorization URL for reauthentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid service session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/{provider}/start": {
+      "get": {
+        "operationId": "authStart",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Provider"
+          },
+          {
+            "name": "returnTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^/[A-Za-z0-9/_-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Redirect to the configured provider."
+          },
+          "503": {
+            "description": "Provider is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/{provider}/callback": {
+      "get": {
+        "operationId": "authCallback",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Provider"
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Return to the allowed application path with success or static error code."
+          },
+          "400": {
+            "description": "Invalid state, browser binding, or provider response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/listings": {
+      "get": {
+        "operationId": "listListings",
+        "parameters": [
+          {
+            "name": "sport",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "surf",
+                "tennis"
+              ]
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ListingCategory"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public active Go-owned listings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createListing",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CSRFToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateListingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pending-review listing owned by the authenticated member.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Listing"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/listings/{id}": {
+      "get": {
+        "operationId": "getListing",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ListingID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active listing, or the authenticated owner's own non-public listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Listing"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not visible to this requester.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateListing",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ListingID"
+          },
+          {
+            "$ref": "#/components/parameters/CSRFToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateListingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Owner-updated draft, pending-review, or rejected listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Listing"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not owned by this member.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Provider": {
+        "name": "provider",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "naver",
+            "kakao"
+          ]
+        }
+      },
+      "ListingID": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "CSRFToken": {
+        "name": "X-CSRF-Token",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          }
+        }
+      },
+      "HealthLive": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          }
+        }
+      },
+      "HealthReady": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ready"
+          }
+        }
+      },
+      "ProviderStatus": {
+        "type": "object",
+        "required": [
+          "provider",
+          "enabled",
+          "missing"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "naver",
+              "kakao"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProvidersResponse": {
+        "type": "object",
+        "required": [
+          "providers"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderStatus"
+            }
+          }
+        }
+      },
+      "Member": {
+        "type": "object",
+        "required": [
+          "id",
+          "displayName",
+          "email",
+          "onboarded"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "onboarded": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SessionInfo": {
+        "type": "object",
+        "required": [
+          "expiresAt",
+          "absoluteExpiresAt",
+          "reauthenticatedAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "absoluteExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reauthenticatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "SessionView": {
+        "type": "object",
+        "required": [
+          "member",
+          "csrfToken",
+          "session"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          },
+          "csrfToken": {
+            "type": "string"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionInfo"
+          }
+        }
+      },
+      "ReauthenticateRequest": {
+        "type": "object",
+        "required": [
+          "provider",
+          "returnTo"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "naver",
+              "kakao"
+            ]
+          },
+          "returnTo": {
+            "type": "string"
+          }
+        }
+      },
+      "AuthorizationResponse": {
+        "type": "object",
+        "required": [
+          "authorizationUrl"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "authorizationUrl": {
+            "type": "string"
+          }
+        }
+      },
+      "ListingCategory": {
+        "type": "string",
+        "enum": [
+          "equipment",
+          "apparel",
+          "footwear",
+          "protective",
+          "accessories",
+          "other"
+        ]
+      },
+      "ListingCondition": {
+        "type": "string",
+        "enum": [
+          "new",
+          "like_new",
+          "good",
+          "fair",
+          "poor"
+        ]
+      },
+      "ListingStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "pending_review",
+          "rejected",
+          "active",
+          "reserved",
+          "sold",
+          "archived",
+          "removed"
+        ]
+      },
+      "ListingSeller": {
+        "type": "object",
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Listing": {
+        "type": "object",
+        "required": [
+          "id",
+          "seller",
+          "sport",
+          "category",
+          "title",
+          "description",
+          "priceKrw",
+          "condition",
+          "status",
+          "details",
+          "location",
+          "publishedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "seller": {
+            "$ref": "#/components/schemas/ListingSeller"
+          },
+          "sport": {
+            "type": "string",
+            "enum": [
+              "surf",
+              "tennis"
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/ListingCategory"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "priceKrw": {
+            "type": "integer"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/ListingCondition"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ListingStatus"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "location": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ListingList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Listing"
+            }
+          }
+        }
+      },
+      "CreateListingRequest": {
+        "type": "object",
+        "required": [
+          "sport",
+          "category",
+          "title",
+          "description",
+          "priceKrw",
+          "condition",
+          "details",
+          "location"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "sport": {
+            "type": "string",
+            "enum": [
+              "surf",
+              "tennis"
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/ListingCategory"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "priceKrw": {
+            "type": "integer"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/ListingCondition"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "location": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateListingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/ListingCategory"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "priceKrw": {
+            "type": "integer"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/ListingCondition"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "location": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

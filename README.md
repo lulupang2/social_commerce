@@ -1,6 +1,6 @@
 # SummerGear
 
-> 다음 단계: Go + Fiber 백엔드와 네이버·카카오 자체 인증, 입점사 거래로 확장합니다. 현재는 설계 단계이며 아래 실행 방법은 기존 앱 기준입니다. [전환 계획](docs/backend-transition.md) · [인증 설계](docs/authentication.md) · [로드맵](docs/plan.md)
+> Go + Fiber API·River worker 기반을 추가했습니다. [기반 실행 안내](ops/nhn-rocky/FOUNDATION.md)와 [검증 결과](docs/foundation-verification.md)를 확인합니다. 네이버·카카오 인증과 입점사 거래는 다음 단계이며 아래 빠른 시작은 기존 앱 기준입니다. [전환 계획](docs/backend-transition.md) · [인증 설계](docs/authentication.md) · [로드맵](docs/plan.md)
 
 서핑과 테니스를 위한 중고 장비 거래·커뮤니티.
 Next.js 웹앱과 Expo WebView 앱이 화면과 도메인 계약을 공유합니다.

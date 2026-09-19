@@ -1,6 +1,6 @@
 # 개발 가이드
 
-> 이 문서는 현재 실행 가능한 Next.js·Expo·Supabase 환경을 설명합니다. Go 서버와 새 로그인은 구현 전이며 예정 구성은 [백엔드 전환 설계](backend-transition.md)를 확인합니다.
+> 기존 Next.js·Expo·Supabase 실행 방법과 개발용 Go 세션 로그인을 설명합니다. Go API·River 기반은 [원격 실행 안내](../ops/nhn-rocky/FOUNDATION.md), 검증 범위는 [검증 결과](foundation-verification.md)를 확인합니다. 네이버·카카오 실제 연동은 보류하고 테스트 환경에서는 임시 로그인을 사용합니다.
 
 로컬에서 SummerGear 웹앱과 모바일 쉘을 실행하고 변경을 검증합니다.
 별도 안내가 없는 명령은 저장소 루트에서 실행합니다.
@@ -9,7 +9,7 @@
 
 ## 원격 환경으로의 전환
 
-앞으로의 배포·서비스 테스트는 `nhn-rocky`에서, DB는 Supabase PostgreSQL을 유지하고 작업 큐는 River를 사용합니다. [배포·테스트 설계](deployment.md)를 따르며 아직 새 환경용 실행 명령은 구현되지 않았습니다. 아래 Supabase 명령은 전환 전 기존 앱에만 해당합니다.
+앞으로의 배포·서비스 테스트는 `nhn-rocky`에서, DB는 Supabase PostgreSQL을 유지하고 작업 큐는 River를 사용합니다. [배포·테스트 설계](deployment.md)를 따르며 Go 기반의 격리 테스트 명령은 [실행 안내](../ops/nhn-rocky/FOUNDATION.md)에 있습니다. 운영 배포 구성은 아직 적용하지 않았습니다. 아래 Supabase 명령은 전환 전 기존 앱에만 해당합니다.
 
 ## 준비
 
@@ -33,6 +33,10 @@ pnpm dev:web
 [localhost:3000](http://localhost:3000)으로 접속합니다.
 Supabase 설정이 없는 환경에서는 로컬 데모 데이터를 사용합니다.
 데모 모드에서의 동작 확인과 실제 인증·RLS·Realtime 검증은 구분합니다.
+
+Go 임시 로그인을 사용할 때는 `apps/web/.env.local`에 `SUMMERGEAR_GO_API_ORIGIN`을 설정해 Next.js의 `/api/v1` 요청을 Go API로 전달합니다. Go 쪽은 `AUTH_DEV_LOGIN_ENABLED=true`와 `PUBLIC_WEB_URL`이 필요합니다. 임시 로그인은 테스트 DB에서만 사용하며 실제 소셜 로그인을 활성화할 때 끕니다.
+
+매물 화면은 Go API가 준비되면 `/api/v1/listings`를 우선 사용하고 기존 Supabase 공개 매물도 전환 기간 동안 함께 읽습니다. 판매 등록도 Go 세션이 있으면 Go 매물로 `pending_review` 생성하며, 현재 Go 경로에는 이미지 Storage 연동이 없으므로 사진을 선택한 등록은 명시적으로 거부합니다. 사진·서명 URL 이전 전에는 기존 Supabase 매물을 삭제하거나 직접 쓰기 권한을 차단하지 않습니다.
 
 ## Supabase 연결
 
@@ -80,6 +84,7 @@ pnpm dev:mobile
 | `pnpm export:mobile:web` | Expo 웹 번들 내보내기                   |
 | `pnpm format:check`      | 저장소 포맷 검사                        |
 | `supabase test db`       | 실행 중인 로컬 DB의 PostgreSQL/RLS 계약 |
+| `bash ops/nhn-rocky/test-listings-database.sh` | 격리 PostgreSQL에서 Go 매물 세션 소유권·RLS·등록/조회/수정 검증 |
 
 Edge Function별 Deno 검증 명령은 [Supabase 가이드](../supabase/README.md#edge-function-검증)에 있습니다.
 `pnpm format`은 저장소 전체를 수정하므로 일부 문서만 바꿀 때는 파일을 지정합니다.

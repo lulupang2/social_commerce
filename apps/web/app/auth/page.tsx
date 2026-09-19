@@ -1,38 +1,34 @@
 'use client';
 
-import { ArrowRight, LoaderCircle, Mail, ShieldCheck, Waves } from 'lucide-react';
+import { ArrowRight, LoaderCircle, ShieldCheck, Waves } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 
 import { MobileShell } from '@/components/layout/MobileShell';
+import { devSignIn } from '@/lib/go-auth/client';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
-import { requestEmailSignIn } from '@/lib/supabase/auth';
 
 export default function AuthPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
-  const [isSending, setIsSending] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState('');
-  const [isUnconfigured, setIsUnconfigured] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleDevSignIn = async () => {
     setError('');
-    setIsUnconfigured(false);
-    setIsSending(true);
+    setIsSigningIn(true);
 
-    const result = await requestEmailSignIn(email);
-    setIsSending(false);
-    if (result.ok) {
-      setSent(true);
-      triggerNativeHaptic('success');
+    const result = await devSignIn();
+    setIsSigningIn(false);
+
+    if (!result.ok) {
+      setError(result.message);
+      triggerNativeHaptic('error');
       return;
     }
 
-    setError(result.message);
-    setIsUnconfigured(result.reason === 'unconfigured');
-    triggerNativeHaptic('error');
+    triggerNativeHaptic('success');
+    router.replace('/profile');
+    router.refresh();
   };
 
   return (
@@ -44,68 +40,38 @@ export default function AuthPage() {
         <p className="auth-kicker">ONE ACCOUNT · ALL SUMMER</p>
         <h1>SummerGear 시작하기</h1>
         <p className="auth-description">
-          서핑보드와 테니스 라켓 거래부터 크루 커뮤니티까지 안전하게 이용하세요.
+          현재 개발 단계에서는 Go 서비스 세션을 사용하는 임시 계정으로 로그인합니다.
         </p>
 
-        {sent ? (
-          <div className="auth-result" role="status">
-            <ShieldCheck size={40} />
-            <h2>메일함을 확인해 주세요</h2>
-            <p>
-              <strong>{email.trim()}</strong>로 보낸 링크를 누르면 로그인이 완료돼요.
+        <div className="auth-result" role="status">
+          <ShieldCheck size={40} />
+          <h2>개발용 임시 로그인</h2>
+          <p>
+            네이버·카카오 연동 전까지 테스트 회원으로 접속합니다. 로그인 이후 API는 실제 Go 세션
+            쿠키를 사용합니다.
+          </p>
+
+          {error ? (
+            <p className="form-error form-submit-error" role="alert">
+              {error}
             </p>
-            <button className="btn-outline" onClick={() => setSent(false)} type="button">
-              다른 이메일 사용
-            </button>
-            <button className="btn-primary" onClick={() => router.push('/')} type="button">
-              홈으로 이동
-            </button>
-          </div>
-        ) : (
-          <form className="auth-form" onSubmit={(event) => void handleSubmit(event)}>
-            <div className="form-group">
-              <label className="form-label" htmlFor="auth-email">
-                이메일 주소
-              </label>
-              <div className="search-input-wrapper">
-                <Mail className="search-icon" size={18} />
-                <input
-                  autoComplete="email"
-                  className="search-input"
-                  id="auth-email"
-                  maxLength={254}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="name@example.com"
-                  required
-                  type="email"
-                  value={email}
-                />
-              </div>
-            </div>
+          ) : null}
 
-            {error ? (
-              <p className="form-error form-submit-error" role="alert">
-                {error}
-              </p>
-            ) : null}
+          <button
+            className="btn-primary"
+            disabled={isSigningIn}
+            onClick={() => void handleDevSignIn()}
+            type="button"
+          >
+            {isSigningIn ? <LoaderCircle className="spin" size={18} /> : null}
+            <span>{isSigningIn ? '로그인 중' : '임시 계정으로 계속하기'}</span>
+            {!isSigningIn ? <ArrowRight size={18} /> : null}
+          </button>
+        </div>
 
-            <button className="btn-primary" disabled={isSending} type="submit">
-              {isSending ? <LoaderCircle className="spin" size={18} /> : null}
-              <span>{isSending ? '메일 보내는 중' : '이메일로 계속하기'}</span>
-              {!isSending ? <ArrowRight size={18} /> : null}
-            </button>
-
-            {isUnconfigured ? (
-              <button className="btn-outline" onClick={() => router.push('/')} type="button">
-                로그인 없이 데모 둘러보기
-              </button>
-            ) : null}
-
-            <p className="auth-terms">
-              계속하면 SummerGear 이용약관과 개인정보 처리방침에 동의하게 돼요.
-            </p>
-          </form>
-        )}
+        <p className="auth-terms">
+          임시 로그인은 테스트 환경 전용이며 실제 소셜 로그인으로 교체될 예정입니다.
+        </p>
       </div>
     </MobileShell>
   );

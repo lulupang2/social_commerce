@@ -9,6 +9,10 @@ build/
 .expo-shared/
 
 coverage/
+
+# Go foundation: local build/test artifacts only.
+.foundation-cache/
+apps/api/bin/
 *.tsbuildinfo
 
 .env

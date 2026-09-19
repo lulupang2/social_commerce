@@ -2234,6 +2234,12 @@ textarea {
   color: var(--primary);
 }
 
+.detail-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
 .detail-share {
   padding: 7px 0;
   border: 0;

@@ -1,6 +1,6 @@
 # River 백그라운드 작업 설계
 
-상태: River 채택, 구현 전 · 기준일: 2026-09-18
+상태: River worker·샘플 기반 추가, 주문·결제 작업은 구현 전 · 기준일: 2026-09-18
 
 [ADR 005](adr/005-supabase-river-toss-test.md)에 따라 Go + Fiber와 Supabase PostgreSQL에 River를 사용합니다. BullMQ·Redis는 도입하지 않습니다. Go API와 worker는 nhn-rocky에서 별도 프로세스로 실행합니다.
 
@@ -25,7 +25,7 @@ nhn-rocky Go worker ← 실행 시점에 작업 가져오기
 Go worker → 토스페이먼츠 테스트 조회 → DB 상태 반영
 ```
 
-예정 경로는 `apps/api/cmd/api`, `apps/api/cmd/worker`, `apps/api/internal/jobs`입니다. worker는 기존 주문·결제 서비스 함수를 호출하고 규칙을 중복 구현하지 않습니다. 동일 DB 작업을 위한 outbox를 River와 중복 생성하지 않습니다. 외부 전달·별도 감사 요구가 있는 경우에만 outbox를 추가합니다.
+기반 경로는 `apps/api/cmd/api`, `apps/api/cmd/worker`, `apps/api/internal/jobs`입니다. 현재 샘플은 업무 레코드·작업 원자성과 중복 효과 방지만 다루며 실제 주문·결제 처리는 포함하지 않습니다. worker는 기존 주문·결제 서비스 함수를 호출하고 규칙을 중복 구현하지 않습니다. 동일 DB 작업을 위한 outbox를 River와 중복 생성하지 않습니다. 외부 전달·별도 감사 요구가 있는 경우에만 outbox를 추가합니다.
 
 ## 연결·권한·migration
 
@@ -46,4 +46,4 @@ River 버전과 드라이버를 고정하고 공식 migration을 별도 배포 �
 
 ## 완료 조건
 
-같은 트랜잭션의 rollback, 중복 등록·실행, worker 강제 종료·복귀, DB 연결 단절, PG 성공 후 DB 실패를 nhn-rocky 테스트 환경에서 검증합니다. River 설치·연결·작업 테스트는 아직 수행하지 않았습니다.
+같은 트랜잭션의 rollback, 중복 등록·실행, worker 강제 종료·복귀, DB 연결 단절, PG 성공 후 DB 실패를 단계적으로 검증합니다. 현재 기반 실행·권한·샘플 테스트는 [실행 안내](../ops/nhn-rocky/FOUNDATION.md)와 [검증 결과](foundation-verification.md)를 따릅니다. Supabase 실연결과 실제 주문·PG 복구는 별도 후속 범위입니다.

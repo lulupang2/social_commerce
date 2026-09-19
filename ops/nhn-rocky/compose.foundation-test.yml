@@ -1,0 +1,115 @@
+name: summergear-foundation-test
+
+x-common-env: &common-env
+  APP_ENV: test
+  PAYMENT_MODE: test
+  DB_TARGET: fixture
+  DB_TARGET_ID: summergear-foundation-fixture-v1
+  GOMAXPROCS: '2'
+  GOMEMLIMIT: 64MiB
+
+x-runtime: &runtime
+  image: golang:1.27.1-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b
+  user: '1000:1000'
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 128m
+  cpus: 0.5
+  pids_limit: 64
+  working_dir: /workspace/apps/api
+  volumes:
+    - ../../.foundation-cache/bin:/foundation/bin:ro
+  stop_grace_period: 15s
+
+services:
+  postgres:
+    image: postgres:17.11-alpine@sha256:f02121de6f74d30d8a94cd1d9584125e2178d7e6c377d8130112d4e52d867995
+    environment:
+      POSTGRES_DB: summergear_foundation_test
+      POSTGRES_USER: fixture_admin
+      POSTGRES_PASSWORD: fixture_admin_only
+      SUMMERGEAR_API_PASSWORD: fixture_api
+      SUMMERGEAR_WORKER_PASSWORD: fixture_worker
+      SUMMERGEAR_MIGRATION_PASSWORD: fixture_migrator
+      DB_TARGET_ID: summergear-foundation-fixture-v1
+    command:
+      [
+        postgres,
+        -c,
+        max_connections=32,
+        -c,
+        shared_buffers=32MB,
+        -c,
+        work_mem=1MB,
+        -c,
+        log_min_messages=warning,
+        -c,
+        log_statement=none,
+      ]
+    volumes:
+      - fixture-data:/var/lib/postgresql/data
+      - ./db/fixture-init.sh:/docker-entrypoint-initdb.d/10-foundation.sh:ro
+      - ./db/bootstrap.sql:/foundation/bootstrap.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U fixture_admin -d summergear_foundation_test]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    mem_limit: 192m
+    cpus: 0.5
+    pids_limit: 64
+    # No published ports and no external/production networks.
+
+  migrate:
+    <<: *runtime
+    profiles: [runtime]
+    environment:
+      <<: *common-env
+      MIGRATION_DATABASE_URL: postgres://summergear_migrator:fixture_migrator@postgres:5432/summergear_foundation_test?sslmode=disable
+    command: [/foundation/bin/migrate, --apply, --app-migrations-dir, /foundation/migrations]
+    volumes:
+      - ../../.foundation-cache/bin:/foundation/bin:ro
+      - ../../supabase/migrations:/foundation/migrations:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *runtime
+    profiles: [runtime]
+    environment:
+      <<: *common-env
+      API_ADDR: 0.0.0.0:8080
+      DATABASE_URL: postgres://summergear_api:fixture_api@postgres:5432/summergear_foundation_test?sslmode=disable
+    command: [/foundation/bin/api]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  worker:
+    <<: *runtime
+    profiles: [runtime]
+    environment:
+      <<: *common-env
+      RIVER_DATABASE_URL: postgres://summergear_worker:fixture_worker@postgres:5432/summergear_foundation_test?sslmode=disable
+      RIVER_MAX_WORKERS: '1'
+    command: [/foundation/bin/worker]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  sample:
+    <<: *runtime
+    profiles: [tools]
+    environment:
+      <<: *common-env
+      DATABASE_URL: postgres://summergear_api:fixture_api@postgres:5432/summergear_foundation_test?sslmode=disable
+    entrypoint: [/foundation/bin/sample]
+    command: [--key, compose-smoke]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+networks:
+  default:
+    internal: true
+
+volumes:
+  fixture-data:

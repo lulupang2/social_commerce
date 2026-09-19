@@ -1,6 +1,6 @@
 # SummerGear Supabase
 
-> 전환 참고: 현재 Supabase 기반 구현을 설명합니다. 인증과 서비스 API는 [Go 백엔드](../docs/backend-transition.md)로 이전할 예정이며, 기존 Auth·RLS 의존성은 단계별 검증 전까지 유지합니다. 최종 [ADR 005](../docs/adr/005-supabase-river-toss-test.md)에 따라 DB 호스팅은 Supabase를 유지하며 River를 추가합니다. 아래 내용은 기존 구현 기준이고 Go 인증·River는 구현 전입니다.
+> 전환 참고: 현재 Supabase 기반 구현을 설명합니다. 인증과 서비스 API는 [Go 백엔드](../docs/backend-transition.md)로 이전할 예정이며, 기존 Auth·RLS 의존성은 단계별 검증 전까지 유지합니다. 최종 [ADR 005](../docs/adr/005-supabase-river-toss-test.md)에 따라 DB 호스팅은 Supabase를 유지하며 River를 추가합니다. 아래 기존 구현에 신규 Go 기반 migration `0007`이 추가되었습니다. Go 인증은 아직 구현 전이며 River 기반 실행·격리 검증은 [실행 안내](../ops/nhn-rocky/FOUNDATION.md)를 따릅니다.
 
 이 디렉터리는 SummerGear의 PostgreSQL 스키마, RLS 정책, private Storage, Realtime, Edge Function과 로컬 데모 데이터를 담습니다.
 
@@ -12,12 +12,13 @@
 - `0004_summer_domain.sql`: 서핑·테니스 기준 ID 전환, 프로필 JSON 계약, 위치, 사용자 소유 푸시 토큰
 - `0005_summer_enums.sql`: 여름 카테고리와 `rejected` enum 추가
 - `0006_summer_enum_contracts.sql`: 구 카테고리 마이그레이션, 허용 카테고리 제약, 거절 상태 전이와 감사 이벤트
+- `0007_go_foundation.sql`: private Go 샘플 업무·효과 테이블과 runtime 역할 정책. 사전에 테스트 DB의 역할·스키마 bootstrap이 필요하며 River 공식 migration은 별도 실행합니다.
 
 이미 배포된 마이그레이션은 수정하지 않습니다. 이후 변경은 순서가 증가하는 새 파일로 추가합니다.
 
 ## 로컬 실행
 
-Supabase CLI와 실행 중인 Docker가 필요합니다.
+Supabase CLI와 실행 중인 Docker가 필요합니다. 신규 `0007`을 포함하는 전체 재생은 [DBA 사전 준비](../ops/nhn-rocky/FOUNDATION.md#dba-사전-준비) 후 별도 Supabase 테스트 환경에서 검증해야 합니다. 아래 기존 reset 절차를 운영 DB에 사용하지 않습니다. 순정 PostgreSQL 기반 검증에서는 `0001`~`0006`을 실행하지 않습니다.
 
 ```bash
 supabase start

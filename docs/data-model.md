@@ -1,8 +1,8 @@
 # SummerGear MVP 데이터 모델
 
-> 범위: 기존 MVP 데이터 구조. 내부 회원·입점사·주문·정산의 예정 모델은 [인증 설계](authentication.md)와 [입점사와 거래 설계](commerce.md)에 있습니다. 새 테이블과 FK는 아직 적용되지 않았습니다.
+> 범위: 기존 MVP 데이터와 Go 전환 중 추가된 private 스키마를 함께 설명합니다. 내부 회원·인증 테이블은 `0008_go_auth.sql`, 첫 Go 소유 매물은 `0009_go_listings.sql`에 추가되며 기존 `public.*` 구조는 파괴하지 않습니다. 입점사·주문·정산의 예정 모델은 [인증 설계](authentication.md)와 [입점사와 거래 설계](commerce.md)에 있습니다.
 
-**상태:** 하계 스포츠(서핑 `surf`, 테니스 `tennis`) 스키마 및 마이그레이션 반영 완료.
+**상태:** 기존 하계 스포츠 스키마를 유지하면서 `summergear_app.members`·서비스 세션과 `summergear_app.listings` 전환 스키마를 격리 fixture에 적용·검증했습니다. Hosted Supabase 실적용은 별도입니다.
 
 ---
 
@@ -19,7 +19,30 @@
 
 ---
 
-## 2. 장비 거래 엔터티 (`listings`)
+## 2. Go 전환 매물 (`summergear_app.listings`)
+
+이 테이블은 서비스 세션으로 확인한 내부 `members(id)`를 소유자로 사용하는 첫 Go 소유 업무 테이블입니다. 기존 `public.listings`를 즉시 바꾸지 않고 추가한 뒤 호출·데이터·이미지를 단계적으로 이관합니다.
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `id` | `uuid` | PK |
+| `member_id` | `uuid` | `summergear_app.members(id)` FK, Go 서비스 세션 소유자 |
+| `sport` | `text` | `surf`, `tennis` |
+| `category` | `text` | 기존 매물 카테고리와 동일한 허용값 |
+| `title` / `description` | `text` | 서버 길이 검증과 DB check 적용 |
+| `price_krw` | `bigint` | 현재 전환 API에서 정수 KRW만 허용 |
+| `condition` | `text` | `new`, `like_new`, `good`, `fair`, `poor` |
+| `status` | `text` | 생성 시 `pending_review`; 공개는 `active` + `published_at` 필요 |
+| `details` | `jsonb` | `details->>'sport' = sport`, 8 KiB 상한과 Go 도메인 검증 |
+| `location_text` | `text` | 거래 희망 지역 |
+| `published_at` | `timestamptz` | 공개 시각 |
+| `created_at` / `updated_at` | `timestamptz` | 생성·수정 시각 |
+
+RLS는 공개 요청에 `active` 행만 보이고, 인증 요청은 Go가 트랜잭션 로컬 `summergear.member_id`에 넣은 회원 ID와 `member_id`가 같은 비공개 행만 추가로 볼 수 있게 합니다. API 역할은 생성과 제한된 필드 수정만 가능하고 worker·브라우저 역할은 이 private 테이블에 직접 접근하지 않습니다. 이미지 메타데이터·Storage는 아직 이 테이블로 이전하지 않았습니다.
+
+---
+
+## 3. 기존 장비 거래 엔터티 (`public.listings`)
 
 | 컬럼            | 타입               | 설명                                                                                       |
 | --------------- | ------------------ | ------------------------------------------------------------------------------------------ |
@@ -74,7 +97,7 @@
 
 ---
 
-## 3. 프로필 및 선호 엔터티 (`profiles`, `profile_sports`)
+## 4. 프로필 및 선호 엔터티 (`profiles`, `profile_sports`)
 
 ### `profiles`
 
@@ -93,7 +116,7 @@
 
 ---
 
-## 4. 커뮤니티 및 소셜 엔터티 (`community_posts`, `comments`, `community_reactions`)
+## 5. 커뮤니티 및 소셜 엔터티 (`community_posts`, `comments`, `community_reactions`)
 
 - `community_posts`: `discussion`, `question`, `guide`, `meetup`, `review` 글과 게시 상태
 - `comments`: active 부모 글의 댓글·대댓글
@@ -101,7 +124,7 @@
 
 ---
 
-## 5. 1:1 채팅 및 알림 (`conversations`, `messages`, `push_tokens`)
+## 6. 1:1 채팅 및 알림 (`conversations`, `messages`, `push_tokens`)
 
 - `conversations`: 구매자, 판매자, 거래 매물 관계와 참여자 전용 RLS
 - `messages`: 본문, 발신자, 발송·읽음·삭제 시각; INSERT Realtime 구독

@@ -1,10 +1,10 @@
 # 개발 로드맵
 
-기준일: 2026-09-18 · 신규 전환 작업은 구현 전입니다.
+기준일: 2026-09-18 · Go API·River 기반을 추가했습니다. Supabase 실연결·인증·거래 전환은 후속 작업입니다.
 
 [제품 기준](SSOT.md) · [백엔드 전환 설계](backend-transition.md) · [인증 설계](authentication.md) · [입점사와 거래 설계](commerce.md)
 
-배포·서버 테스트는 [nhn-rocky](deployment.md), DB는 Supabase PostgreSQL 유지, 큐는 River, PG는 토스페이먼츠 테스트 환경으로 확정했습니다. 서버 접속·Docker·Compose 확인만 완료했으며 실제 서비스 배포와 테스트 환경 구성은 아직 수행하지 않았습니다.
+배포·서버 테스트는 [nhn-rocky](deployment.md), DB는 Supabase PostgreSQL 유지, 큐는 River, PG는 토스페이먼츠 테스트 환경으로 확정했습니다. 서버 접속·Docker·Compose 확인 이후 별도 Go 기반과 테스트 Compose를 추가했습니다. 실제 수행한 검증은 [기반 검증 기록](foundation-verification.md), 실행 방법은 [기반 안내](../ops/nhn-rocky/FOUNDATION.md)를 따릅니다. 운영 배포는 수행하지 않았습니다.
 
 ## 0. 방향과 설계
 
@@ -13,7 +13,7 @@
 - [x] nhn-rocky SSH·Docker·Compose 읽기 전용 확인, 최종 DB는 Supabase 유지로 변경
 - [x] BullMQ 도입 가능 여부와 River 대안 비교 문서 작성
 - [x] River 채택, 토스페이먼츠 테스트 PG 선정
-- [ ] River 연결·migration·권한, 격리 환경의 트랜잭션·재시도·자원 사용 검증
+- [x] 격리 PostgreSQL에서 River migration·권한·트랜잭션·재시도·강제 종료 복구 검증
 - [ ] 운영 데이터·회원 존재 여부, 기존 인증 의존성 목록 확정
 - [ ] 세션 만료·복구 정책, 배포·도메인, 채팅 인증 경로 확정
 - [ ] PG 지원 범위·계약, 수수료·배송·환불·정산 정책 확정
@@ -24,15 +24,18 @@
 
 - [ ] nhn-rocky 원격 저장소·도메인·포트·자원 확인, 테스트·운영 Compose 분리
 - [ ] Supabase 테스트 프로젝트 연결, 앱·River migration 적용과 기존 데이터·권한 보존 검증
-- [ ] `apps/api` 구성, Go·Fiber 버전 고정, 설정·로그·오류·헬스 체크
-- [ ] DB 런타임·마이그레이션 권한 분리, 회원 컨텍스트와 RLS 설계
-- [ ] OpenAPI 계약과 TypeScript 클라이언트 생성 경로
+- [x] `apps/api` 구성, Go·Fiber·River·pgx 버전 고정, 설정·로그·오류·헬스 체크
+- [x] API·worker·migration·sample 별도 실행과 전용 테스트 Compose 추가
+- [x] API·worker·migration 역할 분리와 샘플 테이블의 역할별 RLS 구현
+- [ ] 실제 Supabase 역할·TLS·pooler 연결 확인, 회원 컨텍스트와 회원별 RLS 검증
+- [x] health·인증·첫 업무(listings) OpenAPI 계약과 TypeScript 생성 타입 경로
 - [ ] 동일 출처 프록시·요청 제한·배포·CI 검사
 
 완료 조건: 기동·DB 연결·정상 종료와 미인증 접근 차단을 검증하고, 연결 풀에서 회원 컨텍스트가 다른 요청으로 누출되지 않습니다.
 
 ## 2. 인증 구현과 기존 회원 연결
 
+- [x] 테스트 전용 임시 로그인으로 내부 회원·Go 서비스 세션 발급 및 Next.js 연결
 - [ ] 내부 회원·외부 로그인 계정·세션·기존 회원 매핑 추가
 - [ ] 네이버·카카오 콜백, 서비스 세션, 로그아웃·전체 폐기
 - [ ] CSRF·재사용·리다이렉트 검증, 계정 연결·복구·제재
@@ -43,6 +46,9 @@
 ## 3. 기존 기능 이전과 인증 운영 전환
 
 - [ ] 상품 등록·수정·조회 한 흐름을 Go로 이전
+  - [x] `summergear_app.listings`, 서비스 세션 소유권/RLS, 등록·조회·수정 API와 웹 Go 우선 경로
+  - [x] Go 소유 매물 수정 화면과 소유자 수정 진입 경로
+  - [ ] 이미지 업로드·서명 URL, 기존 `public.listings` 데이터 이관·직접 쓰기 차단
 - [ ] 프로필·찜·커뮤니티·푸시 토큰·이미지·Edge Functions 이전
 - [ ] 채팅·Realtime의 새 인증 경로 구현과 참여자 검증
 - [ ] 기존 DB/API/RPC 직접 쓰기 차단, FK·RLS·삭제 전파 이전
