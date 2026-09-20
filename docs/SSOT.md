@@ -21,7 +21,7 @@
 
 ## 현재 구현과의 차이
 
-기존 업무 기능은 Supabase 이메일 OTP 의존 코드, 브라우저 직접 데이터 접근, RLS와 Realtime을 계속 보존합니다. 별도 `apps/api`에는 Go health API·River worker·migration·샘플 CLI와 서비스 세션·OAuth 코드가 있으며, 실제 네이버·카카오 연결 대신 테스트 전용 임시 로그인을 웹에 연결했습니다. 매물은 `summergear_app.listings`와 `/api/v1/listings`에 등록·조회·수정의 첫 수직 슬라이스를 추가했고, 소유자는 웹 상세 화면에서 Go PATCH 기반 수정 화면으로 진입할 수 있습니다. 웹은 Go를 우선 사용하되 전환되지 않은 환경에서만 기존 Supabase 경로를 보존합니다. 이미지 업로드·서명, 기존 매물 이관, 입점사·주문·PG·정산은 아직 후속 범위입니다. [실행 안내](../ops/nhn-rocky/FOUNDATION.md)와 [검증 범위](foundation-verification.md)를 구분해 확인합니다.
+기존 업무 기능은 Supabase 이메일 OTP 의존 코드, 브라우저 직접 데이터 접근, RLS와 Realtime을 계속 보존합니다. 별도 `apps/api`에는 Go health API·River worker·migration·샘플 CLI와 서비스 세션·OAuth 코드가 있으며, 실제 네이버·카카오 연결 대신 테스트 전용 임시 로그인을 웹에 연결했습니다. 매물은 `summergear_app.listings`와 `/api/v1/listings`에 등록·조회·수정의 첫 수직 슬라이스를 추가했고, 소유자는 웹 상세 화면에서 Go PATCH 기반 수정 화면으로 진입할 수 있습니다. 웹은 Go를 우선 사용하되 전환되지 않은 환경에서만 기존 Supabase 경로를 보존합니다. 이미지 구현은 아직 후속 범위지만 private Storage·서명 URL·소유권·삭제/교체의 공통 계약을 [매물 이미지 계약](listing-images.md)으로 먼저 고정했습니다. 기존 매물 이관, 입점사·주문·PG·정산도 아직 후속 범위입니다. [실행 안내](../ops/nhn-rocky/FOUNDATION.md)와 [검증 범위](foundation-verification.md)를 구분해 확인합니다.
 
 기존 문서의 완료·테스트 통과 표시는 이전 작업 기록입니다. 2026-09-18 문서 작업에서는 앱·DB·PG 통합 테스트를 다시 실행하지 않았습니다. 현재 실행 방법은 [개발 가이드](development.md)에 있습니다.
 
@@ -56,6 +56,7 @@
 | 단계별 작업·완료 조건      | [로드맵](plan.md)                                          |
 | 기존 구현의 구성           | [아키텍처](architecture.md)                                |
 | 기존 필드·API              | [데이터 모델](data-model.md), [API 계약](api-contracts.md) |
+| Go 매물 이미지             | [매물 이미지 계약](listing-images.md)                      |
 | 로컬 설정·검증             | [개발 가이드](development.md)                              |
 
 환경변수는 각 앱과 `ops/nhn-rocky/.env.example`을 기준으로 합니다. Go 기반은 역할별 DB URL과 명시적 테스트 대상 검증을 사용합니다. 세션 정책은 [인증 설계](authentication.md)의 다음 단계이며 OAuth·PG 키는 현재 기반 시작에 필요하지 않습니다.

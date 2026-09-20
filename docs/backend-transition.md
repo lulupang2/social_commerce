@@ -2,7 +2,7 @@
 
 상태: Go API·River·서비스 세션과 매물 메타데이터 1차 이전 구현, 실제 소셜·이미지·나머지 거래 이전은 후속 · 기준일: 2026-09-20
 
-Go + Fiber로 API와 인증을 분리하고 입점사 거래 기능을 추가합니다. 확정된 기술 방향은 [ADR 003](adr/003-go-backend-and-social-auth.md), 구현 순서는 [로드맵](plan.md)을 따릅니다. 현재 `apps/api`에는 health·worker·migration·서비스 세션·OAuth 코드와 첫 업무 모듈인 `internal/listings`가 있으며, 매물 등록·공개 조회·소유자 조회·수정을 Go 세션/RLS로 검증합니다. 이미지와 기존 `public.listings` 데이터 이관은 아직 기존 경로를 보존합니다. 실행·검증은 [기반 실행 안내](../ops/nhn-rocky/FOUNDATION.md)를 따릅니다.
+Go + Fiber로 API와 인증을 분리하고 입점사 거래 기능을 추가합니다. 확정된 기술 방향은 [ADR 003](adr/003-go-backend-and-social-auth.md), 구현 순서는 [로드맵](plan.md)을 따릅니다. 현재 `apps/api`에는 health·worker·migration·서비스 세션·OAuth 코드와 첫 업무 모듈인 `internal/listings`가 있으며, 매물 등록·공개 조회·소유자 조회·수정을 Go 세션/RLS로 검증합니다. 이미지 구현은 아직 기존 경로를 보존하지만 private Storage·서명 URL·Go 소유권·삭제/교체의 구현 계약은 [매물 이미지 계약](listing-images.md)으로 고정했습니다. 기존 `public.listings` 데이터 이관도 아직 후속입니다. 실행·검증은 [기반 실행 안내](../ops/nhn-rocky/FOUNDATION.md)를 따릅니다.
 
 ## 현재와 목표
 
@@ -88,7 +88,7 @@ Go의 자원별 소유권·업체 구성원 검사를 먼저 수행하고, DB의
 | 잔여 의존성                  | 인증 전환 전 필요한 조치                                                                    |
 | ---------------------------- | ------------------------------------------------------------------------------------------- |
 | 프로필·찜·커뮤니티·푸시 토큰 | Go API 및 회원 매핑, 기존 직접 쓰기 권한 차단                                               |
-| Storage                      | Go가 소유권 확인 후 제한된 서명 권한 발급, 기존 이미지 경로 호환성 검증                     |
+| Storage                      | [매물 이미지 계약](listing-images.md)에 따라 Go가 소유권 확인 후 private 업로드·제한된 서명 권한을 제공하고 기존 이미지 경로 호환성 검증 |
 | 이미지·추천 Edge Functions   | 사용자 JWT 의존 제거 또는 Go 모듈로 이전                                                    |
 | 채팅·Realtime                | Go 인증 WebSocket/SSE 또는 검증된 인증 연계 방식 선택·구현; 결정 전에는 인증 운영 전환 불가 |
 | Next.js SSR·콜백·프록시      | Supabase 세션 갱신 의존 제거, Go 세션 전달 검증                                             |

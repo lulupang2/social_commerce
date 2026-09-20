@@ -2,7 +2,7 @@
 
 > 범위: Go HTTP 계약과 전환 전 Supabase·WebView 계약을 함께 설명합니다. Go 계약의 기준은 [OpenAPI](../apps/api/openapi.yaml)이며 인증 상세는 [인증 설계](authentication.md), 거래 확장은 [입점사와 거래 설계](commerce.md)를 참고합니다.
 
-**상태:** 서비스 세션 인증과 첫 Go 소유 매물 등록·조회·수정 계약을 추가했습니다. 기존 Supabase 매물·Storage·Realtime 계약은 전환 완료 전까지 보존합니다.
+**상태:** 서비스 세션 인증과 첫 Go 소유 매물 등록·조회·수정 계약을 추가했습니다. Go 매물 이미지 구현 전 공통 계약은 [매물 이미지 계약](listing-images.md)에 고정했으며, B 구현이 이를 OpenAPI에 반영하기 전까지는 준비 계약으로 취급합니다. 기존 Supabase 매물·Storage·Realtime 계약은 전환 완료 전까지 보존합니다.
 
 ## Go HTTP 계약
 
@@ -17,7 +17,7 @@
 | `POST /api/v1/listings` | 인증 회원 소유 `pending_review` 매물 생성 |
 | `PATCH /api/v1/listings/{id}` | 소유자의 `draft`·`pending_review`·`rejected` 매물 수정 |
 
-Go 매물 생성은 현재 정수 KRW 가격과 도메인 `details`를 검증합니다. 이미지 업로드·서명 URL은 아직 기존 Storage 경로이므로 Go 매물 API에는 이미지 본문을 받지 않습니다. 웹은 Go API가 준비된 환경에서 이를 우선 사용하고, Go 경로 자체가 없는 전환 전 환경에서만 기존 Supabase 호출로 돌아갑니다.
+Go 매물 생성은 현재 정수 KRW 가격과 도메인 `details`를 검증합니다. 현재 구현에는 아직 Go 이미지 라우트가 없지만 업로드·서명 URL·삭제·교체·소유권의 다음 계약은 [매물 이미지 계약](listing-images.md)에 확정했습니다. 웹은 Go API가 준비된 환경에서 이를 우선 사용하고, Go 경로 자체가 없는 전환 전 환경에서만 기존 Supabase 호출로 돌아갑니다.
 
 ---
 

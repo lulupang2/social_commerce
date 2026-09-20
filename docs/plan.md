@@ -48,7 +48,7 @@
 - [ ] 상품 등록·수정·조회 한 흐름을 Go로 이전
   - [x] `summergear_app.listings`, 서비스 세션 소유권/RLS, 등록·조회·수정 API와 웹 Go 우선 경로
   - [x] Go 소유 매물 수정 화면과 소유자 수정 진입 경로
-  - [ ] 이미지 업로드·서명 URL, 기존 `public.listings` 데이터 이관·직접 쓰기 차단
+  - [ ] 이미지 업로드·서명 URL 구현 ([매물 이미지 계약](listing-images.md) 확정), 기존 `public.listings` 데이터 이관·직접 쓰기 차단
 - [ ] 프로필·찜·커뮤니티·푸시 토큰·이미지·Edge Functions 이전
 - [ ] 채팅·Realtime의 새 인증 경로 구현과 참여자 검증
 - [ ] 기존 DB/API/RPC 직접 쓰기 차단, FK·RLS·삭제 전파 이전
