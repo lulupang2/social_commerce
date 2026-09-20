@@ -25,20 +25,24 @@ const (
 	FixtureID        = "summergear-foundation-fixture-v1"
 )
 
-// Config intentionally contains only this process's DSN, never all three roles.
-// Do not serialize Config. Errors expose setting names, never setting values.
+// Config contains only settings used by this process, never credentials for
+// unrelated roles. Do not serialize Config. Errors expose setting names, never values.
 type Config struct {
-	Role            Role
-	DatabaseURL     string
-	Target          string
-	TargetID        string
-	Address         string
-	ConnectionMode  string
-	MaxConns        int32
-	MaxWorkers      int
-	LogLevel        string
-	ShutdownTimeout time.Duration
-	FixtureFast     bool
+	Role                     Role
+	DatabaseURL              string
+	Target                   string
+	TargetID                 string
+	Address                  string
+	ConnectionMode           string
+	MaxConns                 int32
+	MaxWorkers               int
+	LogLevel                 string
+	ShutdownTimeout          time.Duration
+	FixtureFast              bool
+	SupabaseURL              string
+	SupabaseServiceRoleKey   string
+	ListingImageBucket       string
+	ListingImageSignedURLTTL time.Duration
 }
 
 var envKey = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
@@ -172,6 +176,33 @@ func ParseConfig(role Role, get func(string) string) (Config, error) {
 	if role == Worker && int(c.MaxConns) < c.MaxWorkers+3 {
 		return c, errors.New("WORKER_DB_MAX_CONNS must reserve 3 coordinator connections beyond workers")
 	}
+	if role == API {
+		c.ListingImageBucket = "listing-images"
+		c.ListingImageSignedURLTTL = 600 * time.Second
+		c.SupabaseURL = strings.TrimSpace(get("SUPABASE_URL"))
+		c.SupabaseServiceRoleKey = get("SUPABASE_SERVICE_ROLE_KEY")
+		if (c.SupabaseURL == "") != (c.SupabaseServiceRoleKey == "") {
+			return c, errors.New("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured together")
+		}
+		if c.SupabaseURL != "" {
+			if err := validateStorageURL(c.SupabaseURL); err != nil {
+				return c, err
+			}
+		}
+		if value := strings.TrimSpace(get("LISTING_IMAGE_BUCKET")); value != "" {
+			if value != "listing-images" {
+				return c, errors.New("LISTING_IMAGE_BUCKET must be listing-images")
+			}
+			c.ListingImageBucket = value
+		}
+		if value := strings.TrimSpace(get("LISTING_IMAGE_SIGNED_URL_TTL_SECONDS")); value != "" {
+			seconds, err := strconv.Atoi(value)
+			if err != nil || seconds < 1 || seconds > 600 {
+				return c, errors.New("LISTING_IMAGE_SIGNED_URL_TTL_SECONDS must be an integer from 1 to 600")
+			}
+			c.ListingImageSignedURLTTL = time.Duration(seconds) * time.Second
+		}
+	}
 	if value := get("API_ADDR"); value != "" {
 		c.Address = value
 	}
@@ -205,6 +236,26 @@ func ExpectedRole(role Role) string {
 		return "summergear_migrator"
 	}
 	return "summergear_" + string(role)
+}
+
+func validateStorageURL(value string) error {
+	u, err := url.Parse(value)
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("invalid SUPABASE_URL")
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	if u.Scheme == "http" {
+		host := u.Hostname()
+		if host == "localhost" {
+			return nil
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+			return nil
+		}
+	}
+	return errors.New("SUPABASE_URL must use HTTPS")
 }
 
 func validateDSN(c Config, key string) error {

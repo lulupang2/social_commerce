@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func fixtureValues() map[string]string {
@@ -130,5 +131,48 @@ func TestLogRedaction(t *testing.T) {
 	logger.Error("failed", "error", errors.New("password=DO_NOT_LEAK"), "dsn", "DO_NOT_LEAK", "payload", "DO_NOT_LEAK", "detail", "postgres://u:DO_NOT_LEAK@host/db")
 	if strings.Contains(b.String(), "DO_NOT_LEAK") || !strings.Contains(b.String(), "redacted") {
 		t.Fatal("log redaction failed")
+	}
+}
+
+func TestListingImageStorageConfig(t *testing.T) {
+	values := fixtureValues()
+	cfg, err := ParseConfig(API, func(k string) string { return values[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ListingImageBucket != "listing-images" || cfg.ListingImageSignedURLTTL != 600*time.Second ||
+		cfg.SupabaseURL != "" || cfg.SupabaseServiceRoleKey != "" {
+		t.Fatal("unsafe or unexpected listing image defaults")
+	}
+
+	values["SUPABASE_URL"] = "https://fixture.supabase.co"
+	values["SUPABASE_SERVICE_ROLE_KEY"] = "DO_NOT_LEAK"
+	values["LISTING_IMAGE_BUCKET"] = "listing-images"
+	values["LISTING_IMAGE_SIGNED_URL_TTL_SECONDS"] = "600"
+	cfg, err = ParseConfig(API, func(k string) string { return values[k] })
+	if err != nil || cfg.SupabaseURL == "" || cfg.SupabaseServiceRoleKey == "" ||
+		cfg.ListingImageSignedURLTTL != 600*time.Second {
+		t.Fatalf("valid image storage config rejected: %v", err)
+	}
+
+	cases := []map[string]string{
+		{"SUPABASE_URL": "https://fixture.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": ""},
+		{"SUPABASE_URL": "", "SUPABASE_SERVICE_ROLE_KEY": "DO_NOT_LEAK"},
+		{"SUPABASE_URL": "http://storage.example.com", "SUPABASE_SERVICE_ROLE_KEY": "DO_NOT_LEAK"},
+		{"SUPABASE_URL": "https://fixture.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "DO_NOT_LEAK", "LISTING_IMAGE_BUCKET": "public-images"},
+		{"SUPABASE_URL": "https://fixture.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "DO_NOT_LEAK", "LISTING_IMAGE_SIGNED_URL_TTL_SECONDS": "601"},
+	}
+	for i, overrides := range cases {
+		bad := fixtureValues()
+		for key, value := range overrides {
+			bad[key] = value
+		}
+		_, err := ParseConfig(API, func(k string) string { return bad[k] })
+		if err == nil {
+			t.Fatalf("unsafe image storage config %d accepted", i)
+		}
+		if strings.Contains(err.Error(), "DO_NOT_LEAK") {
+			t.Fatal("service-role secret leaked in config error")
+		}
 	}
 }

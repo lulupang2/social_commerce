@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SummerGear Go API",
-    "version": "0.3.0",
-    "description": "Go service-session authentication and the first Go-owned listings vertical slice. Social provider credentials may remain disabled in test environments; dev-login is test-only."
+    "version": "0.4.0",
+    "description": "Go service-session authentication, Go-owned listings, and private listing image lifecycle. Social provider credentials and Storage credentials may remain disabled in isolated test environments; dev-login is test-only."
   },
   "paths": {
     "/health/live": {
@@ -28,7 +28,7 @@
         "operationId": "readiness",
         "responses": {
           "200": {
-            "description": "Database, auth tables, listings tables, and River foundation are ready.",
+            "description": "Database, auth tables, listings tables, listing image metadata, and River foundation are ready.",
             "content": {
               "application/json": {
                 "schema": {
@@ -462,6 +462,459 @@
           }
         }
       }
+    },
+    "/api/v1/listings/{id}/images": {
+      "get": {
+        "operationId": "listListingImages",
+        "description": "Returns fresh private Storage signed URLs for images on an active listing, or on the authenticated owner's own non-public listing. Raw storage paths are never returned.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ListingID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Images sorted by sortOrder. Individual missing/signing failures are represented as unavailable image states.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingImagesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Listing is absent or hidden from this requester.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Image metadata or the Storage signing service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createListingImage",
+        "description": "Owner-only image upload for draft, pending-review, or rejected listings. The Go service uploads to the existing private listing-images bucket with server-only credentials.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ListingID"
+          },
+          {
+            "$ref": "#/components/parameters/CSRFToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ListingImageCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Image uploaded and metadata created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingImage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid multipart, metadata, dimensions, or sort order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Listing is absent or not owned by this member.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Image limit, sort conflict, or listing state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Image file exceeds 10 MiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Declared or actual image media type is unsupported.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or image metadata database is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/listings/{id}/images/{imageId}": {
+      "patch": {
+        "operationId": "updateListingImageMetadata",
+        "description": "Owner-only alt text and/or sort-order update. The image object itself is unchanged.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ListingID"
+          },
+          {
+            "$ref": "#/components/parameters/ImageID"
+          },
+          {
+            "$ref": "#/components/parameters/CSRFToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListingImagePatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Image metadata updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingImage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid metadata or sort order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Listing is hidden/not owned, or image is absent within the accessible listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sort or listing state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage signing or image metadata database is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "replaceListingImage",
+        "description": "Owner-only binary replacement. A new private object key is uploaded, metadata is atomically switched, then the old object is best-effort cleaned up while preserving the image ID and sort order.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ListingID"
+          },
+          {
+            "$ref": "#/components/parameters/ImageID"
+          },
+          {
+            "$ref": "#/components/parameters/CSRFToken"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ListingImageReplaceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Image binary replaced.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingImage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid multipart, metadata, or dimensions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Listing is hidden/not owned, or image is absent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Listing state or concurrent replacement conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Image file exceeds 10 MiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Declared or actual image media type is unsupported.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or image metadata database is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteListingImage",
+        "description": "Owner-only deletion. Storage is deleted first; object-not-found is retry-safe, then metadata is deleted.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ListingID"
+          },
+          {
+            "$ref": "#/components/parameters/ImageID"
+          },
+          {
+            "$ref": "#/components/parameters/CSRFToken"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Image deleted; no response body."
+          },
+          "400": {
+            "description": "Unexpected request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin or CSRF validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Listing is hidden/not owned, or image is absent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Listing state or concurrent replacement conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or image metadata database is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -493,6 +946,15 @@
         "required": true,
         "schema": {
           "type": "string"
+        }
+      },
+      "ImageID": {
+        "name": "imageId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
         }
       }
     },
@@ -765,7 +1227,8 @@
           "location",
           "publishedAt",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "images"
         ],
         "additionalProperties": false,
         "properties": {
@@ -822,6 +1285,13 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "images": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/ListingImage"
+            }
           }
         }
       },
@@ -910,6 +1380,181 @@
           },
           "location": {
             "type": "string"
+          }
+        }
+      },
+      "ListingImageUnavailableReason": {
+        "type": "string",
+        "enum": [
+          "not_found",
+          "forbidden",
+          "expired",
+          "signing_failed"
+        ]
+      },
+      "ListingImage": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "state",
+              "altText",
+              "sortOrder",
+              "url",
+              "expiresAt"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "state": {
+                "type": "string",
+                "const": "signed"
+              },
+              "altText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 160
+              },
+              "sortOrder": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Present only when state is signed. No public URL fallback is used."
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Present only when state is signed; never more than 600 seconds after signing."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "state",
+              "altText",
+              "sortOrder",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "state": {
+                "type": "string",
+                "const": "unavailable"
+              },
+              "altText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 160
+              },
+              "sortOrder": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reason": {
+                "$ref": "#/components/schemas/ListingImageUnavailableReason"
+              }
+            }
+          }
+        ],
+        "discriminator": {
+          "propertyName": "state"
+        }
+      },
+      "ListingImagesResponse": {
+        "type": "object",
+        "required": [
+          "listingId",
+          "images"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "listingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "images": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/ListingImage"
+            }
+          }
+        }
+      },
+      "ListingImageCreateRequest": {
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary"
+          },
+          "altText": {
+            "type": "string",
+            "maxLength": 160,
+            "description": "Blank values are normalized to null."
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "When omitted, the server uses the current maximum sort order plus one."
+          }
+        }
+      },
+      "ListingImagePatchRequest": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": false,
+        "properties": {
+          "altText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160,
+            "description": "Blank or null clears alt text."
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ListingImageReplaceRequest": {
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary"
+          },
+          "altText": {
+            "type": "string",
+            "maxLength": 160,
+            "description": "When omitted the existing alt text is preserved; blank clears it."
           }
         }
       }

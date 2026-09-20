@@ -5,6 +5,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	"github.com/lulupang2/social_commerce/apps/api/internal/listingimages"
 )
 
 const Prefix = "/api/v1/listings"
@@ -29,20 +31,21 @@ type Seller struct {
 }
 
 type Listing struct {
-	ID          string         `json:"id"`
-	Seller      Seller         `json:"seller"`
-	Sport       string         `json:"sport"`
-	Category    string         `json:"category"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	PriceKRW    int64          `json:"priceKrw"`
-	Condition   string         `json:"condition"`
-	Status      string         `json:"status"`
-	Details     map[string]any `json:"details"`
-	Location    string         `json:"location"`
-	PublishedAt *time.Time     `json:"publishedAt"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
+	ID          string               `json:"id"`
+	Seller      Seller               `json:"seller"`
+	Sport       string               `json:"sport"`
+	Category    string               `json:"category"`
+	Title       string               `json:"title"`
+	Description string               `json:"description"`
+	PriceKRW    int64                `json:"priceKrw"`
+	Condition   string               `json:"condition"`
+	Status      string               `json:"status"`
+	Details     map[string]any       `json:"details"`
+	Location    string               `json:"location"`
+	PublishedAt *time.Time           `json:"publishedAt"`
+	CreatedAt   time.Time            `json:"createdAt"`
+	UpdatedAt   time.Time            `json:"updatedAt"`
+	Images      []listingimages.View `json:"images"`
 }
 
 type CreateInput struct {

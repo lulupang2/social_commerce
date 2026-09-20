@@ -79,6 +79,7 @@ export type Listing = {
   "publishedAt": string | null;
   "createdAt": string;
   "updatedAt": string;
+  "images": Array<ListingImage>;
 };
 
 export type ListingList = {
@@ -104,4 +105,42 @@ export type UpdateListingRequest = {
   "condition"?: ListingCondition;
   "details"?: Record<string, unknown>;
   "location"?: string;
+};
+
+export type ListingImageUnavailableReason = "not_found" | "forbidden" | "expired" | "signing_failed";
+
+export type ListingImage = ({
+  "id": string;
+  "state": "signed";
+  "altText": string | null;
+  "sortOrder": number;
+  "url": string;
+  "expiresAt": string;
+}) | ({
+  "id": string;
+  "state": "unavailable";
+  "altText": string | null;
+  "sortOrder": number;
+  "reason": ListingImageUnavailableReason;
+});
+
+export type ListingImagesResponse = {
+  "listingId": string;
+  "images": Array<ListingImage>;
+};
+
+export type ListingImageCreateRequest = {
+  "file": string;
+  "altText"?: string;
+  "sortOrder"?: number;
+};
+
+export type ListingImagePatchRequest = {
+  "altText"?: string | null;
+  "sortOrder"?: number;
+};
+
+export type ListingImageReplaceRequest = {
+  "file": string;
+  "altText"?: string;
 };
