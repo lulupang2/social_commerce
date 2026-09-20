@@ -18,6 +18,7 @@ import (
 	"github.com/lulupang2/social_commerce/apps/api/internal/auth"
 	"github.com/lulupang2/social_commerce/apps/api/internal/httpapi"
 	"github.com/lulupang2/social_commerce/apps/api/internal/jobs"
+	"github.com/lulupang2/social_commerce/apps/api/internal/listingimages"
 	"github.com/lulupang2/social_commerce/apps/api/internal/listings"
 	"github.com/lulupang2/social_commerce/apps/api/internal/migrate"
 	"github.com/lulupang2/social_commerce/apps/api/internal/platform"
@@ -92,6 +93,15 @@ func run(kind string, logger *slog.Logger) error {
 		}
 		authStore := &auth.Store{Pool: pool, Config: authConfig}
 		listingStore := &listings.Store{Pool: pool}
+		imageStore := &listingimages.Store{Pool: pool}
+		imageStorage, storageConfigured, storageErr := listingimages.NewStorage(cfg, nil)
+		if storageErr != nil {
+			return storageErr
+		}
+		logger.Info("listing_image_storage_configuration", "configured", storageConfigured)
+		imageService := &listingimages.Service{
+			Repo: imageStore, Storage: imageStorage, TTL: cfg.ListingImageSignedURLTTL, Logger: logger,
+		}
 		ready := func(c context.Context) error {
 			if err := platform.Ready(c, pool); err != nil {
 				return err
@@ -99,14 +109,18 @@ func run(kind string, logger *slog.Logger) error {
 			if err := authStore.Ready(c); err != nil {
 				return err
 			}
-			return listingStore.Ready(c)
+			if err := listingStore.Ready(c); err != nil {
+				return err
+			}
+			return imageStore.Ready(c)
 		}
 		if err = ready(ctx); err != nil {
 			return errors.New("API application schema is not ready")
 		}
 		s := httpapi.New(logger, ready)
 		authHandler := auth.Register(s.App, authConfig, pool, logger)
-		listings.Register(s.App, pool, authHandler, logger)
+		listings.Register(s.App, pool, authHandler, imageService, logger)
+		listingimages.Register(s.App, authHandler, imageService, logger)
 		listenErr := make(chan error, 1)
 		go func() { listenErr <- s.App.Listen(cfg.Address, fiber.ListenConfig{DisableStartupMessage: true}) }()
 		logger.Info("api_starting")

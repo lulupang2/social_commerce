@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -39,17 +40,29 @@ func New(logger *slog.Logger, ready func(context.Context) error) *Server {
 				status, code, message = 405, "METHOD_NOT_ALLOWED", "Method not allowed"
 			case 413:
 				status, code, message = 413, "REQUEST_TOO_LARGE", "Request too large"
+				parts := strings.Split(strings.Trim(c.Path(), "/"), "/")
+				if len(parts) >= 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "listings" && parts[4] == "images" &&
+					((c.Method() == "POST" && len(parts) == 5) || (c.Method() == "PUT" && len(parts) == 6)) {
+					code, message = "LISTING_IMAGE_TOO_LARGE", "Listing image exceeds the maximum size"
+				}
 			}
 		}
 		if status == 500 {
 			logger.Error("http_request_failed", "error_code", code, "request_id", c.GetRespHeader("X-Request-ID"))
+		}
+		// Body-limit errors can occur before the request middleware runs.
+		if c.GetRespHeader("X-Request-ID") == "" {
+			var id [16]byte
+			if _, randomErr := rand.Read(id[:]); randomErr == nil {
+				c.Set("X-Request-ID", hex.EncodeToString(id[:]))
+			}
 		}
 		return c.Status(status).JSON(ErrorResponse{code, message, c.GetRespHeader("X-Request-ID")})
 	}
 	s.App = fiber.New(fiber.Config{
 		AppName: "SummerGear API", ErrorHandler: errorHandler,
 		ReadTimeout: 5 * time.Second, WriteTimeout: 30 * time.Second,
-		IdleTimeout: 30 * time.Second, BodyLimit: 64 * 1024,
+		IdleTimeout: 30 * time.Second, BodyLimit: 12 * 1024 * 1024,
 	})
 	s.App.Use(func(c fiber.Ctx) error {
 		var id [16]byte

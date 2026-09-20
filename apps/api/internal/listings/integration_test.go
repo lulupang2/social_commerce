@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lulupang2/social_commerce/apps/api/internal/auth"
 	"github.com/lulupang2/social_commerce/apps/api/internal/httpapi"
+	"github.com/lulupang2/social_commerce/apps/api/internal/listingimages"
 	"github.com/lulupang2/social_commerce/apps/api/internal/migrate"
 	"github.com/lulupang2/social_commerce/apps/api/internal/platform"
 )
@@ -47,7 +49,7 @@ func TestListingSessionOwnershipAndRLS(t *testing.T) {
 	logger := platform.NewLogger(io.Discard, "error")
 	status, err := migrate.Run(ctx, pools[platform.Migration], files, true, logger)
 	must(t, err)
-	if !status.Ready || status.AppVersion != migrate.ListingsVersion {
+	if !status.Ready || status.AppVersion != migrate.ListingImagesVersion {
 		t.Fatal("listing migration is not ready")
 	}
 
@@ -60,14 +62,19 @@ func TestListingSessionOwnershipAndRLS(t *testing.T) {
 	must(t, err)
 
 	store := &Store{Pool: pools[platform.API]}
+	imageStore := &listingimages.Store{Pool: pools[platform.API]}
+	imageService := &listingimages.Service{Repo: imageStore, Storage: testUnavailableStorage{}, TTL: 600 * time.Second}
 	app := httpapi.New(logger, func(c context.Context) error {
 		if err := (&auth.Store{Pool: pools[platform.API], Config: authConfig}).Ready(c); err != nil {
 			return err
 		}
-		return store.Ready(c)
+		if err := store.Ready(c); err != nil {
+			return err
+		}
+		return imageStore.Ready(c)
 	}).App
 	authHandler := auth.Register(app, authConfig, pools[platform.API], logger)
-	Register(app, pools[platform.API], authHandler, logger)
+	Register(app, pools[platform.API], authHandler, imageService, logger)
 
 	cookies := map[string]string{}
 	request := func(method, path, body string, headers map[string]string) (*http.Response, []byte) {
@@ -226,4 +233,16 @@ func errorsAs(err error, target any) bool {
 		}
 	}
 	return false
+}
+
+type testUnavailableStorage struct{}
+
+func (testUnavailableStorage) Upload(context.Context, string, string, []byte) error {
+	return errors.New("unused")
+}
+func (testUnavailableStorage) Delete(context.Context, string) error {
+	return errors.New("unused")
+}
+func (testUnavailableStorage) Sign(context.Context, string, time.Duration) (string, error) {
+	return "", errors.New("unused")
 }

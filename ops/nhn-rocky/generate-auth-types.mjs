@@ -9,6 +9,7 @@ const document = JSON.parse(readFileSync(resolve(root, 'apps/api/openapi.yaml'),
 if (document.openapi !== '3.1.0') throw new Error('Expected OpenAPI 3.1.0');
 const schemas = document.components.schemas;
 function render(schema) {
+  if (schema.oneOf) return schema.oneOf.map(value => `(${render(value)})`).join(' | ');
   if (schema.$ref) {
     const name = schema.$ref.replace('#/components/schemas/', '');
     if (!Object.hasOwn(schemas, name)) throw new Error('Unknown local schema reference');

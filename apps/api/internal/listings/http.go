@@ -13,16 +13,22 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lulupang2/social_commerce/apps/api/internal/auth"
+	"github.com/lulupang2/social_commerce/apps/api/internal/listingimages"
 )
+
+type ImageReader interface {
+	ListVisible(context.Context, string, string) ([]listingimages.View, error)
+}
 
 type Handler struct {
 	Store  *Store
 	Auth   *auth.Handler
+	Images ImageReader
 	logger *slog.Logger
 }
 
-func Register(app *fiber.App, pool *pgxpool.Pool, authHandler *auth.Handler, logger *slog.Logger) *Handler {
-	h := &Handler{Store: &Store{Pool: pool}, Auth: authHandler, logger: logger}
+func Register(app *fiber.App, pool *pgxpool.Pool, authHandler *auth.Handler, images ImageReader, logger *slog.Logger) *Handler {
+	h := &Handler{Store: &Store{Pool: pool}, Auth: authHandler, Images: images, logger: logger}
 	app.Get(Prefix, h.wrap(h.list))
 	app.Get(Prefix+"/:id", h.wrap(h.get))
 	app.Post(Prefix, h.wrap(h.create))
@@ -32,7 +38,7 @@ func Register(app *fiber.App, pool *pgxpool.Pool, authHandler *auth.Handler, log
 
 func (h *Handler) wrap(fn func(fiber.Ctx, context.Context) error) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		if err := fn(c, ctx); err != nil {
 			return h.respond(c, err)
@@ -49,6 +55,15 @@ func (h *Handler) respond(c fiber.Ctx, err error) error {
 		}
 		return c.Status(failure.Status).JSON(fiber.Map{
 			"code": failure.Code, "message": failure.Message, "requestId": c.GetRespHeader("X-Request-ID"),
+		})
+	}
+	var imageFailure *listingimages.Failure
+	if errors.As(err, &imageFailure) {
+		if imageFailure.Status >= 500 {
+			h.logger.Error("listing_image_dependency_failed", "error_code", imageFailure.Code, "request_id", c.GetRespHeader("X-Request-ID"))
+		}
+		return c.Status(imageFailure.Status).JSON(fiber.Map{
+			"code": imageFailure.Code, "message": imageFailure.Message, "requestId": c.GetRespHeader("X-Request-ID"),
 		})
 	}
 	authFailure := auth.PublicFailure(err)
@@ -68,6 +83,11 @@ func (h *Handler) list(c fiber.Ctx, ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	for i := range items {
+		if err := h.attachImages(ctx, &items[i], ""); err != nil {
+			return err
+		}
+	}
 	return c.JSON(fiber.Map{"items": items})
 }
 
@@ -81,6 +101,9 @@ func (h *Handler) get(c fiber.Ctx, ctx context.Context) error {
 	}
 	item, err := h.Store.Get(ctx, c.Params("id"), memberID)
 	if err != nil {
+		return err
+	}
+	if err = h.attachImages(ctx, &item, memberID); err != nil {
 		return err
 	}
 	return c.JSON(item)
@@ -99,6 +122,9 @@ func (h *Handler) create(c fiber.Ctx, ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err = h.attachImages(ctx, &item, view.Member.ID); err != nil {
+		return err
+	}
 	return c.Status(fiber.StatusCreated).JSON(item)
 }
 
@@ -115,7 +141,19 @@ func (h *Handler) update(c fiber.Ctx, ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err = h.attachImages(ctx, &item, view.Member.ID); err != nil {
+		return err
+	}
 	return c.JSON(item)
+}
+
+func (h *Handler) attachImages(ctx context.Context, item *Listing, memberID string) error {
+	images, err := h.Images.ListVisible(ctx, item.ID, memberID)
+	if err != nil {
+		return err
+	}
+	item.Images = images
+	return nil
 }
 
 func decodeBody(c fiber.Ctx, target any) error {
