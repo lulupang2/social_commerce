@@ -1,0 +1,88 @@
+name: Keyless Linux CI
+on:
+  push:
+    branches: [main, master, 'release/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: keyless-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Compose contracts without secrets
+        run: |
+          docker compose -f ops/deployment/compose.ci.yml config --quiet
+          docker compose --env-file ops/deployment/config-check.env.example -f ops/deployment/compose.deploy.yml config --quiet
+      - name: Build Linux Go verification image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ops/deployment/Dockerfile.go
+          target: verification
+          load: true
+          tags: summergear-ci-go:deployment-ci
+          cache-from: type=gha,scope=go-verification
+          cache-to: type=gha,scope=go-verification,mode=max
+      - name: Go unit, race, vet and integration compilation
+        run: docker run --rm --memory=1g --cpus=2 summergear-ci-go:deployment-ci
+      - name: Isolated PostgreSQL, RLS and image integration
+        run: python3 ops/deployment/database.py
+      - name: Build web verification image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ops/deployment/Dockerfile.web
+          target: verification
+          load: true
+          tags: summergear-ci-web:deployment-ci
+          cache-from: type=gha,scope=web-verification
+          cache-to: type=gha,scope=web-verification,mode=max
+      - name: Pinned pnpm, workspace typecheck, web tests, lint and production build
+        run: docker run --rm --memory=4g --cpus=2 summergear-ci-web:deployment-ci
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ops/deployment/Dockerfile.go
+          target: api
+          load: true
+          tags: summergear-api:deployment-ci
+          cache-from: type=gha,scope=go-runtime
+          cache-to: type=gha,scope=go-runtime,mode=max
+      - name: Build worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ops/deployment/Dockerfile.go
+          target: worker
+          load: true
+          tags: summergear-worker:deployment-ci
+          cache-from: type=gha,scope=go-runtime
+      - name: Build migration image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ops/deployment/Dockerfile.go
+          target: migration
+          load: true
+          tags: summergear-migration:deployment-ci
+          cache-from: type=gha,scope=go-runtime
+      - name: Build standalone web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ops/deployment/Dockerfile.web
+          target: web
+          load: true
+          tags: summergear-web:deployment-ci
+          cache-from: type=gha,scope=web-runtime
+          cache-to: type=gha,scope=web-runtime,mode=max
+      - name: Keyless application smoke
+        run: python3 ops/deployment/smoke.py
