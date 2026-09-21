@@ -63,6 +63,9 @@ type SignedImage struct {
 	SortOrder int       `json:"sortOrder"`
 }
 
+// View is the public image shape embedded in listing responses.
+type View = SignedImage
+
 type ImageRecord struct {
 	ID              string
 	ListingID       string
