@@ -13,6 +13,7 @@ import {
 import React, { useRef, useState } from 'react';
 
 import { NativeBridgeError, requestNativeMedia, triggerNativeHaptic } from '@/lib/native-bridge';
+import { isSignedImageExpired } from '@/lib/go-listings/images';
 
 export type MediaUploadState = 'idle' | 'uploading' | 'uploaded' | 'failed';
 
@@ -25,6 +26,12 @@ export interface SelectedMedia {
   serverId?: string;
   uploadState?: MediaUploadState;
   uploadError?: string;
+  sortOrder?: number;
+  expiresAt?: string;
+  replaceImageId?: string;
+  uploadErrorCode?: string;
+  pendingImageId?: string;
+  uploadPhase?: 'cleanup' | 'confirm';
 }
 
 interface MediaPickerProps {
@@ -36,6 +43,8 @@ interface MediaPickerProps {
   disabled?: boolean;
   allowReorder?: boolean;
   onRetry?(id: string): void;
+  allowReplace?: boolean;
+  onRefresh?(): void;
 }
 
 const ALLOWED_IMAGE_TYPES: Record<string, true> = {
@@ -68,13 +77,48 @@ export function MediaPicker({
   disabled = false,
   allowReorder = true,
   onRetry,
+  allowReplace = false,
+  onRefresh,
 }: MediaPickerProps) {
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const replacementInputRef = useRef<HTMLInputElement>(null);
+  const replacementIdRef = useRef<string | null>(null);
   const [isPicking, setIsPicking] = useState(false);
   const [error, setError] = useState('');
   const remainingCount = Math.max(0, maxCount - value.length);
   const interactionDisabled = disabled || isPicking;
+  const coverId = value.reduce<SelectedMedia | undefined>(
+    (cover, media, index) =>
+      !cover || (media.sortOrder ?? index) < (cover.sortOrder ?? value.indexOf(cover))
+        ? media
+        : cover,
+    undefined,
+  )?.id;
+
+  const replaceBrowserFile = (files: FileList | null) => {
+    const target = value.find((media) => media.id === replacementIdRef.current);
+    const file = files?.[0];
+    if (replacementInputRef.current) replacementInputRef.current.value = '';
+    replacementIdRef.current = null;
+    if (!target || !file || interactionDisabled || target.pendingImageId) return;
+    if (!ALLOWED_IMAGE_TYPES[file.type.toLowerCase()] || file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
+      setError('JPG, PNG, WebP · 장당 10MB 이하의 사진을 선택해 주세요.');
+      return;
+    }
+    setError('');
+    if (target.previewUrl.startsWith('blob:')) URL.revokeObjectURL(target.previewUrl);
+    onChange(value.map((media) => media.id === target.id ? {
+      id: media.id,
+      sortOrder: media.sortOrder,
+      replaceImageId: media.serverId ?? media.replaceImageId,
+      previewUrl: URL.createObjectURL(file),
+      fileName: file.name,
+      mimeType: file.type,
+      file,
+      uploadState: 'idle',
+    } : media));
+  };
 
   const addNativeMedia = async (source: 'camera' | 'library') => {
     if (remainingCount === 0 || interactionDisabled) return;
@@ -156,7 +200,7 @@ export function MediaPicker({
   };
 
   const removeMedia = (id: string) => {
-    if (disabled) return;
+    if (interactionDisabled || value.find((media) => media.id === id)?.pendingImageId) return;
     const target = value.find((media) => media.id === id);
     if (target?.previewUrl.startsWith('blob:')) URL.revokeObjectURL(target.previewUrl);
     onChange(value.filter((media) => media.id !== id));
@@ -194,6 +238,7 @@ export function MediaPicker({
                   height={92}
                   src={media.previewUrl}
                   unoptimized
+                  onError={() => setError('사진 링크가 만료되었거나 불러올 수 없어요. 사진을 갱신해 주세요.')}
                   width={92}
                 />
 
@@ -207,14 +252,29 @@ export function MediaPicker({
                 <button
                   aria-label={`${index + 1}번째 사진 삭제`}
                   className="media-remove-button"
-                  disabled={disabled || state === 'uploading'}
+                  disabled={interactionDisabled || state === 'uploading' || !!media.pendingImageId}
                   onClick={() => removeMedia(media.id)}
                   type="button"
                 >
                   <X size={14} />
                 </button>
 
-                {index === 0 ? <span className="media-cover-badge">대표</span> : null}
+                {media.id === coverId ? <span className="media-cover-badge">대표</span> : null}
+
+                {allowReplace ? (
+                  <button
+                    aria-label={`${index + 1}번째 사진 교체`}
+                    className="media-replace-button"
+                    disabled={interactionDisabled || state === 'uploading' || !!media.pendingImageId}
+                    onClick={() => {
+                      replacementIdRef.current = media.id;
+                      replacementInputRef.current?.click();
+                    }}
+                    type="button"
+                  >
+                    교체
+                  </button>
+                ) : null}
 
                 {allowReorder && value.length > 1 ? (
                   <div className="media-order-actions">
@@ -240,6 +300,9 @@ export function MediaPicker({
                 {state === 'failed' ? (
                   <div className="media-upload-failure" role="alert">
                     <span>{media.uploadError || '업로드 실패'}</span>
+                    {media.uploadErrorCode === 'UNAUTHENTICATED' ? (
+                      <a href="/auth" target="_blank" rel="noreferrer">다시 로그인</a>
+                    ) : null}
                     {onRetry ? (
                       <button
                         aria-label={`${index + 1}번째 사진 업로드 재시도`}
@@ -283,6 +346,15 @@ export function MediaPicker({
       ) : null}
 
       <input
+        ref={replacementInputRef}
+        aria-label="교체할 사진 선택"
+        accept="image/jpeg,image/png,image/webp"
+        className="visually-hidden"
+        disabled={disabled}
+        onChange={(event) => replaceBrowserFile(event.target.files)}
+        type="file"
+      />
+      <input
         ref={cameraInputRef}
         accept="image/jpeg,image/png,image/webp"
         capture="environment"
@@ -307,6 +379,18 @@ export function MediaPicker({
           {value.length}/{maxCount}
         </strong>
       </div>
+      {onRefresh ? (
+        <button
+          className="btn-outline"
+          disabled={interactionDisabled}
+          onClick={() => { setError(''); onRefresh(); }}
+          type="button"
+        >
+          {value.some((media) => media.expiresAt && isSignedImageExpired({ expiresAt: media.expiresAt }))
+            ? '만료된 사진 갱신'
+            : '사진 갱신'}
+        </button>
+      ) : null}
       {error ? (
         <p className="form-error" role="alert">
           {error}
