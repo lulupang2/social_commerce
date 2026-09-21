@@ -1,5 +1,9 @@
 # 개발 로드맵
 
+2026-09-21 병합 후속 작업은 [A/B/C/D 작업 지시서](work-orders/README.md)와
+[A 검증 기록](integration-a-verification.md)을 따른다. 이미지 API 연결과 계약 정렬은 복구했으며,
+B/C의 전체 이미지 품질 조건과 D의 배포·CI 작업은 아직 완료되지 않았다.
+
 기준일: 2026-09-18 · Go API·River 기반을 추가했습니다. Supabase 실연결·인증·거래 전환은 후속 작업입니다.
 
 [제품 기준](SSOT.md) · [백엔드 전환 설계](backend-transition.md) · [인증 설계](authentication.md) · [입점사와 거래 설계](commerce.md)

@@ -28,7 +28,7 @@ case ${1:-prepare} in
     go test -race -p=1 -tags=integration,authfixture -count=1 -timeout=180s -v ./internal/auth
     ;;
   listings-integration)
-    go test -race -p=1 -tags=integration -count=1 -timeout=180s -v ./internal/listings
+    go test -race -p=1 -tags=integration -count=1 -timeout=180s -v ./internal/listings ./internal/listingimages
     ;;
   integration)
     go test -race -p=1 -tags=integration -count=1 -timeout=240s -v ./internal/integration

@@ -9,7 +9,7 @@ export const GO_LISTING_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 const supportedMimeTypes = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
 
-const signedImageSchema = z
+export const signedImageSchema = z
   .object({
     id: z.string().uuid(),
     state: z.literal('signed'),

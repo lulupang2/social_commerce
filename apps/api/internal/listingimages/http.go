@@ -15,9 +15,14 @@ import (
 	"github.com/lulupang2/social_commerce/apps/api/internal/auth"
 )
 
+type SessionAuth interface {
+	RequireSession(fiber.Ctx, context.Context) (auth.SessionView, error)
+	RequireMutationSession(fiber.Ctx, context.Context) (auth.SessionView, error)
+}
+
 type Handler struct {
 	Service *Service
-	Auth    *auth.Handler
+	Auth    SessionAuth
 	logger  *slog.Logger
 }
 

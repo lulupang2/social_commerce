@@ -1074,7 +1074,8 @@
           "location",
           "publishedAt",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "images"
         ],
         "additionalProperties": false,
         "properties": {
@@ -1131,6 +1132,13 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "images": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/SignedListingImage"
+            }
           }
         }
       },

@@ -63,7 +63,7 @@ func TestListingSessionOwnershipAndRLS(t *testing.T) {
 
 	store := &Store{Pool: pools[platform.API]}
 	imageStore := &listingimages.Store{Pool: pools[platform.API]}
-	imageService := &listingimages.Service{Repo: imageStore, Storage: testUnavailableStorage{}, TTL: 600 * time.Second}
+	imageService := &listingimages.Service{Repo: imageStore, Storage: testUnavailableStorage{}}
 	app := httpapi.New(logger, func(c context.Context) error {
 		if err := (&auth.Store{Pool: pools[platform.API], Config: authConfig}).Ready(c); err != nil {
 			return err
@@ -237,8 +237,14 @@ func errorsAs(err error, target any) bool {
 
 type testUnavailableStorage struct{}
 
-func (testUnavailableStorage) Upload(context.Context, string, string, []byte) error {
-	return errors.New("unused")
+func (testUnavailableStorage) CreateSignedUpload(context.Context, string) (string, error) {
+	return "", errors.New("unused")
+}
+func (testUnavailableStorage) Info(context.Context, string) (listingimages.ObjectInfo, error) {
+	return listingimages.ObjectInfo{}, errors.New("unused")
+}
+func (testUnavailableStorage) ReadPrefix(context.Context, string) ([]byte, error) {
+	return nil, errors.New("unused")
 }
 func (testUnavailableStorage) Delete(context.Context, string) error {
 	return errors.New("unused")

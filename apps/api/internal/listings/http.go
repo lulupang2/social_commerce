@@ -17,8 +17,10 @@ import (
 )
 
 type ImageReader interface {
-	ListVisible(context.Context, string, string) ([]listingimages.View, error)
+	List(context.Context, string, string) ([]listingimages.View, error)
 }
+
+var _ ImageReader = (*listingimages.Service)(nil)
 
 type Handler struct {
 	Store  *Store
@@ -148,7 +150,7 @@ func (h *Handler) update(c fiber.Ctx, ctx context.Context) error {
 }
 
 func (h *Handler) attachImages(ctx context.Context, item *Listing, memberID string) error {
-	images, err := h.Images.ListVisible(ctx, item.ID, memberID)
+	images, err := h.Images.List(ctx, item.ID, memberID)
 	if err != nil {
 		return err
 	}

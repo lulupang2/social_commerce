@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { getGoSession } from '../go-auth/client';
 import type { MarketListing } from '../listings/types';
 import type { MutationResult } from '../supabase/mutations';
+import { signedImageSchema } from './images';
 
 const goListingSchema = z
   .object({
@@ -44,6 +45,7 @@ const goListingSchema = z
     publishedAt: z.string().datetime({ offset: true }).nullable(),
     createdAt: z.string().datetime({ offset: true }),
     updatedAt: z.string().datetime({ offset: true }),
+    images: z.array(signedImageSchema).max(12),
   })
   .strict();
 
@@ -84,7 +86,7 @@ function toMarketListing(item: GoListing): MarketListing | null {
     price: { amount: item.priceKrw, currency: 'KRW' },
     details: parsedDetails.data,
     location: item.location,
-    images: [],
+    images: item.images.map((image) => ({ ...image, altText: image.altText ?? null })),
     publishedAt: item.publishedAt,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,

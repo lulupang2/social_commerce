@@ -108,7 +108,7 @@ func (s *HTTPStorage) CreateSignedUpload(ctx context.Context, storagePath string
 	if value == "" {
 		value = result.URL
 	}
-	return s.absoluteStorageURL(value)
+	return s.signedStorageURL(value, "/object/upload/sign/"+Bucket+"/"+storagePath)
 }
 
 func (s *HTTPStorage) Info(ctx context.Context, storagePath string) (ObjectInfo, error) {
@@ -181,7 +181,7 @@ func (s *HTTPStorage) Sign(ctx context.Context, storagePath string, ttl time.Dur
 	if value == "" {
 		value = result.SignedURLUpper
 	}
-	return s.absoluteStorageURL(value)
+	return s.signedStorageURL(value, "/object/sign/"+Bucket+"/"+storagePath)
 }
 
 func (s *HTTPStorage) Delete(ctx context.Context, storagePath string) error {
@@ -231,16 +231,20 @@ func (s *HTTPStorage) requestJSON(ctx context.Context, method, path string, body
 	return nil
 }
 
-func (s *HTTPStorage) absoluteStorageURL(value string) (string, error) {
+func (s *HTTPStorage) signedStorageURL(value, expectedPath string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", ErrStorageUnavailable
 	}
-	if strings.HasPrefix(value, "/") {
+	base, _ := url.Parse(s.baseURL)
+	if strings.HasPrefix(value, "/storage/v1/") {
+		value = base.Scheme + "://" + base.Host + value
+	} else if strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "//") {
 		value = s.baseURL + value
 	}
 	u, err := url.Parse(value)
-	if err != nil || u.Scheme != "https" && !(u.Scheme == "http" && isLoopbackHost(u.Hostname())) || u.Hostname() == "" {
+	if err != nil || u.Scheme != base.Scheme || u.Host != base.Host || u.User != nil || u.Fragment != "" ||
+		u.Path != base.Path+expectedPath || u.Query().Get("token") == "" {
 		return "", ErrStorageUnavailable
 	}
 	return u.String(), nil

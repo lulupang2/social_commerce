@@ -88,7 +88,7 @@ func TestPrivateLiteralEnvFile(t *testing.T) {
 	}
 	values, err := ReadEnvFile(path)
 	if err != nil || values["KEY"] != "$(touch /tmp/should-not-execute)" || values["OTHER"] != "literal=value" {
-		t.Fatal("literal parsing failed")
+		t.Fatalf("literal parsing failed: %v", err)
 	}
 	if err = os.Chmod(path, 0644); err != nil {
 		t.Fatal(err)
@@ -117,7 +117,7 @@ func TestEnvPrecedenceAndOwnCredential(t *testing.T) {
 	t.Setenv("DB_TARGET_ID", FixtureID)
 	cfg, err := LoadConfig(API, path)
 	if err != nil || cfg.DatabaseURL != values["DATABASE_URL"] {
-		t.Fatal("API config failed")
+		t.Fatalf("API config failed: %v", err)
 	}
 	t.Setenv("DATABASE_URL", "")
 	if _, err := LoadConfig(API, path); err == nil {
