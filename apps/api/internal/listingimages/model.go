@@ -1,18 +1,22 @@
 package listingimages
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
 )
 
 const (
-	Prefix           = "/api/v1/listings"
-	MaxImages        = 12
-	MaxFileSizeBytes = 10 * 1024 * 1024
-	MaxDimension     = 4096
+	Prefix             = "/api/v1/listings"
+	Bucket             = "listing-images"
+	MaxImages          = 12
+	MaxFileSizeBytes   = int64(10 * 1024 * 1024)
+	SignedReadTTL      = 10 * time.Minute
+	SignedUploadTTL    = 2 * time.Hour
+	PendingUploadState = "pending_upload"
+	ReadyState         = "ready"
+	FailedState        = "upload_failed"
+	DeletingState      = "deleting"
 )
 
 type Failure struct {
@@ -24,117 +28,119 @@ type Failure struct {
 func (e *Failure) Error() string { return e.Code }
 
 var (
-	errInvalid          = &Failure{400, "LISTING_IMAGE_INVALID", "Listing image information is invalid"}
-	errListingNotFound  = &Failure{404, "LISTING_NOT_FOUND", "Listing was not found"}
-	errImageNotFound    = &Failure{404, "LISTING_IMAGE_NOT_FOUND", "Listing image was not found"}
-	errLimitReached     = &Failure{409, "LISTING_IMAGE_LIMIT_REACHED", "Listing image limit has been reached"}
-	errSortConflict     = &Failure{409, "LISTING_IMAGE_SORT_CONFLICT", "Listing image sort order is already in use"}
-	errStateConflict    = &Failure{409, "LISTING_IMAGE_STATE_CONFLICT", "Listing images cannot be changed in the current listing state"}
-	errTooLarge         = &Failure{413, "LISTING_IMAGE_TOO_LARGE", "Listing image exceeds the maximum size"}
-	errMediaUnsupported = &Failure{415, "LISTING_IMAGE_MEDIA_TYPE_UNSUPPORTED", "Listing image media type is not supported"}
-	errStorage          = &Failure{503, "LISTING_IMAGE_STORAGE_UNAVAILABLE", "Listing image storage is unavailable"}
-	errDB               = &Failure{503, "LISTING_DATABASE_UNAVAILABLE", "Listing storage is unavailable"}
+	errInvalid            = &Failure{400, "IMAGE_INVALID", "Image information is invalid"}
+	errNotFound           = &Failure{404, "IMAGE_NOT_FOUND", "Image or listing was not found"}
+	errLimit              = &Failure{409, "IMAGE_LIMIT_EXCEEDED", "The listing already has the maximum number of images"}
+	errConflict           = &Failure{409, "IMAGE_CONFLICT", "The image position is already in use"}
+	errIncomplete         = &Failure{409, "IMAGE_UPLOAD_INCOMPLETE", "The image upload has not completed"}
+	errExpired            = &Failure{410, "IMAGE_UPLOAD_EXPIRED", "The image upload slot has expired"}
+	errStorage            = &Failure{503, "IMAGE_STORAGE_UNAVAILABLE", "Image storage is unavailable"}
+	errDB                 = &Failure{503, "IMAGE_DATABASE_UNAVAILABLE", "Image metadata storage is unavailable"}
+	ErrObjectNotFound     = errors.New("storage object not found")
+	ErrStorageUnavailable = errors.New("storage unavailable")
 )
 
-type Record struct {
-	ID          string
-	ListingID   string
-	StoragePath string
-	AltText     *string
-	SortOrder   int
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+type UploadInput struct {
+	MimeType       string  `json:"mimeType"`
+	FileSizeBytes  int64   `json:"fileSizeBytes"`
+	AltText        *string `json:"altText"`
+	SortOrder      *int    `json:"sortOrder"`
+	ReplaceImageID *string `json:"replaceImageId"`
 }
 
-type View struct {
-	ID        string     `json:"id"`
-	State     string     `json:"state"`
-	URL       *string    `json:"url,omitempty"`
-	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
-	Reason    *string    `json:"reason,omitempty"`
-	AltText   *string    `json:"altText"`
-	SortOrder int        `json:"sortOrder"`
+type UploadSlot struct {
+	ImageID   string    `json:"imageId"`
+	UploadURL string    `json:"uploadUrl"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-type ImageFile struct {
-	Bytes     []byte
-	MIMEType  string
-	Extension string
-	Width     int
-	Height    int
+type SignedImage struct {
+	ID        string    `json:"id"`
+	State     string    `json:"state"`
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	AltText   *string   `json:"altText,omitempty"`
+	SortOrder int       `json:"sortOrder"`
 }
 
-type CreateInput struct {
-	File      ImageFile
-	AltText   *string
-	SortOrder *int
+type ImageRecord struct {
+	ID              string
+	ListingID       string
+	MemberID        string
+	StoragePath     string
+	MimeType        string
+	FileSizeBytes   int64
+	AltText         *string
+	SortOrder       int
+	State           string
+	UploadExpiresAt time.Time
+	CompletedAt     *time.Time
+	ReplaceImageID  *string
 }
 
-type PatchInput struct {
-	AltTextSet bool
-	AltText    *string
-	SortOrder  *int
+type ObjectInfo struct {
+	MimeType      string
+	FileSizeBytes int64
 }
 
-type ReplaceInput struct {
-	File       ImageFile
-	AltTextSet bool
-	AltText    *string
-}
-
-type optionalString struct {
-	Set   bool
-	Value *string
-}
-
-func (o *optionalString) UnmarshalJSON(data []byte) error {
-	o.Set = true
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		o.Value = nil
-		return nil
+func normalizeInput(input UploadInput) UploadInput {
+	input.MimeType = strings.ToLower(strings.TrimSpace(input.MimeType))
+	if input.AltText != nil {
+		value := strings.TrimSpace(*input.AltText)
+		input.AltText = &value
 	}
-	var value string
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
+	if input.ReplaceImageID != nil {
+		value := strings.TrimSpace(*input.ReplaceImageID)
+		input.ReplaceImageID = &value
 	}
-	o.Value = &value
-	return nil
+	return input
 }
 
-type patchPayload struct {
-	AltText   optionalString `json:"altText"`
-	SortOrder *int           `json:"sortOrder"`
-}
-
-func normalizeAltText(value *string) (*string, error) {
-	if value == nil {
-		return nil, nil
+func validateInput(input UploadInput) error {
+	if !allowedMime(input.MimeType) || input.FileSizeBytes <= 0 || input.FileSizeBytes > MaxFileSizeBytes {
+		return errInvalid
 	}
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return nil, nil
+	if input.AltText != nil {
+		n := len([]rune(*input.AltText))
+		if n < 1 || n > 160 {
+			return errInvalid
+		}
 	}
-	if len([]rune(trimmed)) > 160 {
-		return nil, errInvalid
-	}
-	return &trimmed, nil
-}
-
-func validateSortOrder(value *int) error {
-	if value != nil && *value < 0 {
+	if input.ReplaceImageID == nil {
+		if input.SortOrder == nil || *input.SortOrder < 0 || *input.SortOrder >= MaxImages {
+			return errInvalid
+		}
+	} else if *input.ReplaceImageID == "" || (input.SortOrder != nil && (*input.SortOrder < 0 || *input.SortOrder >= MaxImages)) {
 		return errInvalid
 	}
 	return nil
 }
 
-func mutableListingStatus(status string) bool {
-	return status == "draft" || status == "pending_review" || status == "rejected"
+func allowedMime(value string) bool {
+	switch value {
+	case "image/jpeg", "image/jpg", "image/png", "image/webp":
+		return true
+	default:
+		return false
+	}
 }
 
-func asFailure(err error) (*Failure, bool) {
-	var failure *Failure
-	if errors.As(err, &failure) {
-		return failure, true
+func canonicalMime(value string) string {
+	if value == "image/jpg" {
+		return "image/jpeg"
 	}
-	return nil, false
+	return value
+}
+
+func extensionForMime(value string) string {
+	switch canonicalMime(value) {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ""
+	}
 }

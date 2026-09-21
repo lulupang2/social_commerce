@@ -2,129 +2,113 @@ package listingimages
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/lulupang2/social_commerce/apps/api/internal/platform"
 )
 
-func TestHTTPStoragePrivateLifecycle(t *testing.T) {
-	const key = "fixture-service-role-secret"
-	var uploadSeen, signSeen, deleteSeen bool
+func TestHTTPStorageLifecycle(t *testing.T) {
+	const key = "test-service-role-key"
+	var sawUpload, sawInfo, sawSign, sawDelete bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+key || r.Header.Get("apikey") != key {
-			t.Error("server-only Storage credential missing")
+			t.Error("storage credentials were not attached server-side")
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		switch {
-		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/storage/v1/object/listing-images/"):
-			uploadSeen = true
-			if r.Header.Get("x-upsert") != "false" || r.Header.Get("Content-Type") != "image/png" {
-				t.Error("upload headers changed")
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/object/upload/sign/listing-images/"):
+			sawUpload = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"url":"/object/upload/sign/listing-images/member/listing/image?token=opaque"}`))
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/object/info/listing-images/"):
+			sawInfo = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"metadata":{"size":2048,"mimetype":"image/jpeg","contentLength":2048}}`))
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/object/listing-images/"):
+			if r.Header.Get("Range") != "bytes=0-31" {
+				t.Error("image signature request was not range-limited")
 			}
-			data, _ := io.ReadAll(r.Body)
-			if len(data) == 0 {
-				t.Error("empty upload")
-			}
-			w.WriteHeader(http.StatusOK)
-		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/storage/v1/object/sign/listing-images/"):
-			signSeen = true
-			var body struct {
-				ExpiresIn int `json:"expiresIn"`
-			}
-			if json.NewDecoder(r.Body).Decode(&body) != nil || body.ExpiresIn != 600 {
-				t.Error("signed URL TTL was not 600 seconds")
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write([]byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/object/sign/listing-images/"):
+			sawSign = true
+			var body map[string]int
+			if json.NewDecoder(r.Body).Decode(&body) != nil || body["expiresIn"] != 600 {
+				t.Error("signed read TTL was not capped at 600 seconds")
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"signedURL":"/object/sign/listing-images/member/listing/image.png?token=private"}`))
-		case r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/storage/v1/object/listing-images"):
-			deleteSeen = true
+			_, _ = w.Write([]byte(`{"signedURL":"/object/sign/listing-images/member/listing/image?token=read"}`))
+		case r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/object/listing-images"):
+			sawDelete = true
 			var body struct {
 				Prefixes []string `json:"prefixes"`
 			}
-			if json.NewDecoder(r.Body).Decode(&body) != nil || len(body.Prefixes) != 1 ||
-				body.Prefixes[0] != "member/listing/image.png" {
-				t.Error("delete did not target exactly one private object")
+			if json.NewDecoder(r.Body).Decode(&body) != nil || len(body.Prefixes) != 1 || body.Prefixes[0] != "member/listing/image" {
+				t.Error("delete did not target exactly the owned object")
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte("[]"))
+			_, _ = w.Write([]byte(`[]`))
 		default:
-			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			t.Errorf("unexpected storage request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
 
-	storage, configured, err := NewStorage(platform.Config{
-		SupabaseURL: server.URL, SupabaseServiceRoleKey: key,
-		ListingImageBucket: "listing-images", ListingImageSignedURLTTL: 600 * time.Second,
-	}, server.Client())
-	if err != nil || !configured {
-		t.Fatalf("storage config failed: %v", err)
-	}
-	path := "member/listing/image.png"
-	if err := storage.Upload(t.Context(), path, "image/png", testPNG(10, 10)); err != nil {
-		t.Fatal(err)
-	}
-	signed, err := storage.Sign(t.Context(), path, 600*time.Second)
+	storage, err := NewHTTPStorage(server.URL, key, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(signed, "/public/") || !strings.Contains(signed, "token=private") {
-		t.Fatalf("unexpected signed URL: %s", signed)
+	path := "member/listing/image"
+	uploadURL, err := storage.CreateSignedUpload(t.Context(), path)
+	if err != nil || !strings.Contains(uploadURL, "token=opaque") {
+		t.Fatalf("signed upload failed: %v", err)
+	}
+	info, err := storage.Info(t.Context(), path)
+	if err != nil || info.MimeType != "image/jpeg" || info.FileSizeBytes != 2048 {
+		t.Fatalf("object info failed: %#v %v", info, err)
+	}
+	prefix, err := storage.ReadPrefix(t.Context(), path)
+	if err != nil || detectImageMime(prefix) != "image/jpeg" {
+		t.Fatalf("object signature read failed: %v", err)
+	}
+	readURL, err := storage.Sign(t.Context(), path, SignedReadTTL)
+	if err != nil || !strings.Contains(readURL, "token=read") {
+		t.Fatalf("signed read failed: %v", err)
 	}
 	if err := storage.Delete(t.Context(), path); err != nil {
 		t.Fatal(err)
 	}
-	if !uploadSeen || !signSeen || !deleteSeen {
-		t.Fatal("private Storage lifecycle was incomplete")
+	if !sawUpload || !sawInfo || !sawSign || !sawDelete {
+		t.Fatal("storage lifecycle did not exercise every operation")
 	}
 }
 
-func TestStorageHasNoPublicURLFallback(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/object/sign/") {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"signedURL":"https://cdn.example.invalid/public/image.png"}`))
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
-	storage, _, err := NewStorage(platform.Config{
-		SupabaseURL: server.URL, SupabaseServiceRoleKey: "secret", ListingImageBucket: "listing-images",
-	}, server.Client())
+func TestHTTPStorageRejectsExcessiveReadTTL(t *testing.T) {
+	storage, err := NewHTTPStorage("https://example.supabase.co", "secret", &http.Client{Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := storage.Sign(t.Context(), "member/listing/image.png", 600*time.Second); err != errStorageDown {
-		t.Fatalf("foreign/public URL was accepted: %v", err)
+	if _, err := storage.Sign(t.Context(), "member/listing/image", SignedReadTTL+time.Second); err == nil {
+		t.Fatal("read signer accepted a TTL above the ten-minute contract")
 	}
 }
 
-func TestStorageTTLAndUnconfiguredFailClosed(t *testing.T) {
-	storage, configured, err := NewStorage(platform.Config{}, nil)
-	if err != nil || configured {
-		t.Fatalf("unconfigured storage should be accepted but disabled: %v", err)
+func TestLoadStorageAllowsUnconfiguredIsolation(t *testing.T) {
+	t.Setenv("SUPABASE_URL", "")
+	t.Setenv("SUPABASE_SERVICE_ROLE_KEY", "")
+	storage, configured, err := LoadStorage("")
+	if err != nil || configured || storage == nil {
+		t.Fatalf("unconfigured storage should remain testable: configured=%v err=%v", configured, err)
 	}
-	if _, err := storage.Sign(t.Context(), "x", 600*time.Second); err != errStorageDown {
+	if _, err := storage.CreateSignedUpload(t.Context(), "x"); !errorsIsStorageUnavailable(err) {
 		t.Fatal("unconfigured storage did not fail closed")
 	}
+}
 
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	defer server.Close()
-	configuredStorage, _, err := NewStorage(platform.Config{
-		SupabaseURL: server.URL, SupabaseServiceRoleKey: "secret", ListingImageBucket: "listing-images",
-	}, server.Client())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := configuredStorage.Sign(t.Context(), "x", 601*time.Second); err != errStorageDown {
-		t.Fatalf("TTL above 600 seconds was accepted: %v", err)
-	}
+func errorsIsStorageUnavailable(err error) bool {
+	return err == ErrStorageUnavailable
 }

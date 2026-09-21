@@ -1,203 +1,293 @@
 package listingimages
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 )
 
 type fakeRepo struct {
-	visible         []Record
-	visibleErr      error
-	prepareOrder    int
-	prepareErr      error
-	insertErr       error
-	current         Record
-	currentErr      error
-	patchResult     Record
-	patchErr        error
-	replaceResult   Record
-	replaceErr      error
-	deleteErr       error
-	insertCalls     int
-	replaceCalls    int
-	deleteCalls     int
-	capturedNewPath string
+	record        ImageRecord
+	visible       []ImageRecord
+	beginCalls    int
+	failCalls     int
+	completeCalls int
+	finishCalls   int
+	lastMember    string
+	beginErr      error
+	pendingErr    error
+	completeErr   error
+	visibleErr    error
+	deleteErr     error
 }
 
-func (f *fakeRepo) Ready(context.Context) error { return nil }
-func (f *fakeRepo) ListVisible(context.Context, string, string) ([]Record, error) {
+func (f *fakeRepo) BeginUpload(_ context.Context, memberID, listingID string, input UploadInput, path string, expires time.Time) (ImageRecord, error) {
+	f.beginCalls++
+	f.lastMember = memberID
+	if f.beginErr != nil {
+		return ImageRecord{}, f.beginErr
+	}
+	record := f.record
+	if record.ID == "" {
+		parts := splitPath(path)
+		record = ImageRecord{
+			ID: parts[2], ListingID: listingID, MemberID: memberID, StoragePath: path,
+			MimeType: input.MimeType, FileSizeBytes: input.FileSizeBytes, AltText: input.AltText,
+			SortOrder: derefSort(input.SortOrder), State: PendingUploadState, UploadExpiresAt: expires,
+			ReplaceImageID: input.ReplaceImageID,
+		}
+	}
+	return record, nil
+}
+func (f *fakeRepo) FailUpload(context.Context, string, string, string) error {
+	f.failCalls++
+	return nil
+}
+func (f *fakeRepo) PendingOwned(_ context.Context, memberID, _, _ string) (ImageRecord, error) {
+	f.lastMember = memberID
+	if f.pendingErr != nil {
+		return ImageRecord{}, f.pendingErr
+	}
+	return f.record, nil
+}
+func (f *fakeRepo) CompleteUpload(context.Context, string, string, string) (ImageRecord, *ImageRecord, error) {
+	f.completeCalls++
+	if f.completeErr != nil {
+		return ImageRecord{}, nil, f.completeErr
+	}
+	record := f.record
+	record.State = ReadyState
+	return record, nil, nil
+}
+func (f *fakeRepo) VisibleReady(_ context.Context, _ string, memberID string) ([]ImageRecord, error) {
+	f.lastMember = memberID
 	return f.visible, f.visibleErr
 }
-func (f *fakeRepo) PrepareCreate(context.Context, string, string, *int) (int, error) {
-	return f.prepareOrder, f.prepareErr
-}
-func (f *fakeRepo) Insert(context.Context, string, string, Record) error {
-	f.insertCalls++
-	return f.insertErr
-}
-func (f *fakeRepo) GetForMutation(context.Context, string, string, string) (Record, error) {
-	return f.current, f.currentErr
-}
-func (f *fakeRepo) Patch(context.Context, string, string, string, PatchInput) (Record, error) {
-	return f.patchResult, f.patchErr
-}
-func (f *fakeRepo) Replace(_ context.Context, _, _, _, _, newPath string, _ bool, _ *string) (Record, error) {
-	f.replaceCalls++
-	f.capturedNewPath = newPath
-	if f.replaceErr != nil {
-		return Record{}, f.replaceErr
+func (f *fakeRepo) BeginDelete(_ context.Context, memberID, _, _ string) (ImageRecord, error) {
+	f.lastMember = memberID
+	if f.deleteErr != nil {
+		return ImageRecord{}, f.deleteErr
 	}
-	result := f.replaceResult
-	if result.ID == "" {
-		result = f.current
-		result.StoragePath = newPath
-	}
-	return result, nil
+	record := f.record
+	record.State = DeletingState
+	return record, nil
 }
-func (f *fakeRepo) Delete(context.Context, string, string, string, string) error {
+func (f *fakeRepo) FinishDelete(context.Context, string, string, string) error {
+	f.finishCalls++
+	return nil
+}
+func (f *fakeRepo) Ready(context.Context) error { return nil }
+
+type fakeStorage struct {
+	uploadURL   string
+	info        ObjectInfo
+	infoErr     error
+	prefix      []byte
+	prefixErr   error
+	signURL     string
+	signTTL     time.Duration
+	deleteErr   error
+	deleteCalls int
+}
+
+func (f *fakeStorage) CreateSignedUpload(context.Context, string) (string, error) {
+	if f.uploadURL == "" {
+		return "", ErrStorageUnavailable
+	}
+	return f.uploadURL, nil
+}
+func (f *fakeStorage) Info(context.Context, string) (ObjectInfo, error) { return f.info, f.infoErr }
+func (f *fakeStorage) ReadPrefix(context.Context, string) ([]byte, error) {
+	return f.prefix, f.prefixErr
+}
+func (f *fakeStorage) Sign(_ context.Context, _ string, ttl time.Duration) (string, error) {
+	f.signTTL = ttl
+	if f.signURL == "" {
+		return "", ErrStorageUnavailable
+	}
+	return f.signURL, nil
+}
+func (f *fakeStorage) Delete(context.Context, string) error {
 	f.deleteCalls++
 	return f.deleteErr
 }
 
-type fakeStorage struct {
-	uploadErr     error
-	signErr       error
-	signErrByPath map[string]error
-	deleteErrors  []error
-	uploads       []string
-	deletes       []string
-	lastTTL       time.Duration
-}
+func TestStartUploadValidatesFormatSizeAndPassesSessionMember(t *testing.T) {
+	repo := &fakeRepo{}
+	storage := &fakeStorage{uploadURL: "https://storage.example.invalid/upload?token=opaque"}
+	now := time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	service := &Service{Repo: repo, Storage: storage, Now: func() time.Time { return now }}
+	order := 0
 
-func (f *fakeStorage) Upload(_ context.Context, path, _ string, _ []byte) error {
-	f.uploads = append(f.uploads, path)
-	return f.uploadErr
-}
-func (f *fakeStorage) Delete(_ context.Context, path string) error {
-	f.deletes = append(f.deletes, path)
-	if len(f.deleteErrors) == 0 {
-		return nil
-	}
-	err := f.deleteErrors[0]
-	f.deleteErrors = f.deleteErrors[1:]
-	return err
-}
-func (f *fakeStorage) Sign(_ context.Context, path string, ttl time.Duration) (string, error) {
-	f.lastTTL = ttl
-	if f.signErrByPath != nil {
-		if err := f.signErrByPath[path]; err != nil {
-			return "", err
+	for _, input := range []UploadInput{
+		{MimeType: "image/gif", FileSizeBytes: 1024, SortOrder: &order},
+		{MimeType: "image/jpeg", FileSizeBytes: MaxFileSizeBytes + 1, SortOrder: &order},
+	} {
+		if _, err := service.StartUpload(context.Background(), "member-a", "listing-a", input); !errors.Is(err, errInvalid) {
+			t.Fatalf("invalid input returned %v", err)
 		}
 	}
-	if f.signErr != nil {
-		return "", f.signErr
+	if repo.beginCalls != 0 {
+		t.Fatal("invalid upload reached repository")
 	}
-	return "https://storage.example.invalid/private?token=signed", nil
+
+	slot, err := service.StartUpload(context.Background(), "member-a", "listing-a",
+		UploadInput{MimeType: "image/jpg", FileSizeBytes: 1024, SortOrder: &order})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.lastMember != "member-a" || repo.beginCalls != 1 {
+		t.Fatal("service session member was not used for ownership")
+	}
+	if slot.ExpiresAt.Sub(now) != SignedUploadTTL {
+		t.Fatal("upload slot expiration changed")
+	}
 }
 
-func TestListVisibleSignedUnavailableAndTTL(t *testing.T) {
-	now := time.Date(2026, 9, 21, 1, 2, 3, 0, time.UTC)
-	repo := &fakeRepo{visible: []Record{
-		{ID: "one", StoragePath: "member/listing/one.jpg", SortOrder: 0},
-		{ID: "two", StoragePath: "member/listing/two.jpg", SortOrder: 1},
+func TestCompleteMissingObjectStaysUnavailable(t *testing.T) {
+	now := time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	repo := &fakeRepo{record: ImageRecord{
+		ID: "image-a", MemberID: "member-a", ListingID: "listing-a", StoragePath: "member-a/listing-a/image-a",
+		MimeType: "image/jpeg", FileSizeBytes: 2048, State: PendingUploadState, UploadExpiresAt: now.Add(time.Hour),
 	}}
-	storage := &fakeStorage{signErrByPath: map[string]error{"member/listing/two.jpg": errObjectNotFound}}
-	service := &Service{Repo: repo, Storage: storage, TTL: 600 * time.Second, Now: func() time.Time { return now }}
+	storage := &fakeStorage{infoErr: ErrObjectNotFound}
+	service := &Service{Repo: repo, Storage: storage, Now: func() time.Time { return now }}
 
-	views, err := service.ListVisible(context.Background(), "listing", "")
+	if _, err := service.Complete(context.Background(), "member-a", "listing-a", "image-a"); !errors.Is(err, errIncomplete) {
+		t.Fatalf("missing upload returned %v", err)
+	}
+	if repo.failCalls != 1 || repo.completeCalls != 0 {
+		t.Fatal("missing object was promoted to ready")
+	}
+}
+
+func TestCompleteRejectsMismatchedObject(t *testing.T) {
+	now := time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	repo := &fakeRepo{record: ImageRecord{
+		ID: "image-a", MemberID: "member-a", ListingID: "listing-a", StoragePath: "member-a/listing-a/image-a",
+		MimeType: "image/jpeg", FileSizeBytes: 2048, State: PendingUploadState, UploadExpiresAt: now.Add(time.Hour),
+	}}
+	storage := &fakeStorage{info: ObjectInfo{MimeType: "image/png", FileSizeBytes: 2048}}
+	service := &Service{Repo: repo, Storage: storage, Now: func() time.Time { return now }}
+
+	if _, err := service.Complete(context.Background(), "member-a", "listing-a", "image-a"); !errors.Is(err, errInvalid) {
+		t.Fatalf("mismatched object returned %v", err)
+	}
+	if storage.deleteCalls != 1 || repo.failCalls != 1 || repo.completeCalls != 0 {
+		t.Fatal("mismatched object was not quarantined")
+	}
+}
+
+func TestCompleteVerifiesActualImageSignature(t *testing.T) {
+	now := time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	repo := &fakeRepo{record: ImageRecord{
+		ID: "image-a", MemberID: "member-a", ListingID: "listing-a", StoragePath: "member-a/listing-a/image-a",
+		MimeType: "image/jpeg", FileSizeBytes: 2048, State: PendingUploadState, UploadExpiresAt: now.Add(time.Hour),
+	}}
+	storage := &fakeStorage{
+		info:   ObjectInfo{MimeType: "image/jpeg", FileSizeBytes: 2048},
+		prefix: []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10},
+	}
+	service := &Service{Repo: repo, Storage: storage, Now: func() time.Time { return now }}
+
+	result, err := service.Complete(context.Background(), "member-a", "listing-a", "image-a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(views) != 2 || views[0].State != "signed" || views[0].URL == nil || views[0].ExpiresAt == nil {
-		t.Fatalf("unexpected signed view: %#v", views)
+	if result.State != ReadyState || repo.completeCalls != 1 {
+		t.Fatal("verified image was not promoted to ready")
 	}
-	if views[0].ExpiresAt.Sub(now) != 600*time.Second || storage.lastTTL != 600*time.Second {
-		t.Fatal("signed URL TTL exceeded contract")
+
+	repo.completeCalls = 0
+	repo.failCalls = 0
+	storage.prefix = []byte("not-an-image")
+	if _, err := service.Complete(context.Background(), "member-a", "listing-a", "image-a"); !errors.Is(err, errInvalid) {
+		t.Fatalf("invalid image signature returned %v", err)
 	}
-	if views[1].State != "unavailable" || views[1].Reason == nil || *views[1].Reason != "not_found" || views[1].URL != nil {
-		t.Fatalf("missing object did not become unavailable: %#v", views[1])
+	if repo.completeCalls != 0 || repo.failCalls != 1 {
+		t.Fatal("invalid image bytes were promoted")
 	}
 }
 
-func TestListVisibleStorageOutageReturns503(t *testing.T) {
-	repo := &fakeRepo{visible: []Record{{ID: "one", StoragePath: "member/listing/one.jpg"}}}
-	service := &Service{Repo: repo, Storage: &fakeStorage{signErr: errStorageDown}, TTL: 600 * time.Second}
-	if _, err := service.ListVisible(context.Background(), "listing", ""); !errors.Is(err, errStorage) {
-		t.Fatalf("storage outage returned %v", err)
-	}
-}
+func TestListUsesTenMinuteSignedURLsAndNoStoragePathInResponse(t *testing.T) {
+	now := time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	repo := &fakeRepo{visible: []ImageRecord{{
+		ID: "image-a", StoragePath: "member-a/listing-a/image-a", AltText: ptr("board"), SortOrder: 0, State: ReadyState,
+	}}}
+	storage := &fakeStorage{signURL: "https://storage.example.invalid/read?token=opaque"}
+	service := &Service{Repo: repo, Storage: storage, Now: func() time.Time { return now }}
 
-func TestCreateLimitAndDatabaseCleanup(t *testing.T) {
-	file := ImageFile{Bytes: testPNG(10, 10), MIMEType: "image/png", Extension: "png", Width: 10, Height: 10}
-	limitRepo := &fakeRepo{prepareErr: errLimitReached}
-	limitStorage := &fakeStorage{}
-	limitService := &Service{Repo: limitRepo, Storage: limitStorage, TTL: 600 * time.Second}
-	if _, err := limitService.Create(context.Background(), "member", "listing", CreateInput{File: file}); !errors.Is(err, errLimitReached) {
-		t.Fatalf("limit returned %v", err)
-	}
-	if len(limitStorage.uploads) != 0 {
-		t.Fatal("limit failure uploaded a file")
-	}
-
-	repo := &fakeRepo{prepareOrder: 4, insertErr: errDB}
-	storage := &fakeStorage{}
-	service := &Service{Repo: repo, Storage: storage, TTL: 600 * time.Second}
-	_, err := service.Create(context.Background(), "member", "listing", CreateInput{File: file})
-	if !errors.Is(err, errDB) {
-		t.Fatalf("database failure returned %v", err)
-	}
-	if len(storage.uploads) != 1 || len(storage.deletes) != 1 || storage.uploads[0] != storage.deletes[0] {
-		t.Fatal("new Storage object was not cleaned after DB failure")
-	}
-}
-
-func TestReplaceCleanupSemantics(t *testing.T) {
-	current := Record{ID: "image", ListingID: "listing", StoragePath: "member/listing/old.jpg", SortOrder: 2}
-	file := ImageFile{Bytes: testPNG(10, 10), MIMEType: "image/png", Extension: "png", Width: 10, Height: 10}
-
-	repo := &fakeRepo{current: current}
-	storage := &fakeStorage{deleteErrors: []error{errStorageDown}}
-	service := &Service{Repo: repo, Storage: storage, TTL: 600 * time.Second}
-	view, err := service.Replace(context.Background(), "member", "listing", "image", ReplaceInput{File: file})
+	items, err := service.List(context.Background(), "listing-a", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.ID != "image" || repo.replaceCalls != 1 || repo.capturedNewPath == current.StoragePath {
-		t.Fatal("replacement did not preserve image identity with a new object key")
+	if repo.lastMember != "" {
+		t.Fatal("anonymous read unexpectedly gained a member identity")
 	}
-	if len(storage.deletes) != 1 || storage.deletes[0] != current.StoragePath {
-		t.Fatal("old object cleanup was not attempted")
+	if len(items) != 1 || items[0].State != "signed" || items[0].URL == "" || storage.signTTL != SignedReadTTL {
+		t.Fatal("signed image response is invalid")
 	}
-
-	repo2 := &fakeRepo{current: current, replaceErr: errDB}
-	storage2 := &fakeStorage{}
-	service2 := &Service{Repo: repo2, Storage: storage2, TTL: 600 * time.Second}
-	if _, err := service2.Replace(context.Background(), "member", "listing", "image", ReplaceInput{File: file}); !errors.Is(err, errDB) {
-		t.Fatalf("replace DB failure returned %v", err)
+	if items[0].ExpiresAt.Sub(now) != SignedReadTTL {
+		t.Fatal("signed read URL exceeds contract TTL")
 	}
-	if len(storage2.uploads) != 1 || len(storage2.deletes) != 1 || storage2.uploads[0] != storage2.deletes[0] {
-		t.Fatal("replacement DB failure did not clean the new object")
-	}
-}
-
-func TestDeleteIsRetrySafeAfterStorageFailure(t *testing.T) {
-	current := Record{ID: "image", ListingID: "listing", StoragePath: "member/listing/image.jpg"}
-	repo := &fakeRepo{current: current}
-	storage := &fakeStorage{deleteErrors: []error{errStorageDown, errObjectNotFound}}
-	service := &Service{Repo: repo, Storage: storage, TTL: 600 * time.Second}
-
-	if err := service.Delete(context.Background(), "member", "listing", "image"); !errors.Is(err, errStorage) {
-		t.Fatalf("first delete returned %v", err)
-	}
-	if repo.deleteCalls != 0 {
-		t.Fatal("metadata was deleted after Storage failure")
-	}
-	if err := service.Delete(context.Background(), "member", "listing", "image"); err != nil {
+	encoded, err := json.Marshal(items)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if repo.deleteCalls != 1 {
-		t.Fatal("retry did not finish metadata deletion after object-not-found")
+	if bytes.Contains(encoded, []byte("member-a/listing-a/image-a")) || bytes.Contains(encoded, []byte("storagePath")) {
+		t.Fatal("private Storage path leaked into the public response")
 	}
 }
+
+func TestDeleteFailureKeepsMetadataNonVisibleForRetry(t *testing.T) {
+	repo := &fakeRepo{record: ImageRecord{
+		ID: "image-a", MemberID: "member-a", ListingID: "listing-a", StoragePath: "member-a/listing-a/image-a", State: ReadyState,
+	}}
+	storage := &fakeStorage{deleteErr: ErrStorageUnavailable}
+	service := &Service{Repo: repo, Storage: storage}
+
+	if err := service.Delete(context.Background(), "member-a", "listing-a", "image-a"); !errors.Is(err, errStorage) {
+		t.Fatalf("delete failure returned %v", err)
+	}
+	if repo.finishCalls != 0 {
+		t.Fatal("metadata was removed despite storage delete failure")
+	}
+}
+
+func TestOtherMemberReferenceErrorIsPreserved(t *testing.T) {
+	order := 0
+	repo := &fakeRepo{beginErr: errNotFound}
+	service := &Service{Repo: repo, Storage: &fakeStorage{uploadURL: "https://storage.example.invalid/upload"}}
+	other := "image-owned-by-another-member"
+	_, err := service.StartUpload(context.Background(), "member-b", "listing-a", UploadInput{
+		MimeType: "image/jpeg", FileSizeBytes: 1024, SortOrder: &order, ReplaceImageID: &other,
+	})
+	if !errors.Is(err, errNotFound) || repo.lastMember != "member-b" {
+		t.Fatal("cross-member replacement was not rejected through the ownership boundary")
+	}
+}
+
+func splitPath(path string) []string {
+	out := make([]string, 3)
+	part := 0
+	start := 0
+	for i := 0; i < len(path) && part < 2; i++ {
+		if path[i] == '/' {
+			out[part] = path[start:i]
+			part++
+			start = i + 1
+		}
+	}
+	out[2] = path[start:]
+	return out
+}
+func derefSort(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+func ptr(value string) *string { return &value }

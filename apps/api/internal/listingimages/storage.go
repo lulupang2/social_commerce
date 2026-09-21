@@ -6,195 +6,247 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/lulupang2/social_commerce/apps/api/internal/platform"
 )
 
-var (
-	errObjectNotFound = errors.New("storage object not found")
-	errSigningFailed  = errors.New("storage signing failed")
-	errStorageDown    = errors.New("storage unavailable")
-)
-
 type Storage interface {
-	Upload(context.Context, string, string, []byte) error
-	Delete(context.Context, string) error
+	CreateSignedUpload(context.Context, string) (string, error)
+	Info(context.Context, string) (ObjectInfo, error)
+	ReadPrefix(context.Context, string) ([]byte, error)
 	Sign(context.Context, string, time.Duration) (string, error)
+	Delete(context.Context, string) error
 }
 
 type HTTPStorage struct {
-	projectURL  *url.URL
-	storageBase string
-	bucket      string
-	key         string
-	client      *http.Client
+	baseURL string
+	key     string
+	client  *http.Client
 }
 
 type unavailableStorage struct{}
 
-func (unavailableStorage) Upload(context.Context, string, string, []byte) error {
-	return errStorageDown
+func (unavailableStorage) CreateSignedUpload(context.Context, string) (string, error) {
+	return "", ErrStorageUnavailable
 }
-func (unavailableStorage) Delete(context.Context, string) error {
-	return errStorageDown
+func (unavailableStorage) Info(context.Context, string) (ObjectInfo, error) {
+	return ObjectInfo{}, ErrStorageUnavailable
+}
+func (unavailableStorage) ReadPrefix(context.Context, string) ([]byte, error) {
+	return nil, ErrStorageUnavailable
 }
 func (unavailableStorage) Sign(context.Context, string, time.Duration) (string, error) {
-	return "", errStorageDown
+	return "", ErrStorageUnavailable
 }
+func (unavailableStorage) Delete(context.Context, string) error { return ErrStorageUnavailable }
 
-func NewStorage(cfg platform.Config, client *http.Client) (Storage, bool, error) {
-	if cfg.SupabaseURL == "" && cfg.SupabaseServiceRoleKey == "" {
+func LoadStorage(envFile string) (Storage, bool, error) {
+	values, err := platform.ReadEnvFile(envFile)
+	if err != nil {
+		return nil, false, err
+	}
+	get := func(key string) string {
+		if value, ok := os.LookupEnv(key); ok {
+			return strings.TrimSpace(value)
+		}
+		return strings.TrimSpace(values[key])
+	}
+	base, key := get("SUPABASE_URL"), get("SUPABASE_SERVICE_ROLE_KEY")
+	if base == "" && key == "" {
 		return unavailableStorage{}, false, nil
 	}
-	if cfg.SupabaseURL == "" || cfg.SupabaseServiceRoleKey == "" {
-		return nil, false, errors.New("listing image storage configuration is incomplete")
+	if base == "" || key == "" {
+		return unavailableStorage{}, false, nil
 	}
-	base, err := url.Parse(strings.TrimRight(cfg.SupabaseURL, "/"))
-	if err != nil || base.Hostname() == "" {
-		return nil, false, errors.New("listing image storage URL is invalid")
+	storage, err := NewHTTPStorage(base, key, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	return storage, true, nil
+}
+
+func NewHTTPStorage(baseURL, serviceKey string, client *http.Client) (*HTTPStorage, error) {
+	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("invalid SUPABASE_URL")
+	}
+	if u.Scheme != "https" && !(u.Scheme == "http" && isLoopbackHost(u.Hostname())) {
+		return nil, errors.New("SUPABASE_URL must use HTTPS")
+	}
+	if strings.TrimSpace(serviceKey) == "" {
+		return nil, errors.New("missing SUPABASE_SERVICE_ROLE_KEY")
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 20 * time.Second}
+		client = &http.Client{Timeout: 8 * time.Second}
 	}
-	bucket := cfg.ListingImageBucket
-	if bucket == "" {
-		bucket = "listing-images"
-	}
-	return &HTTPStorage{
-		projectURL:  base,
-		storageBase: strings.TrimRight(base.String(), "/") + "/storage/v1",
-		bucket:      bucket,
-		key:         cfg.SupabaseServiceRoleKey,
-		client:      client,
-	}, true, nil
+	return &HTTPStorage{baseURL: strings.TrimRight(u.String(), "/") + "/storage/v1", key: serviceKey, client: client}, nil
 }
 
-func (s *HTTPStorage) Upload(ctx context.Context, path, contentType string, data []byte) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		s.storageBase+"/object/"+url.PathEscape(s.bucket)+"/"+escapeObjectPath(path), bytes.NewReader(data))
-	if err != nil {
-		return errStorageDown
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
 	}
-	s.authorize(req)
-	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("x-upsert", "false")
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return errStorageDown
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return nil
-	}
-	return errStorageDown
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
-func (s *HTTPStorage) Delete(ctx context.Context, path string) error {
-	body, _ := json.Marshal(map[string]any{"prefixes": []string{path}})
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		s.storageBase+"/object/"+url.PathEscape(s.bucket), bytes.NewReader(body))
-	if err != nil {
-		return errStorageDown
+func (s *HTTPStorage) CreateSignedUpload(ctx context.Context, storagePath string) (string, error) {
+	var result struct {
+		URL       string `json:"url"`
+		SignedURL string `json:"signedUrl"`
 	}
-	s.authorize(req)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return errStorageDown
+	if err := s.requestJSON(ctx, http.MethodPost, "/object/upload/sign/"+Bucket+"/"+escapePath(storagePath), map[string]any{}, &result); err != nil {
+		return "", err
 	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode == http.StatusNotFound {
-		return errObjectNotFound
+	value := result.SignedURL
+	if value == "" {
+		value = result.URL
 	}
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return nil
-	}
-	return errStorageDown
+	return s.absoluteStorageURL(value)
 }
 
-func (s *HTTPStorage) Sign(ctx context.Context, path string, ttl time.Duration) (string, error) {
-	if ttl <= 0 || ttl > 600*time.Second || ttl%time.Second != 0 {
-		return "", errStorageDown
+func (s *HTTPStorage) Info(ctx context.Context, storagePath string) (ObjectInfo, error) {
+	var result struct {
+		Metadata *struct {
+			Size          int64  `json:"size"`
+			MimeType      string `json:"mimetype"`
+			ContentLength int64  `json:"contentLength"`
+		} `json:"metadata"`
 	}
-	body, _ := json.Marshal(map[string]any{"expiresIn": int(ttl / time.Second)})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		s.storageBase+"/object/sign/"+url.PathEscape(s.bucket)+"/"+escapeObjectPath(path), bytes.NewReader(body))
+	if err := s.requestJSON(ctx, http.MethodGet, "/object/info/"+Bucket+"/"+escapePath(storagePath), nil, &result); err != nil {
+		return ObjectInfo{}, err
+	}
+	if result.Metadata == nil {
+		return ObjectInfo{}, ErrStorageUnavailable
+	}
+	size := result.Metadata.Size
+	if size <= 0 {
+		size = result.Metadata.ContentLength
+	}
+	mimeType := canonicalMime(strings.ToLower(strings.TrimSpace(strings.Split(result.Metadata.MimeType, ";")[0])))
+	if size <= 0 || mimeType == "" {
+		return ObjectInfo{}, ErrStorageUnavailable
+	}
+	return ObjectInfo{MimeType: mimeType, FileSizeBytes: size}, nil
+}
+
+func (s *HTTPStorage) ReadPrefix(ctx context.Context, storagePath string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		s.baseURL+"/object/"+Bucket+"/"+escapePath(storagePath), nil)
 	if err != nil {
-		return "", errStorageDown
+		return nil, ErrStorageUnavailable
 	}
-	s.authorize(req)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.key)
+	req.Header.Set("apikey", s.key)
+	req.Header.Set("Range", "bytes=0-31")
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return "", errStorageDown
+		return nil, ErrStorageUnavailable
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return "", errObjectNotFound
+		return nil, ErrObjectNotFound
 	}
-	if resp.StatusCode == http.StatusBadRequest {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return "", errSigningFailed
+		return nil, ErrStorageUnavailable
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return "", errStorageDown
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 32))
+	if err != nil || len(data) == 0 {
+		return nil, ErrStorageUnavailable
 	}
-	var payload struct {
+	return data, nil
+}
+
+func (s *HTTPStorage) Sign(ctx context.Context, storagePath string, ttl time.Duration) (string, error) {
+	if ttl <= 0 || ttl > SignedReadTTL || ttl%time.Second != 0 {
+		return "", ErrStorageUnavailable
+	}
+	var result struct {
 		SignedURLUpper string `json:"signedURL"`
 		SignedURL      string `json:"signedUrl"`
 	}
-	if json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&payload) != nil {
-		return "", errStorageDown
+	if err := s.requestJSON(ctx, http.MethodPost, "/object/sign/"+Bucket+"/"+escapePath(storagePath),
+		map[string]any{"expiresIn": int(ttl / time.Second)}, &result); err != nil {
+		return "", err
 	}
-	value := payload.SignedURL
+	value := result.SignedURL
 	if value == "" {
-		value = payload.SignedURLUpper
+		value = result.SignedURLUpper
 	}
-	return s.resolveSignedURL(value)
+	return s.absoluteStorageURL(value)
 }
 
-func (s *HTTPStorage) authorize(req *http.Request) {
+func (s *HTTPStorage) Delete(ctx context.Context, storagePath string) error {
+	return s.requestJSON(ctx, http.MethodDelete, "/object/"+Bucket,
+		map[string]any{"prefixes": []string{storagePath}}, nil)
+}
+
+func (s *HTTPStorage) requestJSON(ctx context.Context, method, path string, body any, target any) error {
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return ErrStorageUnavailable
+		}
+		reader = bytes.NewReader(encoded)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, s.baseURL+path, reader)
+	if err != nil {
+		return ErrStorageUnavailable
+	}
 	req.Header.Set("Authorization", "Bearer "+s.key)
 	req.Header.Set("apikey", s.key)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return ErrStorageUnavailable
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return ErrObjectNotFound
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return ErrStorageUnavailable
+	}
+	if target == nil || resp.StatusCode == http.StatusNoContent {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return nil
+	}
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 64*1024))
+	if decoder.Decode(target) != nil {
+		return ErrStorageUnavailable
+	}
+	return nil
 }
 
-func (s *HTTPStorage) resolveSignedURL(value string) (string, error) {
+func (s *HTTPStorage) absoluteStorageURL(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "", errStorageDown
+		return "", ErrStorageUnavailable
 	}
-	var resolved *url.URL
 	if strings.HasPrefix(value, "/") {
-		parsed, err := url.Parse(s.storageBase + value)
-		if err != nil {
-			return "", errStorageDown
-		}
-		resolved = parsed
-	} else {
-		parsed, err := url.Parse(value)
-		if err != nil {
-			return "", errStorageDown
-		}
-		resolved = parsed
+		value = s.baseURL + value
 	}
-	if resolved.Scheme != s.projectURL.Scheme || !strings.EqualFold(resolved.Host, s.projectURL.Host) ||
-		resolved.User != nil || resolved.Fragment != "" ||
-		!strings.HasPrefix(resolved.Path, "/storage/v1/object/sign/"+s.bucket+"/") ||
-		resolved.Query().Get("token") == "" {
-		return "", errStorageDown
+	u, err := url.Parse(value)
+	if err != nil || u.Scheme != "https" && !(u.Scheme == "http" && isLoopbackHost(u.Hostname())) || u.Hostname() == "" {
+		return "", ErrStorageUnavailable
 	}
-	return resolved.String(), nil
+	return u.String(), nil
 }
 
-func escapeObjectPath(value string) string {
+func escapePath(value string) string {
 	parts := strings.Split(value, "/")
 	for i := range parts {
 		parts[i] = url.PathEscape(parts[i])

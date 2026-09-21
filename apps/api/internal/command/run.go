@@ -94,14 +94,11 @@ func run(kind string, logger *slog.Logger) error {
 		authStore := &auth.Store{Pool: pool, Config: authConfig}
 		listingStore := &listings.Store{Pool: pool}
 		imageStore := &listingimages.Store{Pool: pool}
-		imageStorage, storageConfigured, storageErr := listingimages.NewStorage(cfg, nil)
+		imageStorage, storageConfigured, storageErr := listingimages.LoadStorage(*envFile)
 		if storageErr != nil {
 			return storageErr
 		}
-		logger.Info("listing_image_storage_configuration", "configured", storageConfigured)
-		imageService := &listingimages.Service{
-			Repo: imageStore, Storage: imageStorage, TTL: cfg.ListingImageSignedURLTTL, Logger: logger,
-		}
+		logger.Info("image_storage_configuration", "configured", storageConfigured)
 		ready := func(c context.Context) error {
 			if err := platform.Ready(c, pool); err != nil {
 				return err
@@ -119,8 +116,8 @@ func run(kind string, logger *slog.Logger) error {
 		}
 		s := httpapi.New(logger, ready)
 		authHandler := auth.Register(s.App, authConfig, pool, logger)
-		listings.Register(s.App, pool, authHandler, imageService, logger)
-		listingimages.Register(s.App, authHandler, imageService, logger)
+		listings.Register(s.App, pool, authHandler, logger)
+		listingimages.Register(s.App, pool, authHandler, imageStorage, logger)
 		listenErr := make(chan error, 1)
 		go func() { listenErr <- s.App.Listen(cfg.Address, fiber.ListenConfig{DisableStartupMessage: true}) }()
 		logger.Info("api_starting")

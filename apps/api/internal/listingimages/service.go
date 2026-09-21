@@ -1,205 +1,131 @@
 package listingimages
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"log/slog"
 	"time"
 )
 
 type Service struct {
 	Repo    Repository
 	Storage Storage
-	TTL     time.Duration
-	Logger  *slog.Logger
 	Now     func() time.Time
 }
 
-func (s *Service) ListVisible(ctx context.Context, listingID, memberID string) ([]View, error) {
-	records, err := s.Repo.ListVisible(ctx, listingID, memberID)
-	if err != nil {
-		return nil, err
-	}
-	views := make([]View, 0, len(records))
-	for _, record := range records {
-		view, err := s.signRecord(ctx, record)
-		if err != nil {
-			return nil, err
-		}
-		views = append(views, view)
-	}
-	return views, nil
+type CompleteResult struct {
+	ImageID string `json:"imageId"`
+	State   string `json:"state"`
 }
 
-func (s *Service) Create(ctx context.Context, memberID, listingID string, input CreateInput) (View, error) {
-	if err := validateSortOrder(input.SortOrder); err != nil {
-		return View{}, err
-	}
-	altText, err := normalizeAltText(input.AltText)
-	if err != nil {
-		return View{}, err
-	}
-	sortOrder, err := s.Repo.PrepareCreate(ctx, memberID, listingID, input.SortOrder)
-	if err != nil {
-		return View{}, err
+func (s *Service) StartUpload(ctx context.Context, memberID, listingID string, raw UploadInput) (UploadSlot, error) {
+	input := normalizeInput(raw)
+	input.MimeType = canonicalMime(input.MimeType)
+	if err := validateInput(input); err != nil {
+		return UploadSlot{}, err
 	}
 	imageID, err := randomUUID()
 	if err != nil {
-		return View{}, errStorage
+		return UploadSlot{}, errStorage
 	}
-	path := objectPath(memberID, listingID, imageID, input.File.Extension)
-	record := Record{
-		ID: imageID, ListingID: listingID, StoragePath: path, AltText: altText, SortOrder: sortOrder,
-	}
-	if err = s.Storage.Upload(ctx, path, input.File.MIMEType, input.File.Bytes); err != nil {
-		return View{}, errStorage
-	}
-	view, err := s.signRecord(ctx, record)
+	now := s.now()
+	expiresAt := now.Add(SignedUploadTTL)
+	storagePath := memberID + "/" + listingID + "/" + imageID
+	record, err := s.Repo.BeginUpload(ctx, memberID, listingID, input, storagePath, expiresAt)
 	if err != nil {
-		s.cleanupNewObject(ctx, path, "create_sign")
-		return View{}, err
+		return UploadSlot{}, err
 	}
-	if err = s.Repo.Insert(ctx, memberID, listingID, record); err != nil {
-		s.cleanupNewObject(ctx, path, "create_db")
-		return View{}, err
+	uploadURL, err := s.Storage.CreateSignedUpload(ctx, record.StoragePath)
+	if err != nil {
+		_ = s.Repo.FailUpload(ctx, memberID, listingID, record.ID)
+		return UploadSlot{}, errStorage
 	}
-	return view, nil
+	return UploadSlot{ImageID: record.ID, UploadURL: uploadURL, ExpiresAt: record.UploadExpiresAt}, nil
 }
 
-func (s *Service) Patch(ctx context.Context, memberID, listingID, imageID string, input PatchInput) (View, error) {
-	if !input.AltTextSet && input.SortOrder == nil {
-		return View{}, errInvalid
+func (s *Service) Complete(ctx context.Context, memberID, listingID, imageID string) (CompleteResult, error) {
+	record, err := s.Repo.PendingOwned(ctx, memberID, listingID, imageID)
+	if err != nil {
+		return CompleteResult{}, err
 	}
-	if err := validateSortOrder(input.SortOrder); err != nil {
-		return View{}, err
+	if !record.UploadExpiresAt.After(s.now()) {
+		_ = s.Storage.Delete(ctx, record.StoragePath)
+		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+		return CompleteResult{}, errExpired
 	}
-	var err error
-	if input.AltTextSet {
-		input.AltText, err = normalizeAltText(input.AltText)
-		if err != nil {
-			return View{}, err
+	info, err := s.Storage.Info(ctx, record.StoragePath)
+	if errors.Is(err, ErrObjectNotFound) {
+		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+		return CompleteResult{}, errIncomplete
+	}
+	if err != nil {
+		return CompleteResult{}, errStorage
+	}
+	if canonicalMime(info.MimeType) != canonicalMime(record.MimeType) ||
+		info.FileSizeBytes != record.FileSizeBytes ||
+		info.FileSizeBytes <= 0 || info.FileSizeBytes > MaxFileSizeBytes ||
+		!allowedMime(info.MimeType) {
+		_ = s.Storage.Delete(ctx, record.StoragePath)
+		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+		return CompleteResult{}, errInvalid
+	}
+	prefix, err := s.Storage.ReadPrefix(ctx, record.StoragePath)
+	if errors.Is(err, ErrObjectNotFound) {
+		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+		return CompleteResult{}, errIncomplete
+	}
+	if err != nil {
+		return CompleteResult{}, errStorage
+	}
+	if detected := detectImageMime(prefix); detected == "" || detected != canonicalMime(record.MimeType) {
+		_ = s.Storage.Delete(ctx, record.StoragePath)
+		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+		return CompleteResult{}, errInvalid
+	}
+	completed, replaced, err := s.Repo.CompleteUpload(ctx, memberID, listingID, imageID)
+	if err != nil {
+		return CompleteResult{}, err
+	}
+	if replaced != nil {
+		if deleteErr := s.Storage.Delete(ctx, replaced.StoragePath); deleteErr == nil || errors.Is(deleteErr, ErrObjectNotFound) {
+			_ = s.Repo.FinishDelete(ctx, memberID, listingID, replaced.ID)
 		}
 	}
-	current, err := s.Repo.GetForMutation(ctx, memberID, listingID, imageID)
-	if err != nil {
-		return View{}, err
-	}
-	view, err := s.signRecord(ctx, current)
-	if err != nil {
-		return View{}, err
-	}
-	updated, err := s.Repo.Patch(ctx, memberID, listingID, imageID, input)
-	if err != nil {
-		return View{}, err
-	}
-	view.AltText = updated.AltText
-	view.SortOrder = updated.SortOrder
-	return view, nil
+	return CompleteResult{ImageID: completed.ID, State: ReadyState}, nil
 }
 
-func (s *Service) Replace(ctx context.Context, memberID, listingID, imageID string, input ReplaceInput) (View, error) {
-	var err error
-	if input.AltTextSet {
-		input.AltText, err = normalizeAltText(input.AltText)
+func (s *Service) List(ctx context.Context, listingID, memberID string) ([]SignedImage, error) {
+	records, err := s.Repo.VisibleReady(ctx, listingID, memberID)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now()
+	result := make([]SignedImage, 0, len(records))
+	for _, record := range records {
+		signedURL, err := s.Storage.Sign(ctx, record.StoragePath, SignedReadTTL)
 		if err != nil {
-			return View{}, err
+			return nil, errStorage
 		}
+		result = append(result, SignedImage{
+			ID: record.ID, State: "signed", URL: signedURL, ExpiresAt: now.Add(SignedReadTTL),
+			AltText: record.AltText, SortOrder: record.SortOrder,
+		})
 	}
-	current, err := s.Repo.GetForMutation(ctx, memberID, listingID, imageID)
-	if err != nil {
-		return View{}, err
-	}
-	objectID, err := randomUUID()
-	if err != nil {
-		return View{}, errStorage
-	}
-	newPath := objectPath(memberID, listingID, objectID, input.File.Extension)
-	if err = s.Storage.Upload(ctx, newPath, input.File.MIMEType, input.File.Bytes); err != nil {
-		return View{}, errStorage
-	}
-	pending := current
-	pending.StoragePath = newPath
-	if input.AltTextSet {
-		pending.AltText = input.AltText
-	}
-	view, err := s.signRecord(ctx, pending)
-	if err != nil {
-		s.cleanupNewObject(ctx, newPath, "replace_sign")
-		return View{}, err
-	}
-	updated, err := s.Repo.Replace(ctx, memberID, listingID, imageID, current.StoragePath, newPath, input.AltTextSet, input.AltText)
-	if err != nil {
-		s.cleanupNewObject(ctx, newPath, "replace_db")
-		return View{}, err
-	}
-	if deleteErr := s.Storage.Delete(ctx, current.StoragePath); deleteErr != nil && !errors.Is(deleteErr, errObjectNotFound) {
-		s.logCleanup("replace_old_object")
-	}
-	view.AltText = updated.AltText
-	view.SortOrder = updated.SortOrder
-	return view, nil
+	return result, nil
 }
 
 func (s *Service) Delete(ctx context.Context, memberID, listingID, imageID string) error {
-	current, err := s.Repo.GetForMutation(ctx, memberID, listingID, imageID)
+	record, err := s.Repo.BeginDelete(ctx, memberID, listingID, imageID)
 	if err != nil {
 		return err
 	}
-	if err = s.Storage.Delete(ctx, current.StoragePath); err != nil && !errors.Is(err, errObjectNotFound) {
+	err = s.Storage.Delete(ctx, record.StoragePath)
+	if err != nil && !errors.Is(err, ErrObjectNotFound) {
 		return errStorage
 	}
-	return s.Repo.Delete(ctx, memberID, listingID, imageID, current.StoragePath)
-}
-
-func (s *Service) signRecord(ctx context.Context, record Record) (View, error) {
-	url, err := s.Storage.Sign(ctx, record.StoragePath, s.ttl())
-	if errors.Is(err, errObjectNotFound) {
-		reason := "not_found"
-		return View{
-			ID: record.ID, State: "unavailable", Reason: &reason,
-			AltText: record.AltText, SortOrder: record.SortOrder,
-		}, nil
-	}
-	if errors.Is(err, errSigningFailed) {
-		reason := "signing_failed"
-		return View{
-			ID: record.ID, State: "unavailable", Reason: &reason,
-			AltText: record.AltText, SortOrder: record.SortOrder,
-		}, nil
-	}
-	if err != nil {
-		return View{}, errStorage
-	}
-	now := s.now()
-	expires := now.Add(s.ttl())
-	return View{
-		ID: record.ID, State: "signed", URL: &url, ExpiresAt: &expires,
-		AltText: record.AltText, SortOrder: record.SortOrder,
-	}, nil
-}
-
-func (s *Service) cleanupNewObject(ctx context.Context, path, operation string) {
-	// A timed-out DB request must not cancel the compensating Storage deletion.
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-	if err := s.Storage.Delete(cleanupCtx, path); err != nil && !errors.Is(err, errObjectNotFound) {
-		s.logCleanup(operation)
-	}
-}
-
-func (s *Service) logCleanup(operation string) {
-	if s.Logger != nil {
-		s.Logger.Warn("listing_image_cleanup_needed", "operation", operation)
-	}
-}
-
-func (s *Service) ttl() time.Duration {
-	if s.TTL <= 0 || s.TTL > 600*time.Second {
-		return 600 * time.Second
-	}
-	return s.TTL
+	return s.Repo.FinishDelete(ctx, memberID, listingID, imageID)
 }
 
 func (s *Service) now() time.Time {
@@ -209,8 +135,17 @@ func (s *Service) now() time.Time {
 	return time.Now().UTC()
 }
 
-func objectPath(memberID, listingID, objectID, extension string) string {
-	return memberID + "/" + listingID + "/" + objectID + "." + extension
+func detectImageMime(prefix []byte) string {
+	if len(prefix) >= 3 && prefix[0] == 0xff && prefix[1] == 0xd8 && prefix[2] == 0xff {
+		return "image/jpeg"
+	}
+	if len(prefix) >= 8 && bytes.Equal(prefix[:8], []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}) {
+		return "image/png"
+	}
+	if len(prefix) >= 12 && string(prefix[:4]) == "RIFF" && string(prefix[8:12]) == "WEBP" {
+		return "image/webp"
+	}
+	return ""
 }
 
 func randomUUID() (string, error) {
