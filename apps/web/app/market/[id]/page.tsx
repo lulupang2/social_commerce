@@ -21,6 +21,7 @@ import { startListingConversation } from '@/lib/chat/realtime';
 import { SUMMER_CHAT_ROOMS } from '@/lib/data/summer-mock-data';
 import { getGoSession } from '@/lib/go-auth/client';
 import { getGoListing } from '@/lib/go-listings/client';
+import { listGoListingImages } from '@/lib/go-listings/images';
 import { useFavorites } from '@/lib/listings/use-favorites';
 import { toMockListing, useListings } from '@/lib/listings/use-listings';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
@@ -36,7 +37,12 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
     listing: ReturnType<typeof toMockListing>;
   } | null>(null);
   const goListing = goLookup?.id === id ? goLookup.listing : null;
-  const listing = feedListing ?? goListing;
+  const baseListing = feedListing ?? goListing;
+  const [imageLookup, setImageLookup] = useState<{ id: string; images: string[] } | null>(null);
+  const listing =
+    baseListing && imageLookup?.id === id
+      ? { ...baseListing, images: imageLookup.images }
+      : baseListing;
   const isLoading = isFeedLoading || (!feedListing && goLookup?.id !== id);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [actionMessage, setActionMessage] = useState('');
@@ -52,6 +58,18 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void listGoListingImages(id).then((result) => {
+      if (!active || !result.ok) return;
+      setImageLookup({ id, images: result.data.map((image) => image.url) });
+      setActiveImageIndex(0);
+    });
+    return () => {
+      active = false;
+    };
+  }, [id]);
 
   useEffect(() => {
     if (feedListing) return;
@@ -145,14 +163,20 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
     <MobileShell hideNav showBack>
       <div className="detail-container">
         <div className="detail-gallery">
-          <Image
-            alt={listing.title}
-            fill
-            priority
-            sizes="(max-width: 480px) 100vw, 480px"
-            src={activeImage}
-            unoptimized
-          />
+          {activeImage ? (
+            <Image
+              alt={listing.title}
+              fill
+              priority
+              sizes="(max-width: 480px) 100vw, 480px"
+              src={activeImage}
+              unoptimized
+            />
+          ) : (
+            <div className="detail-gallery-empty" role="img" aria-label="등록된 사진 없음">
+              사진이 아직 없어요
+            </div>
+          )}
           {listing.images.length > 1 ? (
             <span className="gallery-count">
               {activeImageIndex + 1} / {listing.images.length}

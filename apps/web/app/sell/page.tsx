@@ -14,6 +14,12 @@ import { MobileShell } from '@/components/layout/MobileShell';
 import { saveLocalListing } from '@/lib/data/local-store';
 import { SUMMER_LISTINGS, type MockListing } from '@/lib/data/summer-mock-data';
 import { createGoListing } from '@/lib/go-listings/client';
+import {
+  deleteGoListingImage,
+  GO_LISTING_IMAGE_MAX_COUNT,
+  listGoListingImages,
+  uploadGoListingImage,
+} from '@/lib/go-listings/images';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
 import { createListing as createLegacyListing } from '@/lib/supabase/mutations';
 
@@ -82,6 +88,7 @@ export default function SellPage() {
   const [media, setMedia] = useState<SelectedMedia[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+  const [pendingGoListingId, setPendingGoListingId] = useState<string | null>(null);
   const [submission, setSubmission] = useState<{
     mode: 'go' | 'supabase' | 'local';
     listingId: string;
@@ -152,6 +159,155 @@ export default function SellPage() {
     };
   };
 
+  const setMediaUploadState = (
+    id: string,
+    uploadState: SelectedMedia['uploadState'],
+    uploadError = '',
+    serverId?: string,
+  ) => {
+    setMedia((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              uploadState,
+              uploadError: uploadError || undefined,
+              ...(serverId ? { serverId } : {}),
+            }
+          : item,
+      ),
+    );
+  };
+
+  const verifyGoImages = async (listingId: string, items: SelectedMedia[]) => {
+    const result = await listGoListingImages(listingId);
+    if (!result.ok) return result.message;
+    const expected = items.map((item) => item.serverId).filter(Boolean);
+    const actual = result.data.map((item) => item.id);
+    if (
+      expected.length !== items.length ||
+      actual.length !== expected.length ||
+      actual.some((id, index) => id !== expected[index])
+    ) {
+      return '서버에 저장된 사진 순서가 화면과 일치하지 않아요. 다시 확인해 주세요.';
+    }
+    return '';
+  };
+
+  const uploadGoMedia = async (
+    listingId: string,
+    items: SelectedMedia[],
+    onlyId?: string,
+  ): Promise<{ items: SelectedMedia[]; error: string }> => {
+    let next = items.slice();
+
+    for (let index = 0; index < next.length; index += 1) {
+      const item = next[index];
+      if (onlyId && item.id !== onlyId) continue;
+      if (item.serverId && item.uploadState === 'uploaded') continue;
+
+      setMediaUploadState(item.id, 'uploading');
+      let file: File;
+      try {
+        file = await selectedMediaToFile(item);
+      } catch {
+        const message = '선택한 사진을 읽지 못했어요.';
+        next = next.map((entry) =>
+          entry.id === item.id ? { ...entry, uploadState: 'failed', uploadError: message } : entry,
+        );
+        setMedia(next);
+        return { items: next, error: message };
+      }
+
+      const result = await uploadGoListingImage(listingId, file, {
+        sortOrder: index,
+        altText: `${formData.title.trim()} 사진 ${index + 1}`,
+      });
+      if (!result.ok) {
+        next = next.map((entry) =>
+          entry.id === item.id
+            ? { ...entry, uploadState: 'failed', uploadError: result.message }
+            : entry,
+        );
+        setMedia(next);
+        return { items: next, error: result.message };
+      }
+
+      next = next.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              serverId: result.data.imageId,
+              uploadState: 'uploaded',
+              uploadError: undefined,
+            }
+          : entry,
+      );
+      setMedia(next);
+    }
+
+    if (onlyId && next.some((item) => !item.serverId || item.uploadState !== 'uploaded')) {
+      return { items: next, error: '' };
+    }
+
+    const verifyError = await verifyGoImages(listingId, next);
+    return { items: next, error: verifyError };
+  };
+
+  const removeCreatedMedia = (next: SelectedMedia[]) => {
+    if (!pendingGoListingId) {
+      setMedia(next);
+      return;
+    }
+    const retained = new Set(next.map((item) => item.id));
+    const removed = media.filter((item) => !retained.has(item.id));
+    const uploaded = removed.filter((item) => item.serverId);
+    if (uploaded.length === 0) {
+      setMedia(next);
+      return;
+    }
+
+    setIsSubmitting(true);
+    void (async () => {
+      for (const item of uploaded) {
+        const result = await deleteGoListingImage(pendingGoListingId, item.serverId!);
+        if (!result.ok) {
+          setFormError(result.message);
+          setIsSubmitting(false);
+          triggerNativeHaptic('error');
+          return;
+        }
+      }
+      setMedia(next);
+      setFormError('');
+      setIsSubmitting(false);
+    })();
+  };
+
+  const retryGoMedia = async (mediaId?: string) => {
+    if (!pendingGoListingId || isSubmitting) return;
+    setIsSubmitting(true);
+    setFormError('');
+    const result = await uploadGoMedia(pendingGoListingId, media, mediaId);
+    if (result.error) {
+      setFormError(result.error);
+      triggerNativeHaptic('error');
+      setIsSubmitting(false);
+      return;
+    }
+    if (result.items.every((item) => item.serverId && item.uploadState === 'uploaded')) {
+      const verifyError = await verifyGoImages(pendingGoListingId, result.items);
+      if (!verifyError) {
+        setSubmission({ mode: 'go', listingId: pendingGoListingId });
+        triggerNativeHaptic('success');
+        setIsSubmitting(false);
+        return;
+      }
+      setFormError(verifyError);
+    }
+    setIsSubmitting(false);
+  };
+
   const saveDemoListing = () => {
     const fallback =
       SUMMER_LISTINGS.find((item) => item.sport === sport && item.category === formData.category) ??
@@ -213,6 +369,7 @@ export default function SellPage() {
 
   const handleAdvance = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSubmitting) return;
     setFormError('');
 
     if (step === 1) {
@@ -243,15 +400,49 @@ export default function SellPage() {
     try {
       const files = await Promise.all(media.map(selectedMediaToFile));
       const payload = buildPayload();
-      const goResult = await createGoListing(payload, files);
-      const result = goResult ?? (await createLegacyListing(payload, files));
-      if (result.ok) {
-        setSubmission({ mode: goResult ? 'go' : 'supabase', listingId: result.data.id });
+      const goResult = await createGoListing(payload, []);
+
+      if (goResult?.ok) {
+        const listingId = goResult.data.id;
+        setPendingGoListingId(listingId);
+        const upload = await uploadGoMedia(listingId, media);
+        if (upload.error) {
+          setFormError(upload.error);
+          triggerNativeHaptic('error');
+          return;
+        }
+        setSubmission({ mode: 'go', listingId });
         triggerNativeHaptic('success');
         return;
       }
 
-      if (!goResult && (result.reason === 'unconfigured' || result.reason === 'unavailable')) {
+      if (goResult && !goResult.ok) {
+        setFormError(
+          goResult.reason === 'unauthenticated'
+            ? '실제 판매글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.'
+            : goResult.message,
+        );
+        triggerNativeHaptic('error');
+        return;
+      }
+
+      if (files.length > 10) {
+        setFormError('기존 백엔드 경로에서는 사진을 최대 10장까지 저장할 수 있어요.');
+        triggerNativeHaptic('error');
+        return;
+      }
+
+      const result = await createLegacyListing(payload, files);
+      if (result.ok) {
+        setSubmission({ mode: 'supabase', listingId: result.data.id });
+        triggerNativeHaptic('success');
+        return;
+      }
+
+      if (
+        process.env.NODE_ENV !== 'production' &&
+        (result.reason === 'unconfigured' || result.reason === 'unavailable')
+      ) {
         const listingId = saveDemoListing();
         if (!listingId) {
           setFormError('브라우저 저장 공간이 부족해 데모 매물을 저장하지 못했어요.');
@@ -263,11 +454,11 @@ export default function SellPage() {
         return;
       }
 
-      if (result.reason === 'unauthenticated') {
-        setFormError('실제 판매글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.');
-      } else {
-        setFormError(result.message);
-      }
+      setFormError(
+        result.reason === 'unauthenticated'
+          ? '실제 판매글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.'
+          : result.message,
+      );
       triggerNativeHaptic('error');
     } catch {
       setFormError('사진을 처리하지 못했어요. 다른 사진을 선택하거나 다시 시도해 주세요.');
@@ -294,7 +485,7 @@ export default function SellPage() {
           <h1>장비 등록을 마쳤어요</h1>
           <p>
             {submission.mode === 'go'
-              ? 'Go 서비스 세션 소유자로 등록됐어요. 운영자 검토 후 공개되며, 사진 업로드는 다음 전환 단계에서 연결합니다.'
+              ? 'Go 서비스 세션 소유자로 매물과 사진을 저장했어요. 운영자 검토 후 공개돼요.'
               : submission.mode === 'supabase'
                 ? '운영자 검토 후 마켓에 공개돼요. MY에서 진행 상태를 확인할 수 있어요.'
                 : '백엔드에 연결되면 실제 등록을 사용할 수 있어요. 지금은 이 브라우저의 마켓에서 확인할 수 있어요.'}
@@ -305,6 +496,48 @@ export default function SellPage() {
             type="button"
           >
             등록한 장비 보기
+          </button>
+        </div>
+      </MobileShell>
+    );
+  }
+
+  if (pendingGoListingId) {
+    return (
+      <MobileShell title="사진 업로드 마무리" showBack hideNav>
+        <div className="sell-form-content">
+          <section>
+            <p className="form-step-description">
+              매물 기본 정보는 이미 저장됐어요. 실패한 사진만 다시 올리며 새 매물을 만들지 않아요.
+            </p>
+            <h1 className="form-step-title">사진 업로드를 마무리해 주세요</h1>
+            <div className="form-group">
+              <MediaPicker
+                allowReorder={!media.some((item) => item.serverId)}
+                disabled={isSubmitting}
+                label="장비 사진"
+                maxCount={GO_LISTING_IMAGE_MAX_COUNT}
+                onChange={removeCreatedMedia}
+                onRetry={(id) => void retryGoMedia(id)}
+                value={media}
+              />
+            </div>
+            {formError ? (
+              <p className="form-error form-submit-error" role="alert">
+                {formError}
+              </p>
+            ) : null}
+          </section>
+        </div>
+        <div className="sticky-bottom-action">
+          <button
+            className="btn-primary"
+            disabled={isSubmitting}
+            onClick={() => void retryGoMedia()}
+            type="button"
+          >
+            {isSubmitting ? <LoaderCircle className="spin" size={18} /> : null}
+            <span>{isSubmitting ? '확인 중' : '실패한 사진 다시 업로드'}</span>
           </button>
         </div>
       </MobileShell>
@@ -368,7 +601,12 @@ export default function SellPage() {
               </p>
 
               <div className="form-group">
-                <MediaPicker label="장비 사진" maxCount={10} onChange={setMedia} value={media} />
+                <MediaPicker
+                  label="장비 사진"
+                  maxCount={GO_LISTING_IMAGE_MAX_COUNT}
+                  onChange={setMedia}
+                  value={media}
+                />
               </div>
               <div className="form-group">
                 <label className="form-label" htmlFor="listing-title">

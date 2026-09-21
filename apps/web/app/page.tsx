@@ -105,14 +105,18 @@ export default function HomePage() {
           <div className="recommendation-rail">
             {recommendedListings.map((item) => (
               <Link href={`/market/${item.id}`} key={item.id} className="rec-card">
-                <Image
-                  alt={item.title}
-                  className="rec-card-image"
-                  height={130}
-                  src={item.images[0]}
-                  unoptimized
-                  width={220}
-                />
+                {item.images[0] ? (
+                  <Image
+                    alt={item.title}
+                    className="rec-card-image"
+                    height={130}
+                    src={item.images[0]}
+                    unoptimized
+                    width={220}
+                  />
+                ) : (
+                  <span className="rec-card-image rec-card-image-empty">사진 없음</span>
+                )}
                 <div className="rec-card-content">
                   <div className="rec-reason-badge">
                     <Sparkles size={11} />
