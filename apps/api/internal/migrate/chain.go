@@ -18,8 +18,9 @@ import (
 
 const AuthVersion = "0008_go_auth"
 const ListingsVersion = "0009_go_listings"
+const ListingImagesVersion = "0010_go_listing_images"
 
-var manifest = []string{AppVersion, AuthVersion, ListingsVersion}
+var manifest = []string{AppVersion, AuthVersion, ListingsVersion, ListingImagesVersion}
 
 type File struct {
 	Version string

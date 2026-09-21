@@ -47,7 +47,7 @@ func TestListingSessionOwnershipAndRLS(t *testing.T) {
 	logger := platform.NewLogger(io.Discard, "error")
 	status, err := migrate.Run(ctx, pools[platform.Migration], files, true, logger)
 	must(t, err)
-	if !status.Ready || status.AppVersion != migrate.ListingsVersion {
+	if !status.Ready || status.AppVersion != migrate.ListingImagesVersion {
 		t.Fatal("listing migration is not ready")
 	}
 
