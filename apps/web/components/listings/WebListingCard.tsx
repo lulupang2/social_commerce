@@ -18,14 +18,18 @@ export function WebListingCard({ listing, favorite, onFavorite }: WebListingCard
     <article className="product-card">
       <div className="product-card-img-wrapper">
         <Link aria-label={`${listing.title} 상세 보기`} href={`/market/${listing.id}`}>
-          <Image
-            alt={listing.title}
-            className="product-card-img"
-            fill
-            sizes="(max-width: 480px) 50vw, 240px"
-            src={listing.images[0]}
-            unoptimized
-          />
+          {listing.images[0] ? (
+            <Image
+              alt={listing.title}
+              className="product-card-img"
+              fill
+              sizes="(max-width: 480px) 50vw, 240px"
+              src={listing.images[0]}
+              unoptimized
+            />
+          ) : (
+            <span className="product-card-image-empty">사진 없음</span>
+          )}
         </Link>
         <button
           aria-label={favorite ? '찜 해제' : '찜하기'}

@@ -1,10 +1,20 @@
 'use client';
 
 import Image from 'next/image';
-import { Camera, ImagePlus, LoaderCircle, X } from 'lucide-react';
+import {
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  ImagePlus,
+  LoaderCircle,
+  RotateCcw,
+  X,
+} from 'lucide-react';
 import React, { useRef, useState } from 'react';
 
 import { NativeBridgeError, requestNativeMedia, triggerNativeHaptic } from '@/lib/native-bridge';
+
+export type MediaUploadState = 'idle' | 'uploading' | 'uploaded' | 'failed';
 
 export interface SelectedMedia {
   id: string;
@@ -12,6 +22,9 @@ export interface SelectedMedia {
   fileName: string;
   mimeType: string;
   file?: File;
+  serverId?: string;
+  uploadState?: MediaUploadState;
+  uploadError?: string;
 }
 
 interface MediaPickerProps {
@@ -20,6 +33,9 @@ interface MediaPickerProps {
   value: SelectedMedia[];
   onChange(value: SelectedMedia[]): void;
   helper?: string;
+  disabled?: boolean;
+  allowReorder?: boolean;
+  onRetry?(id: string): void;
 }
 
 const ALLOWED_IMAGE_TYPES: Record<string, true> = {
@@ -27,9 +43,8 @@ const ALLOWED_IMAGE_TYPES: Record<string, true> = {
   'image/jpg': true,
   'image/png': true,
   'image/webp': true,
-  'image/heic': true,
 };
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 function mediaId(): string {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -39,8 +54,9 @@ function mediaId(): string {
 export async function selectedMediaToFile(media: SelectedMedia): Promise<File> {
   if (media.file) return media.file;
   const response = await fetch(media.previewUrl);
+  if (!response.ok) throw new Error('media_fetch_failed');
   const blob = await response.blob();
-  return new File([blob], media.fileName, { type: media.mimeType });
+  return new File([blob], media.fileName, { type: media.mimeType || blob.type });
 }
 
 export function MediaPicker({
@@ -49,15 +65,19 @@ export function MediaPicker({
   value,
   onChange,
   helper = 'JPG, PNG, WebP · 장당 최대 10MB',
+  disabled = false,
+  allowReorder = true,
+  onRetry,
 }: MediaPickerProps) {
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isPicking, setIsPicking] = useState(false);
   const [error, setError] = useState('');
   const remainingCount = Math.max(0, maxCount - value.length);
+  const interactionDisabled = disabled || isPicking;
 
   const addNativeMedia = async (source: 'camera' | 'library') => {
-    if (remainingCount === 0) return;
+    if (remainingCount === 0 || interactionDisabled) return;
     setError('');
     setIsPicking(true);
 
@@ -71,16 +91,25 @@ export function MediaPicker({
       }
 
       if (assets.length > 0) {
-        onChange([
-          ...value,
-          ...assets.slice(0, remainingCount).map((asset) => ({
-            id: asset.id,
-            previewUrl: asset.dataUrl,
-            fileName: asset.fileName,
-            mimeType: asset.mimeType,
-          })),
-        ]);
-        triggerNativeHaptic('selection');
+        const accepted = assets
+          .slice(0, remainingCount)
+          .filter((asset) => ALLOWED_IMAGE_TYPES[asset.mimeType.toLowerCase()] === true);
+        if (accepted.length !== Math.min(assets.length, remainingCount)) {
+          setError('JPG, PNG, WebP 사진만 추가할 수 있어요.');
+        }
+        if (accepted.length > 0) {
+          onChange([
+            ...value,
+            ...accepted.map((asset) => ({
+              id: asset.id,
+              previewUrl: asset.dataUrl,
+              fileName: asset.fileName,
+              mimeType: asset.mimeType,
+              uploadState: 'idle' as const,
+            })),
+          ]);
+          triggerNativeHaptic('selection');
+        }
       }
     } catch (caught) {
       setError(
@@ -94,13 +123,13 @@ export function MediaPicker({
   };
 
   const addBrowserFiles = (files: FileList | null) => {
-    if (!files || remainingCount === 0) return;
+    if (!files || remainingCount === 0 || disabled) return;
     setError('');
 
     const nextMedia: SelectedMedia[] = [];
     for (const file of Array.from(files).slice(0, remainingCount)) {
       if (ALLOWED_IMAGE_TYPES[file.type.toLowerCase()] !== true) {
-        setError('JPG, PNG, WebP, HEIC 사진만 추가할 수 있어요.');
+        setError('JPG, PNG, WebP 사진만 추가할 수 있어요.');
         continue;
       }
       if (file.size > MAX_IMAGE_BYTES) {
@@ -114,6 +143,7 @@ export function MediaPicker({
         fileName: file.name,
         mimeType: file.type,
         file,
+        uploadState: 'idle',
       });
     }
 
@@ -126,39 +156,106 @@ export function MediaPicker({
   };
 
   const removeMedia = (id: string) => {
+    if (disabled) return;
     const target = value.find((media) => media.id === id);
     if (target?.previewUrl.startsWith('blob:')) URL.revokeObjectURL(target.previewUrl);
     onChange(value.filter((media) => media.id !== id));
     triggerNativeHaptic('selection');
   };
 
+  const moveMedia = (index: number, delta: -1 | 1) => {
+    if (disabled) return;
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= value.length) return;
+    const reordered = value.slice();
+    const [item] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, item);
+    onChange(reordered);
+    triggerNativeHaptic('selection');
+  };
+
   return (
-    <fieldset className="media-picker">
+    <fieldset className="media-picker" disabled={disabled}>
       <legend className="form-label">{label}</legend>
 
       {value.length > 0 ? (
         <div className="media-preview-grid" aria-label={`선택한 사진 ${value.length}장`}>
-          {value.map((media, index) => (
-            <div className="media-preview" key={media.id}>
-              <Image
-                alt={`${label} ${index + 1}`}
-                className="media-preview-image"
-                height={92}
-                src={media.previewUrl}
-                unoptimized
-                width={92}
-              />
-              <button
-                aria-label={`${index + 1}번째 사진 삭제`}
-                className="media-remove-button"
-                onClick={() => removeMedia(media.id)}
-                type="button"
+          {value.map((media, index) => {
+            const state = media.uploadState ?? (media.serverId ? 'uploaded' : 'idle');
+            return (
+              <div
+                className={`media-preview media-preview-${state}`}
+                data-upload-state={state}
+                key={media.id}
               >
-                <X size={14} />
-              </button>
-              {index === 0 ? <span className="media-cover-badge">대표</span> : null}
-            </div>
-          ))}
+                <Image
+                  alt={`${label} ${index + 1}`}
+                  className="media-preview-image"
+                  height={92}
+                  src={media.previewUrl}
+                  unoptimized
+                  width={92}
+                />
+
+                {state === 'uploading' ? (
+                  <div className="media-upload-overlay" role="status">
+                    <LoaderCircle className="spin" size={20} />
+                    <span>업로드 중</span>
+                  </div>
+                ) : null}
+
+                <button
+                  aria-label={`${index + 1}번째 사진 삭제`}
+                  className="media-remove-button"
+                  disabled={disabled || state === 'uploading'}
+                  onClick={() => removeMedia(media.id)}
+                  type="button"
+                >
+                  <X size={14} />
+                </button>
+
+                {index === 0 ? <span className="media-cover-badge">대표</span> : null}
+
+                {allowReorder && value.length > 1 ? (
+                  <div className="media-order-actions">
+                    <button
+                      aria-label={`${index + 1}번째 사진을 앞으로 이동`}
+                      disabled={disabled || state === 'uploading' || index === 0}
+                      onClick={() => moveMedia(index, -1)}
+                      type="button"
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <button
+                      aria-label={`${index + 1}번째 사진을 뒤로 이동`}
+                      disabled={disabled || state === 'uploading' || index === value.length - 1}
+                      onClick={() => moveMedia(index, 1)}
+                      type="button"
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                ) : null}
+
+                {state === 'failed' ? (
+                  <div className="media-upload-failure" role="alert">
+                    <span>{media.uploadError || '업로드 실패'}</span>
+                    {onRetry ? (
+                      <button
+                        aria-label={`${index + 1}번째 사진 업로드 재시도`}
+                        disabled={disabled}
+                        onClick={() => onRetry(media.id)}
+                        type="button"
+                      >
+                        <RotateCcw size={12} />
+                        재시도
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : null}
 
@@ -166,7 +263,7 @@ export function MediaPicker({
         <div className="media-picker-actions">
           <button
             className="media-picker-button"
-            disabled={isPicking}
+            disabled={interactionDisabled}
             onClick={() => void addNativeMedia('camera')}
             type="button"
           >
@@ -175,7 +272,7 @@ export function MediaPicker({
           </button>
           <button
             className="media-picker-button"
-            disabled={isPicking}
+            disabled={interactionDisabled}
             onClick={() => void addNativeMedia('library')}
             type="button"
           >
@@ -187,16 +284,18 @@ export function MediaPicker({
 
       <input
         ref={cameraInputRef}
-        accept="image/jpeg,image/png,image/webp,image/heic"
+        accept="image/jpeg,image/png,image/webp"
         capture="environment"
         className="visually-hidden"
+        disabled={disabled}
         onChange={(event) => addBrowserFiles(event.target.files)}
         type="file"
       />
       <input
         ref={libraryInputRef}
-        accept="image/jpeg,image/png,image/webp,image/heic"
+        accept="image/jpeg,image/png,image/webp"
         className="visually-hidden"
+        disabled={disabled}
         multiple={remainingCount > 1}
         onChange={(event) => addBrowserFiles(event.target.files)}
         type="file"

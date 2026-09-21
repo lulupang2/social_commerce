@@ -119,7 +119,7 @@ export function toMockListing(listing: MarketListing): MockListing | null {
       rating: 4.8,
       transactionCount: 0,
     },
-    images: listing.images.length > 0 ? listing.images.map((image) => image.url) : fallback.images,
+    images: listing.images.map((image) => image.url),
     specs,
     description: listing.description ?? '',
     recommendationReason:
@@ -139,9 +139,7 @@ async function loadRemoteListings(): Promise<MockListing[] | null> {
   remoteRequest = (async () => {
     const goListings = (await listGoListings()) ?? [];
     const client = createBrowserSupabaseClient();
-    const legacyListings = client
-      ? await new ListingRepository(client).list().catch(() => [])
-      : [];
+    const legacyListings = client ? await new ListingRepository(client).list().catch(() => []) : [];
     const seen = new Set<string>();
     const mapped = [...goListings, ...legacyListings].flatMap((listing) => {
       if (seen.has(listing.id)) return [];

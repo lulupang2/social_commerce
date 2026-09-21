@@ -7,10 +7,18 @@ import React, { use, useEffect, useMemo, useState } from 'react';
 
 import { MobileShell } from '@/components/layout/MobileShell';
 import {
-  getEditableGoListing,
-  updateGoListing,
-  type GoListing,
-} from '@/lib/go-listings/client';
+  MediaPicker,
+  selectedMediaToFile,
+  type SelectedMedia,
+} from '@/components/media/MediaPicker';
+import { getEditableGoListing, updateGoListing, type GoListing } from '@/lib/go-listings/client';
+import {
+  deleteGoListingImage,
+  GO_LISTING_IMAGE_MAX_COUNT,
+  listGoListingImages,
+  uploadGoListingImage,
+  type GoListingImage,
+} from '@/lib/go-listings/images';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
 
 const CATEGORY_LABELS: Record<ListingCategory, string> = {
@@ -82,6 +90,17 @@ function initialForm(listing: GoListing): EditForm {
   };
 }
 
+function mediaFromServerImages(images: GoListingImage[]): SelectedMedia[] {
+  return images.map((image, index) => ({
+    id: image.id,
+    serverId: image.id,
+    previewUrl: image.url,
+    fileName: `기존 사진 ${index + 1}`,
+    mimeType: '',
+    uploadState: 'uploaded' as const,
+  }));
+}
+
 export default function EditListingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -91,15 +110,29 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [media, setMedia] = useState<SelectedMedia[]>([]);
+  const [serverImages, setServerImages] = useState<GoListingImage[]>([]);
+  const [imageLoadError, setImageLoadError] = useState('');
 
   useEffect(() => {
     let active = true;
-    void getEditableGoListing(id).then((item) => {
-      if (!active) return;
-      setListing(item);
-      setForm(item ? initialForm(item) : null);
-      setIsLoading(false);
-    });
+    void Promise.all([getEditableGoListing(id), listGoListingImages(id)]).then(
+      ([item, imageResult]) => {
+        if (!active) return;
+        setListing(item);
+        setForm(item ? initialForm(item) : null);
+        if (imageResult.ok) {
+          setServerImages(imageResult.data);
+          setMedia(mediaFromServerImages(imageResult.data));
+          setImageLoadError('');
+        } else {
+          setServerImages([]);
+          setMedia([]);
+          setImageLoadError(imageResult.message);
+        }
+        setIsLoading(false);
+      },
+    );
     return () => {
       active = false;
     };
@@ -120,9 +153,198 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     setSaved(false);
   };
 
+  const refreshImageState = async (pending: SelectedMedia[] = []) => {
+    const result = await listGoListingImages(id);
+    if (!result.ok) {
+      setImageLoadError(result.message);
+      return { ok: false as const, message: result.message };
+    }
+    const pendingNew = pending.filter((item) => !item.serverId);
+    setServerImages(result.data);
+    setMedia([...mediaFromServerImages(result.data), ...pendingNew]);
+    setImageLoadError('');
+    return { ok: true as const, images: result.data };
+  };
+
+  const planNewImageSortOrders = (items: SelectedMedia[]) => {
+    const baselineIds = serverImages.map((image) => image.id);
+    const retainedIds = items.flatMap((item) => (item.serverId ? [item.serverId] : []));
+    const expectedRetained = baselineIds.filter((imageId) => retainedIds.includes(imageId));
+    if (
+      retainedIds.length !== expectedRetained.length ||
+      retainedIds.some((imageId, index) => imageId !== expectedRetained[index])
+    ) {
+      return {
+        ok: false as const,
+        message:
+          '현재 이미지 API 계약에는 기존 사진 순서 변경 기능이 없어요. 순서 저장 API가 추가된 뒤 반영할 수 있어요.',
+      };
+    }
+
+    const firstNew = items.findIndex((item) => !item.serverId);
+    if (firstNew >= 0 && items.slice(firstNew).some((item) => Boolean(item.serverId))) {
+      return {
+        ok: false as const,
+        message:
+          '현재 이미지 API 계약에서는 새 사진을 기존 사진 사이로 이동해 저장할 수 없어요. 새 사진은 뒤에 추가해 주세요.',
+      };
+    }
+
+    const retainedSet = new Set(retainedIds);
+    const retained = serverImages.filter((image) => retainedSet.has(image.id));
+    const maxRetainedSort = retained.reduce((max, image) => Math.max(max, image.sortOrder), -1);
+    const newItems = items.filter((item) => !item.serverId);
+    const available = Array.from(
+      { length: GO_LISTING_IMAGE_MAX_COUNT - (maxRetainedSort + 1) },
+      (_, offset) => maxRetainedSort + 1 + offset,
+    );
+    if (available.length < newItems.length) {
+      return {
+        ok: false as const,
+        message:
+          '현재 이미지 API 계약으로는 이 순서를 안전하게 저장할 수 없어요. 기존 사진 순서 변경 API가 필요해요.',
+      };
+    }
+
+    return {
+      ok: true as const,
+      sortOrderByClientId: new Map(
+        newItems.map((item, index) => [item.id, available[index]] as const),
+      ),
+    };
+  };
+
+  const syncListingImages = async (items: SelectedMedia[]) => {
+    if (imageLoadError) {
+      return { ok: false as const, message: imageLoadError };
+    }
+    const plan = planNewImageSortOrders(items);
+    if (!plan.ok) return plan;
+
+    const retainedIds = new Set(items.flatMap((item) => (item.serverId ? [item.serverId] : [])));
+    const removed = serverImages.filter((image) => !retainedIds.has(image.id));
+    let next = items.slice();
+
+    for (const image of removed) {
+      const result = await deleteGoListingImage(id, image.id);
+      if (!result.ok) {
+        await refreshImageState(next);
+        return { ok: false as const, message: result.message };
+      }
+    }
+
+    for (const item of next) {
+      if (item.serverId) continue;
+      const sortOrder = plan.sortOrderByClientId.get(item.id);
+      if (sortOrder === undefined) {
+        await refreshImageState(next);
+        return { ok: false as const, message: '사진 순서를 계산하지 못했어요.' };
+      }
+
+      next = next.map((entry) =>
+        entry.id === item.id
+          ? { ...entry, uploadState: 'uploading', uploadError: undefined }
+          : entry,
+      );
+      setMedia(next);
+
+      let file: File;
+      try {
+        file = await selectedMediaToFile(item);
+      } catch {
+        const message = '선택한 사진을 읽지 못했어요.';
+        next = next.map((entry) =>
+          entry.id === item.id ? { ...entry, uploadState: 'failed', uploadError: message } : entry,
+        );
+        setMedia(next);
+        await refreshImageState(next);
+        return { ok: false as const, message };
+      }
+
+      const result = await uploadGoListingImage(id, file, {
+        sortOrder,
+        altText: `${form?.title.trim() || listing?.title || '매물'} 사진 ${sortOrder + 1}`,
+      });
+      if (!result.ok) {
+        next = next.map((entry) =>
+          entry.id === item.id
+            ? { ...entry, uploadState: 'failed', uploadError: result.message }
+            : entry,
+        );
+        setMedia(next);
+        await refreshImageState(next);
+        return { ok: false as const, message: result.message };
+      }
+
+      next = next.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              serverId: result.data.imageId,
+              uploadState: 'uploaded',
+              uploadError: undefined,
+            }
+          : entry,
+      );
+      setMedia(next);
+    }
+
+    const verified = await listGoListingImages(id);
+    if (!verified.ok) {
+      return { ok: false as const, message: verified.message };
+    }
+    const expectedIds = next.flatMap((item) => (item.serverId ? [item.serverId] : []));
+    const actualIds = verified.data.map((image) => image.id);
+    if (
+      expectedIds.length !== actualIds.length ||
+      expectedIds.some((imageId, index) => imageId !== actualIds[index])
+    ) {
+      setServerImages(verified.data);
+      setMedia(mediaFromServerImages(verified.data));
+      return {
+        ok: false as const,
+        message: '서버에 저장된 사진 상태가 화면과 달라서 최신 상태로 다시 불러왔어요.',
+      };
+    }
+
+    setServerImages(verified.data);
+    setMedia(mediaFromServerImages(verified.data));
+    return { ok: true as const, images: verified.data };
+  };
+
+  const handleMediaChange = (next: SelectedMedia[]) => {
+    setMedia(next);
+    setError('');
+    setSaved(false);
+  };
+
+  const retryImageUpload = async (_mediaId: string) => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setError('');
+    const result = await syncListingImages(media);
+    if (!result.ok) {
+      setError(result.message);
+      triggerNativeHaptic('error');
+    }
+    setIsSaving(false);
+  };
+
+  const retryImageStateLoad = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setError('');
+    const result = await refreshImageState();
+    if (!result.ok) {
+      setError(result.message);
+      triggerNativeHaptic('error');
+    }
+    setIsSaving(false);
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!listing || !form || !editable) return;
+    if (!listing || !form || !editable || isSaving) return;
 
     const price = Number(form.price);
     if (form.title.trim().length < 1 || form.title.trim().length > 120) {
@@ -168,32 +390,60 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       else delete details.weightGrams;
     }
 
-    setIsSaving(true);
-    setError('');
-    const updated = await updateGoListing(id, {
-      title: form.title.trim(),
-      category: form.category,
-      condition: form.condition,
-      priceKrw: price,
-      location: form.location.trim(),
-      description: form.description.trim(),
-      details,
-    });
-    setIsSaving(false);
-
-    if (!updated) {
-      setError('매물을 수정하지 못했어요. 로그인 상태나 매물 상태를 확인해 주세요.');
-      triggerNativeHaptic('error');
+    if (imageLoadError) {
+      setError('사진 상태를 확인하지 못해 저장을 중단했어요. 사진을 다시 불러온 뒤 시도해 주세요.');
       return;
     }
 
-    const refreshed = await getEditableGoListing(id);
-    if (refreshed) {
+    setIsSaving(true);
+    setError('');
+    try {
+      const imageSync = await syncListingImages(media);
+      if (!imageSync.ok) {
+        setError(imageSync.message);
+        triggerNativeHaptic('error');
+        return;
+      }
+
+      const updated = await updateGoListing(id, {
+        title: form.title.trim(),
+        category: form.category,
+        condition: form.condition,
+        priceKrw: price,
+        location: form.location.trim(),
+        description: form.description.trim(),
+        details,
+      });
+      if (!updated) {
+        setError('매물을 수정하지 못했어요. 로그인 상태나 매물 상태를 확인해 주세요.');
+        triggerNativeHaptic('error');
+        return;
+      }
+
+      const [refreshed, refreshedImages] = await Promise.all([
+        getEditableGoListing(id),
+        listGoListingImages(id),
+      ]);
+      if (!refreshed || !refreshedImages.ok) {
+        setError(
+          !refreshedImages.ok
+            ? refreshedImages.message
+            : '저장 후 매물 상태를 다시 확인하지 못했어요.',
+        );
+        triggerNativeHaptic('error');
+        return;
+      }
+
       setListing(refreshed);
       setForm(initialForm(refreshed));
+      setServerImages(refreshedImages.data);
+      setMedia(mediaFromServerImages(refreshedImages.data));
+      setImageLoadError('');
+      setSaved(true);
+      triggerNativeHaptic('success');
+    } finally {
+      setIsSaving(false);
     }
-    setSaved(true);
-    triggerNativeHaptic('success');
   };
 
   if (isLoading) {
@@ -248,6 +498,31 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
             <h1 className="form-step-title">등록한 정보를 수정해 주세요</h1>
 
             <div className="form-group">
+              {imageLoadError ? (
+                <div className="image-load-error" role="alert">
+                  <p>{imageLoadError}</p>
+                  <button
+                    className="btn-outline"
+                    disabled={isSaving}
+                    onClick={() => void retryImageStateLoad()}
+                    type="button"
+                  >
+                    사진 다시 불러오기
+                  </button>
+                </div>
+              ) : (
+                <MediaPicker
+                  disabled={isSaving}
+                  label="장비 사진"
+                  maxCount={GO_LISTING_IMAGE_MAX_COUNT}
+                  onChange={handleMediaChange}
+                  onRetry={(mediaId) => void retryImageUpload(mediaId)}
+                  value={media}
+                />
+              )}
+            </div>
+
+            <div className="form-group">
               <label className="form-label" htmlFor="edit-title">
                 제목
               </label>
@@ -268,9 +543,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 <select
                   className="form-select"
                   id="edit-category"
-                  onChange={(event) =>
-                    update('category', event.target.value as ListingCategory)
-                  }
+                  onChange={(event) => update('category', event.target.value as ListingCategory)}
                   value={form.category}
                 >
                   {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
@@ -287,9 +560,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 <select
                   className="form-select"
                   id="edit-condition"
-                  onChange={(event) =>
-                    update('condition', event.target.value as ListingCondition)
-                  }
+                  onChange={(event) => update('condition', event.target.value as ListingCondition)}
                   value={form.condition}
                 >
                   {Object.entries(CONDITION_LABELS).map(([value, label]) => (
