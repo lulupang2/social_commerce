@@ -19,7 +19,7 @@ import (
 type Storage interface {
 	CreateSignedUpload(context.Context, string) (string, error)
 	Info(context.Context, string) (ObjectInfo, error)
-	ReadPrefix(context.Context, string) ([]byte, error)
+	ReadObject(context.Context, string, int64) ([]byte, error)
 	Sign(context.Context, string, time.Duration) (string, error)
 	Delete(context.Context, string) error
 }
@@ -38,7 +38,7 @@ func (unavailableStorage) CreateSignedUpload(context.Context, string) (string, e
 func (unavailableStorage) Info(context.Context, string) (ObjectInfo, error) {
 	return ObjectInfo{}, ErrStorageUnavailable
 }
-func (unavailableStorage) ReadPrefix(context.Context, string) ([]byte, error) {
+func (unavailableStorage) ReadObject(context.Context, string, int64) ([]byte, error) {
 	return nil, ErrStorageUnavailable
 }
 func (unavailableStorage) Sign(context.Context, string, time.Duration) (string, error) {
@@ -136,7 +136,10 @@ func (s *HTTPStorage) Info(ctx context.Context, storagePath string) (ObjectInfo,
 	return ObjectInfo{MimeType: mimeType, FileSizeBytes: size}, nil
 }
 
-func (s *HTTPStorage) ReadPrefix(ctx context.Context, storagePath string) ([]byte, error) {
+func (s *HTTPStorage) ReadObject(ctx context.Context, storagePath string, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 || maxBytes > MaxFileSizeBytes {
+		return nil, ErrStorageUnavailable
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		s.baseURL+"/object/"+Bucket+"/"+escapePath(storagePath), nil)
 	if err != nil {
@@ -144,7 +147,6 @@ func (s *HTTPStorage) ReadPrefix(ctx context.Context, storagePath string) ([]byt
 	}
 	req.Header.Set("Authorization", "Bearer "+s.key)
 	req.Header.Set("apikey", s.key)
-	req.Header.Set("Range", "bytes=0-31")
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, ErrStorageUnavailable
@@ -154,12 +156,22 @@ func (s *HTTPStorage) ReadPrefix(ctx context.Context, storagePath string) ([]byt
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		return nil, ErrObjectNotFound
 	}
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+	if resp.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		return nil, ErrStorageUnavailable
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 32))
-	if err != nil || len(data) == 0 {
+	if resp.ContentLength > maxBytes {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return nil, ErrObjectTooLarge
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, ErrStorageUnavailable
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, ErrObjectTooLarge
+	}
+	if len(data) == 0 {
 		return nil, ErrStorageUnavailable
 	}
 	return data, nil

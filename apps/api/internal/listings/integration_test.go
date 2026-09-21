@@ -243,7 +243,7 @@ func (testUnavailableStorage) CreateSignedUpload(context.Context, string) (strin
 func (testUnavailableStorage) Info(context.Context, string) (listingimages.ObjectInfo, error) {
 	return listingimages.ObjectInfo{}, errors.New("unused")
 }
-func (testUnavailableStorage) ReadPrefix(context.Context, string) ([]byte, error) {
+func (testUnavailableStorage) ReadObject(context.Context, string, int64) ([]byte, error) {
 	return nil, errors.New("unused")
 }
 func (testUnavailableStorage) Delete(context.Context, string) error {

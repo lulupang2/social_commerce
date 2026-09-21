@@ -85,8 +85,8 @@ type fakeStorage struct {
 	uploadURL   string
 	info        ObjectInfo
 	infoErr     error
-	prefix      []byte
-	prefixErr   error
+	object      []byte
+	objectErr   error
 	signURL     string
 	signTTL     time.Duration
 	deleteErr   error
@@ -100,8 +100,8 @@ func (f *fakeStorage) CreateSignedUpload(context.Context, string) (string, error
 	return f.uploadURL, nil
 }
 func (f *fakeStorage) Info(context.Context, string) (ObjectInfo, error) { return f.info, f.infoErr }
-func (f *fakeStorage) ReadPrefix(context.Context, string) ([]byte, error) {
-	return f.prefix, f.prefixErr
+func (f *fakeStorage) ReadObject(context.Context, string, int64) ([]byte, error) {
+	return f.object, f.objectErr
 }
 func (f *fakeStorage) Sign(_ context.Context, _ string, ttl time.Duration) (string, error) {
 	f.signTTL = ttl
@@ -183,13 +183,14 @@ func TestCompleteRejectsMismatchedObject(t *testing.T) {
 
 func TestCompleteVerifiesActualImageSignature(t *testing.T) {
 	now := time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	data := makeJPEG(t, 32, 24)
 	repo := &fakeRepo{record: ImageRecord{
 		ID: "image-a", MemberID: "member-a", ListingID: "listing-a", StoragePath: "member-a/listing-a/image-a",
-		MimeType: "image/jpeg", FileSizeBytes: 2048, State: PendingUploadState, UploadExpiresAt: now.Add(time.Hour),
+		MimeType: "image/jpeg", FileSizeBytes: int64(len(data)), State: PendingUploadState, UploadExpiresAt: now.Add(time.Hour),
 	}}
 	storage := &fakeStorage{
-		info:   ObjectInfo{MimeType: "image/jpeg", FileSizeBytes: 2048},
-		prefix: []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10},
+		info:   ObjectInfo{MimeType: "image/jpeg", FileSizeBytes: int64(len(data))},
+		object: data,
 	}
 	service := &Service{Repo: repo, Storage: storage, Now: func() time.Time { return now }}
 
@@ -203,9 +204,11 @@ func TestCompleteVerifiesActualImageSignature(t *testing.T) {
 
 	repo.completeCalls = 0
 	repo.failCalls = 0
-	storage.prefix = []byte("not-an-image")
+	storage.object = []byte("not-an-image")
+	storage.info.FileSizeBytes = int64(len(storage.object))
+	repo.record.FileSizeBytes = int64(len(storage.object))
 	if _, err := service.Complete(context.Background(), "member-a", "listing-a", "image-a"); !errors.Is(err, errInvalid) {
-		t.Fatalf("invalid image signature returned %v", err)
+		t.Fatalf("invalid image structure returned %v", err)
 	}
 	if repo.completeCalls != 0 || repo.failCalls != 1 {
 		t.Fatal("invalid image bytes were promoted")

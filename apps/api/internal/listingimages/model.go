@@ -37,6 +37,7 @@ var (
 	errStorage            = &Failure{503, "IMAGE_STORAGE_UNAVAILABLE", "Image storage is unavailable"}
 	errDB                 = &Failure{503, "IMAGE_DATABASE_UNAVAILABLE", "Image metadata storage is unavailable"}
 	ErrObjectNotFound     = errors.New("storage object not found")
+	ErrObjectTooLarge     = errors.New("storage object exceeds validation limit")
 	ErrStorageUnavailable = errors.New("storage unavailable")
 )
 
@@ -133,17 +134,4 @@ func canonicalMime(value string) string {
 		return "image/jpeg"
 	}
 	return value
-}
-
-func extensionForMime(value string) string {
-	switch canonicalMime(value) {
-	case "image/jpeg":
-		return ".jpg"
-	case "image/png":
-		return ".png"
-	case "image/webp":
-		return ".webp"
-	default:
-		return ""
-	}
 }
