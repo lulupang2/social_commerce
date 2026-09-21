@@ -48,6 +48,8 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
   const [actionMessage, setActionMessage] = useState('');
   const [isOpeningChat, setIsOpeningChat] = useState(false);
   const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
+  const [imageError, setImageError] = useState('');
+  const [imageRefresh, setImageRefresh] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -61,15 +63,26 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     let active = true;
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
     void listGoListingImages(id).then((result) => {
-      if (!active || !result.ok) return;
+      if (!active) return;
+      if (!result.ok) {
+        setImageError(result.message);
+        return;
+      }
+      setImageError('');
       setImageLookup({ id, images: result.data.map((image) => image.url) });
       setActiveImageIndex(0);
+      const expiresAt = Math.min(...result.data.map((image) => Date.parse(image.expiresAt)));
+      if (Number.isFinite(expiresAt) && expiresAt > Date.now()) {
+        expiryTimer = setTimeout(() => setImageRefresh((value) => value + 1), expiresAt - Date.now());
+      }
     });
     return () => {
       active = false;
+      clearTimeout(expiryTimer);
     };
-  }, [id]);
+  }, [id, imageRefresh]);
 
   useEffect(() => {
     if (feedListing) return;
@@ -170,6 +183,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
               priority
               sizes="(max-width: 480px) 100vw, 480px"
               src={activeImage}
+              onError={() => setImageError('사진 링크가 만료되었거나 불러올 수 없어요. 사진을 갱신해 주세요.')}
               unoptimized
             />
           ) : (
@@ -183,6 +197,13 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
             </span>
           ) : null}
         </div>
+        {imageError ? (
+          <div className="image-load-error" role="alert">
+            <p>{imageError}</p>
+            <button className="btn-outline" type="button" onClick={() => setImageRefresh((value) => value + 1)}>사진 갱신</button>
+            <a href="/auth" target="_blank" rel="noreferrer">다시 로그인</a>
+          </div>
+        ) : null}
 
         {listing.images.length > 1 ? (
           <div className="thumbnail-strip" aria-label="상품 사진 선택">

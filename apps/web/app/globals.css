@@ -733,6 +733,24 @@ textarea {
   font-weight: 800;
 }
 
+.media-replace-button {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.media-replace-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .media-upload-overlay {
   position: absolute;
   inset: 0;
@@ -824,22 +842,29 @@ textarea {
 }
 
 .media-upload-failure {
-  position: absolute;
-  inset: auto 3px 3px 3px;
-  padding: 4px 5px;
+  position: relative;
+  margin-top: 4px;
+  padding: 6px;
   border-radius: 8px;
   display: grid;
-  gap: 3px;
-  background: rgba(127, 29, 29, 0.9);
+  gap: 4px;
+  background: rgba(127, 29, 29, 0.95);
   color: #fff;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   font-weight: 700;
 }
 
+.media-preview:has(.media-upload-failure) {
+  aspect-ratio: auto;
+}
+
+.media-preview:has(.media-upload-failure) .media-preview-image {
+  aspect-ratio: 1;
+  height: auto;
+}
+
 .media-upload-failure > span {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .media-upload-failure button {

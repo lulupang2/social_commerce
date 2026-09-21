@@ -12,6 +12,7 @@ import {
   type SelectedMedia,
 } from '@/components/media/MediaPicker';
 import { getEditableGoListing, updateGoListing, type GoListing } from '@/lib/go-listings/client';
+import { getGoSession } from '@/lib/go-auth/client';
 import {
   deleteGoListingImage,
   GO_LISTING_IMAGE_MAX_COUNT,
@@ -94,6 +95,8 @@ function mediaFromServerImages(images: GoListingImage[]): SelectedMedia[] {
   return images.map((image, index) => ({
     id: image.id,
     serverId: image.id,
+    sortOrder: image.sortOrder,
+    expiresAt: image.expiresAt,
     previewUrl: image.url,
     fileName: `기존 사진 ${index + 1}`,
     mimeType: '',
@@ -113,12 +116,14 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   const [media, setMedia] = useState<SelectedMedia[]>([]);
   const [serverImages, setServerImages] = useState<GoListingImage[]>([]);
   const [imageLoadError, setImageLoadError] = useState('');
+  const [ownerId, setOwnerId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void Promise.all([getEditableGoListing(id), listGoListingImages(id)]).then(
-      ([item, imageResult]) => {
+    void Promise.all([getEditableGoListing(id), listGoListingImages(id), getGoSession()]).then(
+      ([item, imageResult, session]) => {
         if (!active) return;
+        setOwnerId(session.ok ? session.session.member.id : null);
         setListing(item);
         setForm(item ? initialForm(item) : null);
         if (imageResult.ok) {
@@ -141,10 +146,11 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   const editable = useMemo(
     () =>
       listing !== null &&
+      ownerId !== null && listing.seller.id === ownerId &&
       (['draft', 'pending_review', 'rejected'] satisfies EditableStatus[]).includes(
         listing.status as EditableStatus,
       ),
-    [listing],
+    [listing, ownerId],
   );
 
   const update = <K extends keyof EditForm>(key: K, value: EditForm[K]) => {
@@ -153,7 +159,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     setSaved(false);
   };
 
-  const refreshImageState = async (pending: SelectedMedia[] = []) => {
+  const refreshImageState = async (pending: SelectedMedia[] = media) => {
     const result = await listGoListingImages(id);
     if (!result.ok) {
       setImageLoadError(result.message);
@@ -161,80 +167,53 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     }
     const pendingNew = pending.filter((item) => !item.serverId);
     setServerImages(result.data);
-    setMedia([...mediaFromServerImages(result.data), ...pendingNew]);
+    const replacing = new Set(pendingNew.map((item) => item.replaceImageId).filter(Boolean));
+    setMedia([...mediaFromServerImages(result.data.filter((image) => !replacing.has(image.id))), ...pendingNew]);
     setImageLoadError('');
     return { ok: true as const, images: result.data };
   };
 
   const planNewImageSortOrders = (items: SelectedMedia[]) => {
-    const baselineIds = serverImages.map((image) => image.id);
-    const retainedIds = items.flatMap((item) => (item.serverId ? [item.serverId] : []));
-    const expectedRetained = baselineIds.filter((imageId) => retainedIds.includes(imageId));
-    if (
-      retainedIds.length !== expectedRetained.length ||
-      retainedIds.some((imageId, index) => imageId !== expectedRetained[index])
-    ) {
-      return {
-        ok: false as const,
-        message:
-          '현재 이미지 API 계약에는 기존 사진 순서 변경 기능이 없어요. 순서 저장 API가 추가된 뒤 반영할 수 있어요.',
-      };
+    const occupied = items.flatMap((item) => item.serverId || item.replaceImageId
+      ? serverImages.filter((image) => image.id === (item.serverId ?? item.replaceImageId)).map((image) => image.sortOrder)
+      : item.pendingImageId && item.sortOrder !== undefined ? [item.sortOrder] : []);
+    const used = new Set(occupied);
+    const orders = new Map<string, number>();
+    for (const item of items) {
+      if (item.serverId) continue;
+      const previous = serverImages.find((image) => image.id === item.replaceImageId);
+      const order = previous?.sortOrder ?? (item.pendingImageId ? item.sortOrder : undefined) ??
+        Array.from({ length: GO_LISTING_IMAGE_MAX_COUNT }, (_, index) => index).find((index) => !used.has(index));
+      if (order === undefined) return { ok: false as const, message: '사진은 최대 12장이에요. 기존 사진을 삭제하거나 교체해 주세요.' };
+      used.add(order);
+      orders.set(item.id, order);
     }
-
-    const firstNew = items.findIndex((item) => !item.serverId);
-    if (firstNew >= 0 && items.slice(firstNew).some((item) => Boolean(item.serverId))) {
-      return {
-        ok: false as const,
-        message:
-          '현재 이미지 API 계약에서는 새 사진을 기존 사진 사이로 이동해 저장할 수 없어요. 새 사진은 뒤에 추가해 주세요.',
-      };
-    }
-
-    const retainedSet = new Set(retainedIds);
-    const retained = serverImages.filter((image) => retainedSet.has(image.id));
-    const maxRetainedSort = retained.reduce((max, image) => Math.max(max, image.sortOrder), -1);
-    const newItems = items.filter((item) => !item.serverId);
-    const available = Array.from(
-      { length: GO_LISTING_IMAGE_MAX_COUNT - (maxRetainedSort + 1) },
-      (_, offset) => maxRetainedSort + 1 + offset,
-    );
-    if (available.length < newItems.length) {
-      return {
-        ok: false as const,
-        message:
-          '현재 이미지 API 계약으로는 이 순서를 안전하게 저장할 수 없어요. 기존 사진 순서 변경 API가 필요해요.',
-      };
-    }
-
-    return {
-      ok: true as const,
-      sortOrderByClientId: new Map(
-        newItems.map((item, index) => [item.id, available[index]] as const),
-      ),
-    };
+    return { ok: true as const, sortOrderByClientId: orders };
   };
 
-  const syncListingImages = async (items: SelectedMedia[]) => {
+  const syncListingImages = async (items: SelectedMedia[], onlyId?: string) => {
+    if (!editable) return { ok: false as const, message: '이 매물의 사진을 변경할 권한이 없어요.' };
     if (imageLoadError) {
       return { ok: false as const, message: imageLoadError };
     }
     const plan = planNewImageSortOrders(items);
     if (!plan.ok) return plan;
 
-    const retainedIds = new Set(items.flatMap((item) => (item.serverId ? [item.serverId] : [])));
+    const retainedIds = new Set(items.flatMap((item) => item.serverId || item.replaceImageId ? [item.serverId ?? item.replaceImageId!] : []));
     const removed = serverImages.filter((image) => !retainedIds.has(image.id));
     let next = items.slice();
 
-    for (const image of removed) {
+    for (const image of onlyId ? [] : removed) {
       const result = await deleteGoListingImage(id, image.id);
       if (!result.ok) {
         await refreshImageState(next);
         return { ok: false as const, message: result.message };
       }
+      setServerImages((current) => current.filter((entry) => entry.id !== image.id));
     }
 
     for (const item of next) {
-      if (item.serverId) continue;
+      if (item.serverId || (onlyId && item.id !== onlyId)) continue;
       const sortOrder = plan.sortOrderByClientId.get(item.id);
       if (sortOrder === undefined) {
         await refreshImageState(next);
@@ -243,7 +222,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
       next = next.map((entry) =>
         entry.id === item.id
-          ? { ...entry, uploadState: 'uploading', uploadError: undefined }
+          ? { ...entry, sortOrder, uploadState: 'uploading', uploadError: undefined }
           : entry,
       );
       setMedia(next);
@@ -263,12 +242,15 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
       const result = await uploadGoListingImage(id, file, {
         sortOrder,
+        replaceImageId: item.replaceImageId,
+        pendingImageId: item.pendingImageId,
+        uploadPhase: item.uploadPhase,
         altText: `${form?.title.trim() || listing?.title || '매물'} 사진 ${sortOrder + 1}`,
       });
       if (!result.ok) {
         next = next.map((entry) =>
           entry.id === item.id
-            ? { ...entry, uploadState: 'failed', uploadError: result.message }
+            ? { ...entry, sortOrder, uploadState: 'failed', uploadError: result.message, uploadErrorCode: result.code, pendingImageId: result.pendingImageId, uploadPhase: result.uploadPhase }
             : entry,
         );
         setMedia(next);
@@ -281,6 +263,10 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
           ? {
               ...entry,
               serverId: result.data.imageId,
+              sortOrder,
+              replaceImageId: undefined,
+              pendingImageId: undefined,
+              uploadPhase: undefined,
               uploadState: 'uploaded',
               uploadError: undefined,
             }
@@ -289,6 +275,10 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       setMedia(next);
     }
 
+    if (next.some((item) => !item.serverId)) {
+      await refreshImageState(next);
+      return { ok: false as const, message: '아직 저장하지 못한 사진이 있어요. 해당 사진을 재시도해 주세요.' };
+    }
     const verified = await listGoListingImages(id);
     if (!verified.ok) {
       return { ok: false as const, message: verified.message };
@@ -297,7 +287,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     const actualIds = verified.data.map((image) => image.id);
     if (
       expectedIds.length !== actualIds.length ||
-      expectedIds.some((imageId, index) => imageId !== actualIds[index])
+      expectedIds.some((imageId) => !actualIds.includes(imageId))
     ) {
       setServerImages(verified.data);
       setMedia(mediaFromServerImages(verified.data));
@@ -313,16 +303,17 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   };
 
   const handleMediaChange = (next: SelectedMedia[]) => {
+    if (!editable || isSaving) return;
     setMedia(next);
     setError('');
     setSaved(false);
   };
 
-  const retryImageUpload = async (_mediaId: string) => {
-    if (isSaving) return;
+  const retryImageUpload = async (mediaId: string) => {
+    if (isSaving || !editable) return;
     setIsSaving(true);
     setError('');
-    const result = await syncListingImages(media);
+    const result = await syncListingImages(media, mediaId);
     if (!result.ok) {
       setError(result.message);
       triggerNativeHaptic('error');
@@ -461,7 +452,8 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     return (
       <MobileShell title="매물 수정" showBack hideNav>
         <div className="empty-state">
-          <p>수정할 수 있는 Go 매물을 찾지 못했어요.</p>
+          <p>매물을 찾지 못했거나 접근 권한이 없어요. 소유자 계정으로 로그인해 주세요.</p>
+          <a className="btn-outline" href="/auth" target="_blank" rel="noreferrer">다시 로그인</a>
           <button className="btn-primary" onClick={() => router.push('/market')} type="button">
             마켓으로 돌아가기
           </button>
@@ -474,7 +466,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     return (
       <MobileShell title="매물 수정" showBack hideNav>
         <div className="empty-state">
-          <p>현재 상태({listing.status})의 매물은 수정할 수 없어요.</p>
+          <p>{listing.seller.id !== ownerId ? '내 매물만 수정할 수 있어요.' : `현재 상태(${listing.status})의 매물은 사진을 수정할 수 없어요. draft/pending_review/rejected 상태에서만 변경할 수 있어요.`}</p>
           <button
             className="btn-primary"
             onClick={() => router.push('/market/' + listing.id)}
@@ -512,6 +504,9 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 </div>
               ) : (
                 <MediaPicker
+                  allowReorder={false}
+                  allowReplace
+                  onRefresh={() => void retryImageStateLoad()}
                   disabled={isSaving}
                   label="장비 사진"
                   maxCount={GO_LISTING_IMAGE_MAX_COUNT}

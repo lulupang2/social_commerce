@@ -187,7 +187,7 @@ export default function SellPage() {
     if (
       expected.length !== items.length ||
       actual.length !== expected.length ||
-      actual.some((id, index) => id !== expected[index])
+      actual.some((id) => !expected.includes(id))
     ) {
       return '서버에 저장된 사진 순서가 화면과 일치하지 않아요. 다시 확인해 주세요.';
     }
@@ -200,6 +200,14 @@ export default function SellPage() {
     onlyId?: string,
   ): Promise<{ items: SelectedMedia[]; error: string }> => {
     let next = items.slice();
+    const used = new Set(next.flatMap((item) => item.sortOrder === undefined ? [] : [item.sortOrder]));
+    next = next.map((item) => {
+      if (item.sortOrder !== undefined) return item;
+      const sortOrder = Array.from({ length: GO_LISTING_IMAGE_MAX_COUNT }, (_, order) => order).find((order) => !used.has(order));
+      if (sortOrder !== undefined) used.add(sortOrder);
+      return { ...item, sortOrder };
+    });
+    setMedia(next);
 
     for (let index = 0; index < next.length; index += 1) {
       const item = next[index];
@@ -220,13 +228,15 @@ export default function SellPage() {
       }
 
       const result = await uploadGoListingImage(listingId, file, {
-        sortOrder: index,
+        sortOrder: item.sortOrder,
+        pendingImageId: item.pendingImageId,
+        uploadPhase: item.uploadPhase,
         altText: `${formData.title.trim()} 사진 ${index + 1}`,
       });
       if (!result.ok) {
         next = next.map((entry) =>
           entry.id === item.id
-            ? { ...entry, uploadState: 'failed', uploadError: result.message }
+            ? { ...entry, uploadState: 'failed', uploadError: result.message, uploadErrorCode: result.code, pendingImageId: result.pendingImageId, uploadPhase: result.uploadPhase }
             : entry,
         );
         setMedia(next);
@@ -238,6 +248,8 @@ export default function SellPage() {
           ? {
               ...entry,
               serverId: result.data.imageId,
+              pendingImageId: undefined,
+              uploadPhase: undefined,
               uploadState: 'uploaded',
               uploadError: undefined,
             }
@@ -513,7 +525,7 @@ export default function SellPage() {
             <h1 className="form-step-title">사진 업로드를 마무리해 주세요</h1>
             <div className="form-group">
               <MediaPicker
-                allowReorder={!media.some((item) => item.serverId)}
+                allowReorder={false}
                 disabled={isSubmitting}
                 label="장비 사진"
                 maxCount={GO_LISTING_IMAGE_MAX_COUNT}
@@ -522,6 +534,7 @@ export default function SellPage() {
                 value={media}
               />
             </div>
+            <a href="/auth" target="_blank" rel="noreferrer">새 창에서 다시 로그인</a>
             {formError ? (
               <p className="form-error form-submit-error" role="alert">
                 {formError}

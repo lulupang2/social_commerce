@@ -151,7 +151,9 @@ export async function createGoListing(
 
   const session = await getGoSession();
   if (!session.ok) {
-    if (session.status === 404 || session.status === undefined) return null;
+    if (session.status === 404 || session.status === undefined) {
+      return { ok: false, reason: 'unavailable', message: '매물 서버에 연결하지 못했어요. 입력을 유지하고 다시 시도해 주세요.' };
+    }
     if (session.status === 401) {
       return { ok: false, reason: 'unauthenticated', message: '로그인 후 등록할 수 있어요.' };
     }
@@ -222,7 +224,7 @@ export async function createGoListing(
     }
     return { ok: true, data: { id: data.id, status: 'pending_review' } };
   } catch {
-    return null;
+    return { ok: false, reason: 'unavailable', message: '등록 응답을 확인하지 못했어요. 내 매물을 확인한 뒤 다시 시도해 주세요.' };
   }
 }
 
