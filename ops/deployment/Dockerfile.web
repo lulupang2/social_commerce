@@ -1,0 +1,38 @@
+FROM node:22.13.0-bookworm-slim AS dependencies
+ENV NEXT_TELEMETRY_DISABLED=1 CI=true
+WORKDIR /workspace
+RUN npm install --global pnpm@10.34.5
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/package.json
+COPY apps/mobile/package.json apps/mobile/package.json
+COPY packages/domain/package.json packages/domain/package.json
+RUN --mount=type=cache,id=summergear-pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4 --fetch-timeout=120000
+
+FROM dependencies AS source
+COPY . .
+
+FROM source AS verification
+CMD ["bash", "ops/deployment/check-web.sh"]
+
+FROM source AS build
+# Only public browser settings may be supplied at build time. Empty is the keyless mode.
+ARG NEXT_PUBLIC_SUPABASE_URL=""
+ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=""
+ENV NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
+# Set packaging only inside the image build; application-owned Next config stays unchanged.
+RUN node -e "const fs=require('fs'); const p='apps/web/next.config.ts'; const s=fs.readFileSync(p,'utf8'); if(!s.includes('export default nextConfig;')) throw Error('Review Next packaging config'); fs.writeFileSync(p,s.replace('export default nextConfig;', \"nextConfig.output = 'standalone'; nextConfig.outputFileTracingRoot = '/workspace'; export default nextConfig;\"))" && \
+    pnpm --filter @icegear/domain build && pnpm --filter @icegear/web build && mkdir -p apps/web/public
+
+FROM node:22.13.0-bookworm-slim AS web
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
+WORKDIR /workspace
+COPY --from=build --chown=node:node /workspace/apps/web/.next/standalone ./
+COPY --from=build --chown=node:node /workspace/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=node:node /workspace/apps/web/public ./apps/web/public
+USER node
+EXPOSE 3000
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=5s --timeout=3s --retries=20 CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "apps/web/server.js"]

@@ -1,0 +1,110 @@
+name: summergear-hosted-test
+
+x-runtime: &runtime
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:size=32m,mode=1777"]
+  stop_grace_period: 75s
+  pids_limit: 128
+  mem_limit: 192m
+  cpus: 1
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+# Hosted TEST environment only. No database/fixture service and no real secrets here.
+x-env: &env
+  APP_ENV: test
+  PAYMENT_MODE: test
+  DB_TARGET: supabase-test
+  DB_TARGET_ID: ${DB_TARGET_ID:?provision a hosted test database marker}
+
+services:
+  migration:
+    <<: *runtime
+    image: ${MIGRATION_IMAGE:?immutable migration image required}
+    environment:
+      <<: *env
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?migration role URL required}
+      MIGRATION_DB_MAX_CONNS: ${MIGRATION_DB_MAX_CONNS:-3}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+    command: [--apply]
+    restart: "no"
+
+  api:
+    <<: *runtime
+    image: ${API_IMAGE:?immutable API image required}
+    restart: unless-stopped
+    environment:
+      <<: *env
+      DATABASE_URL: ${DATABASE_URL:?API role URL required}
+      DATABASE_CONNECTION_MODE: ${DATABASE_CONNECTION_MODE:-direct}
+      API_DB_MAX_CONNS: ${API_DB_MAX_CONNS:-2}
+      API_ADDR: 0.0.0.0:8080
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:?HTTPS origin required}
+      AUTH_DEV_LOGIN_ENABLED: ${AUTH_DEV_LOGIN_ENABLED:-false}
+      AUTH_SESSION_IDLE_TTL: ${AUTH_SESSION_IDLE_TTL:-30m}
+      AUTH_SESSION_ABSOLUTE_TTL: ${AUTH_SESSION_ABSOLUTE_TTL:-168h}
+      AUTH_LOGIN_TTL: ${AUTH_LOGIN_TTL:-10m}
+      AUTH_REAUTH_TTL: ${AUTH_REAUTH_TTL:-5m}
+      AUTH_HTTP_TIMEOUT: ${AUTH_HTTP_TIMEOUT:-8s}
+      AUTH_ALLOWED_RETURN_PATHS: ${AUTH_ALLOWED_RETURN_PATHS:-/auth/go-test}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      LISTING_IMAGE_BUCKET: ${LISTING_IMAGE_BUCKET:-listing-images}
+      LISTING_IMAGE_SIGNED_URL_TTL_SECONDS: ${LISTING_IMAGE_SIGNED_URL_TTL_SECONDS:-600}
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
+      NAVER_REDIRECT_URI: ${NAVER_REDIRECT_URI:-}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+      KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI:-}
+    depends_on:
+      migration: {condition: service_completed_successfully}
+
+  worker:
+    <<: *runtime
+    image: ${WORKER_IMAGE:?immutable worker image required}
+    restart: unless-stopped
+    environment:
+      <<: *env
+      RIVER_DATABASE_URL: ${RIVER_DATABASE_URL:?worker role URL required}
+      RIVER_CONNECTION_MODE: ${RIVER_CONNECTION_MODE:-direct}
+      WORKER_DB_MAX_CONNS: ${WORKER_DB_MAX_CONNS:-5}
+      RIVER_MAX_WORKERS: ${RIVER_MAX_WORKERS:-1}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+    depends_on:
+      migration: {condition: service_completed_successfully}
+
+  web:
+    <<: *runtime
+    user: "1000:1000"
+    image: ${WEB_IMAGE:?immutable web image required}
+    restart: unless-stopped
+    mem_limit: 512m
+    tmpfs: ["/tmp:size=32m,mode=1777", "/workspace/apps/web/.next/cache:size=64m,uid=1000,gid=1000"]
+    depends_on:
+      api: {condition: service_healthy}
+
+  gateway:
+    <<: *runtime
+    image: nginx:1.28.0-alpine
+    restart: unless-stopped
+    entrypoint: [nginx, -g, "daemon off;"]
+    ports: ["127.0.0.1:${GATEWAY_PORT:-18080}:8080"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro,z
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health/ready]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      api: {condition: service_healthy}
+      web: {condition: service_healthy}
