@@ -116,7 +116,7 @@ func run(kind string, logger *slog.Logger) error {
 		}
 		s := httpapi.New(logger, ready)
 		authHandler := auth.Register(s.App, authConfig, pool, logger)
-		listings.Register(s.App, pool, authHandler, logger)
+		listings.Register(s.App, pool, authHandler, nil, logger)
 		listingimages.Register(s.App, pool, authHandler, imageStorage, logger)
 		listenErr := make(chan error, 1)
 		go func() { listenErr <- s.App.Listen(cfg.Address, fiber.ListenConfig{DisableStartupMessage: true}) }()
