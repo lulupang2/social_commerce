@@ -36,12 +36,22 @@ func Register(app *fiber.App, pool *pgxpool.Pool, authHandler *auth.Handler, sto
 	app.Post(Prefix+"/:id/images/uploads", h.wrap(h.startUpload))
 	app.Post(Prefix+"/:id/images/:imageId/complete", h.wrap(h.complete))
 	app.Delete(Prefix+"/:id/images/:imageId", h.wrap(h.delete))
+	if pool != nil && storage != nil {
+		if _, unavailable := storage.(unavailableStorage); !unavailable {
+			recoveryCtx, cancelRecovery := context.WithCancel(context.Background())
+			app.Hooks().OnPreShutdown(func() error {
+				cancelRecovery()
+				return nil
+			})
+			go h.Service.RunRecoveryLoop(recoveryCtx, logger)
+		}
+	}
 	return h
 }
 
 func (h *Handler) wrap(fn func(fiber.Ctx, context.Context) error) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		ctx, cancel := context.WithTimeout(c.Context(), 12*time.Second)
 		defer cancel()
 		if err := fn(c, ctx); err != nil {
 			return h.respond(c, err)

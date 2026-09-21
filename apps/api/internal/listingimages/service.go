@@ -1,7 +1,6 @@
 package listingimages
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -39,7 +38,7 @@ func (s *Service) StartUpload(ctx context.Context, memberID, listingID string, r
 	}
 	uploadURL, err := s.Storage.CreateSignedUpload(ctx, record.StoragePath)
 	if err != nil {
-		_ = s.Repo.FailUpload(ctx, memberID, listingID, record.ID)
+		s.markFailedDetached(record)
 		return UploadSlot{}, errStorage
 	}
 	return UploadSlot{ImageID: record.ID, UploadURL: uploadURL, ExpiresAt: record.UploadExpiresAt}, nil
@@ -51,13 +50,12 @@ func (s *Service) Complete(ctx context.Context, memberID, listingID, imageID str
 		return CompleteResult{}, err
 	}
 	if !record.UploadExpiresAt.After(s.now()) {
-		_ = s.Storage.Delete(ctx, record.StoragePath)
-		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+		s.quarantineDetached(record)
 		return CompleteResult{}, errExpired
 	}
 	info, err := s.Storage.Info(ctx, record.StoragePath)
 	if errors.Is(err, ErrObjectNotFound) {
-		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+		s.markFailedDetached(record)
 		return CompleteResult{}, errIncomplete
 	}
 	if err != nil {
@@ -67,31 +65,34 @@ func (s *Service) Complete(ctx context.Context, memberID, listingID, imageID str
 		info.FileSizeBytes != record.FileSizeBytes ||
 		info.FileSizeBytes <= 0 || info.FileSizeBytes > MaxFileSizeBytes ||
 		!allowedMime(info.MimeType) {
-		_ = s.Storage.Delete(ctx, record.StoragePath)
-		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+		s.quarantineDetached(record)
 		return CompleteResult{}, errInvalid
 	}
-	prefix, err := s.Storage.ReadPrefix(ctx, record.StoragePath)
+	data, err := s.Storage.ReadObject(ctx, record.StoragePath, record.FileSizeBytes)
 	if errors.Is(err, ErrObjectNotFound) {
-		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+		s.markFailedDetached(record)
 		return CompleteResult{}, errIncomplete
+	}
+	if errors.Is(err, ErrObjectTooLarge) {
+		s.quarantineDetached(record)
+		return CompleteResult{}, errInvalid
 	}
 	if err != nil {
 		return CompleteResult{}, errStorage
 	}
-	if detected := detectImageMime(prefix); detected == "" || detected != canonicalMime(record.MimeType) {
-		_ = s.Storage.Delete(ctx, record.StoragePath)
-		_ = s.Repo.FailUpload(ctx, memberID, listingID, imageID)
+	if int64(len(data)) != record.FileSizeBytes || validateImageBytes(data, record.MimeType) != nil {
+		s.quarantineDetached(record)
 		return CompleteResult{}, errInvalid
 	}
 	completed, replaced, err := s.Repo.CompleteUpload(ctx, memberID, listingID, imageID)
 	if err != nil {
+		if errors.Is(err, errExpired) {
+			s.quarantineDetached(record)
+		}
 		return CompleteResult{}, err
 	}
 	if replaced != nil {
-		if deleteErr := s.Storage.Delete(ctx, replaced.StoragePath); deleteErr == nil || errors.Is(deleteErr, ErrObjectNotFound) {
-			_ = s.Repo.FinishDelete(ctx, memberID, listingID, replaced.ID)
-		}
+		s.cleanupReplacedDetached(*replaced)
 	}
 	return CompleteResult{ImageID: completed.ID, State: ReadyState}, nil
 }
@@ -125,7 +126,43 @@ func (s *Service) Delete(ctx context.Context, memberID, listingID, imageID strin
 	if err != nil && !errors.Is(err, ErrObjectNotFound) {
 		return errStorage
 	}
-	return s.Repo.FinishDelete(ctx, memberID, listingID, imageID)
+	if err = s.Repo.FinishDelete(ctx, memberID, listingID, imageID); err == nil || errors.Is(err, errNotFound) {
+		return nil
+	}
+	if retryErr := s.finishDeleteDetached(record); retryErr == nil || errors.Is(retryErr, errNotFound) {
+		return nil
+	}
+	return err
+}
+
+func (s *Service) markFailedDetached(record ImageRecord) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = s.Repo.FailUpload(ctx, record.MemberID, record.ListingID, record.ID)
+}
+
+func (s *Service) quarantineDetached(record ImageRecord) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = s.Repo.FailUpload(ctx, record.MemberID, record.ListingID, record.ID)
+	if err := s.Storage.Delete(ctx, record.StoragePath); err != nil && !errors.Is(err, ErrObjectNotFound) {
+		return
+	}
+}
+
+func (s *Service) cleanupReplacedDetached(record ImageRecord) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.Storage.Delete(ctx, record.StoragePath); err != nil && !errors.Is(err, ErrObjectNotFound) {
+		return
+	}
+	_ = s.Repo.FinishDelete(ctx, record.MemberID, record.ListingID, record.ID)
+}
+
+func (s *Service) finishDeleteDetached(record ImageRecord) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return s.Repo.FinishDelete(ctx, record.MemberID, record.ListingID, record.ID)
 }
 
 func (s *Service) now() time.Time {
@@ -133,19 +170,6 @@ func (s *Service) now() time.Time {
 		return s.Now().UTC()
 	}
 	return time.Now().UTC()
-}
-
-func detectImageMime(prefix []byte) string {
-	if len(prefix) >= 3 && prefix[0] == 0xff && prefix[1] == 0xd8 && prefix[2] == 0xff {
-		return "image/jpeg"
-	}
-	if len(prefix) >= 8 && bytes.Equal(prefix[:8], []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}) {
-		return "image/png"
-	}
-	if len(prefix) >= 12 && string(prefix[:4]) == "RIFF" && string(prefix[8:12]) == "WEBP" {
-		return "image/webp"
-	}
-	return ""
 }
 
 func randomUUID() (string, error) {

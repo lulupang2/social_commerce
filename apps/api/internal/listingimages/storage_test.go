@@ -9,9 +9,10 @@ import (
 	"time"
 )
 
-func TestHTTPStorageLifecycle(t *testing.T) {
+func TestHTTPStorageLifecycleReadsWholeObjectWithinLimit(t *testing.T) {
 	const key = "test-service-role-key"
-	var sawUpload, sawInfo, sawSign, sawDelete bool
+	object := makeJPEG(t, 32, 24)
+	var sawUpload, sawInfo, sawRead, sawSign, sawDelete bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+key || r.Header.Get("apikey") != key {
 			t.Error("storage credentials were not attached server-side")
@@ -26,13 +27,14 @@ func TestHTTPStorageLifecycle(t *testing.T) {
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/object/info/listing-images/"):
 			sawInfo = true
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"metadata":{"size":2048,"mimetype":"image/jpeg","contentLength":2048}}`))
+			_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"size": len(object), "mimetype": "image/jpeg", "contentLength": len(object)}})
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/object/listing-images/"):
-			if r.Header.Get("Range") != "bytes=0-31" {
-				t.Error("image signature request was not range-limited")
+			sawRead = true
+			if r.Header.Get("Range") != "" {
+				t.Error("full validation read unexpectedly used a Range request")
 			}
-			w.WriteHeader(http.StatusPartialContent)
-			_, _ = w.Write([]byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10})
+			w.Header().Set("Content-Length", intString(len(object)))
+			_, _ = w.Write(object)
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/object/sign/listing-images/"):
 			sawSign = true
 			var body map[string]int
@@ -68,12 +70,12 @@ func TestHTTPStorageLifecycle(t *testing.T) {
 		t.Fatalf("signed upload failed: %v", err)
 	}
 	info, err := storage.Info(t.Context(), path)
-	if err != nil || info.MimeType != "image/jpeg" || info.FileSizeBytes != 2048 {
+	if err != nil || info.MimeType != "image/jpeg" || info.FileSizeBytes != int64(len(object)) {
 		t.Fatalf("object info failed: %#v %v", info, err)
 	}
-	prefix, err := storage.ReadPrefix(t.Context(), path)
-	if err != nil || detectImageMime(prefix) != "image/jpeg" {
-		t.Fatalf("object signature read failed: %v", err)
+	data, err := storage.ReadObject(t.Context(), path, int64(len(object)))
+	if err != nil || len(data) != len(object) || validateImageBytes(data, "image/jpeg") != nil {
+		t.Fatalf("full object validation read failed: %v", err)
 	}
 	readURL, err := storage.Sign(t.Context(), path, SignedReadTTL)
 	if err != nil || !strings.Contains(readURL, "token=read") {
@@ -82,8 +84,23 @@ func TestHTTPStorageLifecycle(t *testing.T) {
 	if err := storage.Delete(t.Context(), path); err != nil {
 		t.Fatal(err)
 	}
-	if !sawUpload || !sawInfo || !sawSign || !sawDelete {
+	if !sawUpload || !sawInfo || !sawRead || !sawSign || !sawDelete {
 		t.Fatal("storage lifecycle did not exercise every operation")
+	}
+}
+
+func TestHTTPStorageRejectsBodyAboveValidationLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "5")
+		_, _ = w.Write([]byte("12345"))
+	}))
+	defer server.Close()
+	storage, err := NewHTTPStorage(server.URL, "fixture", server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = storage.ReadObject(t.Context(), "member/listing/image", 4); err != ErrObjectTooLarge {
+		t.Fatalf("oversized object read returned %v", err)
 	}
 }
 
@@ -109,6 +126,19 @@ func TestLoadStorageAllowsUnconfiguredIsolation(t *testing.T) {
 	}
 }
 
-func errorsIsStorageUnavailable(err error) bool {
-	return err == ErrStorageUnavailable
+func errorsIsStorageUnavailable(err error) bool { return err == ErrStorageUnavailable }
+
+func intString(value int) string {
+	if value == 0 {
+		return "0"
+	}
+	buf := make([]byte, 0, 20)
+	for value > 0 {
+		buf = append(buf, byte('0'+value%10))
+		value /= 10
+	}
+	for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
+		buf[i], buf[j] = buf[j], buf[i]
+	}
+	return string(buf)
 }
