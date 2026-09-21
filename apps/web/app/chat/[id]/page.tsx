@@ -1,179 +1,237 @@
 'use client';
 
-import React, { useState, use, useRef, useEffect } from 'react';
+import type { ChatMessage } from '@icegear/domain';
+import { ChevronRight, LoaderCircle, Send, Shield } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
+import React, { use, useEffect, useRef, useState } from 'react';
+
 import { MobileShell } from '@/components/layout/MobileShell';
-import { SUMMER_CHAT_ROOMS, type MockChatMessage } from '@/lib/data/summer-mock-data';
-import { Send, Image as ImageIcon, ChevronRight, Shield } from 'lucide-react';
+import { connectRealtimeConversation, type RealtimeConversationSession } from '@/lib/chat/realtime';
+import { SUMMER_CHAT_ROOMS } from '@/lib/data/summer-mock-data';
+import { showNativeLocalNotification, triggerNativeHaptic } from '@/lib/native-bridge';
+
+interface DisplayMessage {
+  id: string;
+  sender: 'me' | 'other';
+  text: string;
+  time: string;
+}
+
+function displayTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function toDisplayMessage(message: ChatMessage, currentUserId: string): DisplayMessage {
+  return {
+    id: message.id,
+    sender: message.senderId === currentUserId ? 'me' : 'other',
+    text: message.body,
+    time: displayTime(message.createdAt),
+  };
+}
 
 export default function ChatRoomPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const chat = SUMMER_CHAT_ROOMS.find((c) => c.id === resolvedParams.id) || SUMMER_CHAT_ROOMS[0];
-
-  const [messages, setMessages] = useState<MockChatMessage[]>(chat.messages);
+  const { id } = use(params);
+  const demoChat = SUMMER_CHAT_ROOMS.find((chat) => chat.id === id) ?? null;
+  const [session, setSession] = useState<RealtimeConversationSession | null>(null);
+  const [messages, setMessages] = useState<DisplayMessage[]>(
+    demoChat?.messages.map((message) => ({ ...message, text: message.text })) ?? [],
+  );
   const [inputText, setInputText] = useState('');
+  const [isConnecting, setIsConnecting] = useState(!demoChat);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  useEffect(() => {
+    if (demoChat) return;
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+
+    void connectRealtimeConversation(id).then((result) => {
+      if (!active) return;
+      setIsConnecting(false);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+
+      setSession(result.session);
+      setMessages(
+        result.session.model.messages.map((message) =>
+          toDisplayMessage(message, result.session.model.currentUserId),
+        ),
+      );
+      void result.session.markRead();
+      unsubscribe = result.session.subscribe((message) => {
+        if (!active) return;
+        const displayMessage = toDisplayMessage(message, result.session.model.currentUserId);
+        setMessages((current) =>
+          current.some((item) => item.id === displayMessage.id)
+            ? current
+            : [...current, displayMessage],
+        );
+        if (displayMessage.sender === 'other') {
+          triggerNativeHaptic('selection');
+          if (document.hidden) {
+            showNativeLocalNotification('새 거래 메시지', displayMessage.text, `/chat/${id}`);
+          }
+          void result.session.markRead();
+        }
+      });
+    });
+
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [demoChat, id]);
 
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
+  const sendMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const body = inputText.trim();
+    if (!body || isSending) return;
+    setError('');
+    setIsSending(true);
 
-    const newMsg: MockChatMessage = {
-      id: `msg-${Date.now()}`,
-      sender: 'me',
-      text: inputText.trim(),
-      time: '방금',
-    };
-
-    setMessages((prev) => [...prev, newMsg]);
-    setInputText('');
+    try {
+      if (demoChat) {
+        setMessages((current) => [
+          ...current,
+          {
+            id: `local-message-${Date.now()}`,
+            sender: 'me',
+            text: body,
+            time: '방금',
+          },
+        ]);
+      } else if (session) {
+        const message = await session.send(body);
+        const displayMessage = toDisplayMessage(message, session.model.currentUserId);
+        setMessages((current) =>
+          current.some((item) => item.id === displayMessage.id)
+            ? current
+            : [...current, displayMessage],
+        );
+      } else {
+        setError('채팅 연결이 완료된 뒤 다시 보내주세요.');
+        return;
+      }
+      setInputText('');
+      triggerNativeHaptic('success');
+    } catch {
+      setError('메시지를 보내지 못했어요. 연결을 확인해 주세요.');
+      triggerNativeHaptic('error');
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  return (
-    <MobileShell title={chat.otherUser.name} showBack hideNav>
-      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 56px)' }}>
-        {/* Product Header Bar */}
-        <Link
-          href={`/market/${chat.listingId}`}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '10px 14px',
-            background: 'var(--surface)',
-            borderBottom: '1px solid var(--border)',
-            textDecoration: 'none',
-          }}
-        >
-          <img
-            src={chat.listingImage}
-            alt={chat.listingTitle}
-            style={{ width: 42, height: 42, borderRadius: 6, objectFit: 'cover' }}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: '0.84rem',
-                fontWeight: 700,
-                color: 'var(--text-main)',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {chat.listingTitle}
-            </div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--primary)' }}>
-              {chat.listingPrice.toLocaleString()}원
-            </div>
-          </div>
-          <ChevronRight size={16} color="var(--text-subtle)" />
-        </Link>
+  const otherUserName = demoChat?.otherUser.name ?? session?.model.otherUserName ?? '거래 채팅';
+  const listing = demoChat
+    ? {
+        id: demoChat.listingId,
+        title: demoChat.listingTitle,
+        price: demoChat.listingPrice,
+        image: demoChat.listingImage,
+      }
+    : session?.model.listing
+      ? { ...session.model.listing, image: null }
+      : null;
 
-        {/* Safety Warning */}
-        <div
-          style={{
-            background: 'var(--primary-light)',
-            padding: '8px 14px',
-            fontSize: '0.74rem',
-            color: 'var(--primary)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontWeight: 600,
-          }}
-        >
+  if (isConnecting) {
+    return (
+      <MobileShell title="채팅 연결 중" showBack hideNav>
+        <div className="empty-state">
+          <LoaderCircle className="spin" size={28} />
+          <p>실시간 대화를 불러오고 있어요.</p>
+        </div>
+      </MobileShell>
+    );
+  }
+
+  if (!demoChat && !session) {
+    return (
+      <MobileShell title="채팅을 열 수 없어요" showBack hideNav>
+        <div className="empty-state">
+          <p>{error || '대화방이 없거나 접근할 수 없어요.'}</p>
+          <Link className="btn-primary" href="/chats">
+            채팅 목록으로 돌아가기
+          </Link>
+        </div>
+      </MobileShell>
+    );
+  }
+
+  return (
+    <MobileShell title={otherUserName} showBack hideNav>
+      <div className="chat-room">
+        {listing ? (
+          <Link className="chat-listing-bar" href={`/market/${listing.id}`}>
+            {listing.image ? (
+              <Image alt={listing.title} height={44} src={listing.image} unoptimized width={44} />
+            ) : (
+              <div className="chat-listing-placeholder">SG</div>
+            )}
+            <div>
+              <strong>{listing.title}</strong>
+              <span>{listing.price.toLocaleString()}원</span>
+            </div>
+            <ChevronRight size={16} />
+          </Link>
+        ) : null}
+
+        <div className="chat-safety">
           <Shield size={14} />
-          <span>안전한 거래를 위해 직거래 또는 안전결제를 이용해주세요.</span>
+          <span>앱 밖 결제 유도와 선입금 요청을 주의하세요.</span>
         </div>
 
-        {/* Messages Scroll Area */}
-        <div
-          style={{
-            flex: 1,
-            padding: '16px',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-          }}
-        >
-          {messages.map((m) => {
-            const isMe = m.sender === 'me';
-            return (
-              <div
-                key={m.id}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: isMe ? 'flex-end' : 'flex-start',
-                }}
-              >
-                <div className={isMe ? 'chat-bubble-me' : 'chat-bubble-other'}>{m.text}</div>
-                <span
-                  style={{
-                    fontSize: '0.7rem',
-                    color: 'var(--text-subtle)',
-                    marginTop: 3,
-                    padding: '0 4px',
-                  }}
-                >
-                  {m.time}
-                </span>
+        <div aria-live="polite" className="chat-message-list">
+          {messages.map((message) => (
+            <div className={`chat-message ${message.sender}`} key={message.id}>
+              <div className={message.sender === 'me' ? 'chat-bubble-me' : 'chat-bubble-other'}>
+                {message.text}
               </div>
-            );
-          })}
+              <time>{message.time}</time>
+            </div>
+          ))}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Composer Form */}
-        <form
-          onSubmit={handleSend}
-          style={{
-            padding: '10px 14px calc(10px + env(safe-area-inset-bottom, 0px))',
-            background: 'var(--surface)',
-            borderTop: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <button
-            type="button"
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 6,
-              color: 'var(--text-muted)',
-            }}
-            aria-label="사진 전송"
-          >
-            <ImageIcon size={22} />
-          </button>
+        {error ? (
+          <p className="chat-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <form className="chat-composer" onSubmit={(event) => void sendMessage(event)}>
+          <label className="visually-hidden" htmlFor="chat-message">
+            메시지
+          </label>
           <input
-            type="text"
             className="form-input"
-            placeholder="메시지를 입력하세요..."
+            id="chat-message"
+            maxLength={10000}
+            onChange={(event) => setInputText(event.target.value)}
+            placeholder="메시지를 입력하세요"
             value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            style={{ borderRadius: 'var(--radius-full)', padding: '10px 16px' }}
           />
           <button
-            type="submit"
+            aria-label="메시지 보내기"
             className="btn-primary"
-            style={{ width: 42, height: 42, padding: 0, borderRadius: '50%', flexShrink: 0 }}
-            aria-label="전송"
+            disabled={isSending || !inputText.trim()}
+            type="submit"
           >
-            <Send size={18} />
+            {isSending ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}
           </button>
         </form>
       </div>

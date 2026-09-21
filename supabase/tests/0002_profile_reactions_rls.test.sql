@@ -19,8 +19,8 @@ $$;
 
 insert into public.sports (id, slug, name, description)
 values
-  ('11111111-1111-4111-8111-111111111111', 'ski', 'Ski', 'Test reference sport'),
-  ('22222222-2222-4222-8222-222222222222', 'hockey', 'Hockey', 'Test reference sport')
+  ('11111111-1111-4111-8111-111111111111', 'surf', '서핑', 'Test reference sport'),
+  ('22222222-2222-4222-8222-222222222222', 'tennis', '테니스', 'Test reference sport')
 on conflict (slug) do update
 set is_active = true;
 
@@ -109,7 +109,7 @@ values
   (
     'b1000000-0000-4000-8000-000000000001',
     'a1000000-0000-4000-8000-000000000001',
-    (select id from public.sports where slug = 'ski'),
+    (select id from public.sports where slug = 'surf'),
     'Active post',
     'An approved post used by the reaction contract test.',
     'active',
@@ -118,7 +118,7 @@ values
   (
     'b1000000-0000-4000-8000-000000000002',
     'a1000000-0000-4000-8000-000000000001',
-    (select id from public.sports where slug = 'ski'),
+    (select id from public.sports where slug = 'surf'),
     'Draft post',
     'A private draft must not accept reactions.',
     'draft',
@@ -138,7 +138,7 @@ insert into public.community_posts (
 values (
   'b1000000-0000-4000-8000-000000000003',
   'a1000000-0000-4000-8000-000000000002',
-  (select id from public.sports where slug = 'hockey'),
+  (select id from public.sports where slug = 'tennis'),
   'question',
   'Other author draft',
   'This draft must not expose its author.',
@@ -158,7 +158,7 @@ insert into public.listings (
 values (
   'c1000000-0000-4000-8000-000000000001',
   'a1000000-0000-4000-8000-000000000001',
-  (select id from public.sports where slug = 'ski'),
+  (select id from public.sports where slug = 'surf'),
   'Approved seller listing',
   100,
   'active',
@@ -234,10 +234,10 @@ select lives_ok(
     )
     values (
       'a1000000-0000-4000-8000-000000000001',
-      (select id from public.sports where slug = 'ski'),
+      (select id from public.sports where slug = 'surf'),
       'intermediate',
-      '{"bootMondopointMm":255,"skiLengthCm":168}',
-      '{"discipline":"all_mountain"}'
+      '{"boardLengthFeet":5.11,"volumeLiters":32.6}',
+      '{"surfDiscipline":"shortboard"}'
     )
   $sql$,
   'an owner can store canonical sport preferences'
@@ -254,7 +254,7 @@ select is(
     insert into public.profile_sports (profile_id, sport_id)
     values (
       'a1000000-0000-4000-8000-000000000001',
-      (select id from public.sports where slug = 'ski')
+      (select id from public.sports where slug = 'surf')
     )
   $sql$),
   '23505',
@@ -266,7 +266,7 @@ select is(
     insert into public.profile_sports (profile_id, sport_id, skill_level)
     values (
       'a1000000-0000-4000-8000-000000000001',
-      (select id from public.sports where slug = 'hockey'),
+      (select id from public.sports where slug = 'tennis'),
       'professional'
     )
   $sql$),
@@ -279,7 +279,7 @@ select is(
     insert into public.profile_sports (profile_id, sport_id, size_preferences)
     values (
       'a1000000-0000-4000-8000-000000000001',
-      (select id from public.sports where slug = 'hockey'),
+      (select id from public.sports where slug = 'tennis'),
       '{"role":"admin"}'
     )
   $sql$),
@@ -292,7 +292,7 @@ select is(
     insert into public.profile_sports (profile_id, sport_id, preferences)
     values (
       'a1000000-0000-4000-8000-000000000001',
-      (select id from public.sports where slug = 'hockey'),
+      (select id from public.sports where slug = 'tennis'),
       '{"handedness":"ambidextrous"}'
     )
   $sql$),
@@ -379,7 +379,7 @@ select is(
     insert into public.profile_sports (profile_id, sport_id)
     values (
       'a1000000-0000-4000-8000-000000000001',
-      (select id from public.sports where slug = 'hockey')
+      (select id from public.sports where slug = 'tennis')
     )
   $sql$),
   '42501',

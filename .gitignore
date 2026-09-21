@@ -9,6 +9,10 @@ build/
 .expo-shared/
 
 coverage/
+
+# Go foundation: local build/test artifacts only.
+.foundation-cache/
+apps/api/bin/
 *.tsbuildinfo
 
 .env
@@ -17,3 +21,7 @@ coverage/
 
 .DS_Store
 Thumbs.db
+
+# Private signing/SSH keys must not be committed.
+*.pem
+*.key

@@ -64,10 +64,7 @@ const existingCommunityPostType: CommunityPostType = 'discussion';
 
 test('sport detail contracts expose explicit fields and validate canonical output', () => {
   assert.deepEqual(domain.LISTING_DETAIL_FIELDS_BY_SPORT.surf.required, ['sport']);
-  assert.equal(
-    domain.LISTING_DETAIL_FIELDS_BY_SPORT.surf.optional.includes('volumeLiters'),
-    true,
-  );
+  assert.equal(domain.LISTING_DETAIL_FIELDS_BY_SPORT.surf.optional.includes('volumeLiters'), true);
   assert.equal(
     domain.LISTING_DETAIL_FIELDS_BY_SPORT.tennis.optional.includes('headSizeSqIn'),
     true,
@@ -253,6 +250,30 @@ test('publication transitions enforce seller, author, and operator boundaries', 
     true,
   );
   assert.equal(
+    domain.listingPublicationTransitionSchema.safeParse({
+      actorRole: 'moderator',
+      from: 'pending_review',
+      to: 'rejected',
+    }).success,
+    true,
+  );
+  assert.equal(
+    domain.listingPublicationTransitionSchema.safeParse({
+      actorRole: 'user',
+      from: 'rejected',
+      to: 'draft',
+    }).success,
+    true,
+  );
+  assert.equal(
+    domain.listingPublicationTransitionSchema.safeParse({
+      actorRole: 'user',
+      from: 'rejected',
+      to: 'active',
+    }).success,
+    false,
+  );
+  assert.equal(
     domain.communityPublicationTransitionSchema.safeParse({
       actorRole: 'user',
       from: 'draft',
@@ -307,10 +328,8 @@ test('signed media contracts never accept public fallback paths and reject dupli
     true,
   );
   assert.equal(
-    domain.listingMediaCollectionSchema.safeParse([
-      signed,
-      { ...signed, id: SECOND_MEDIA_ID },
-    ]).success,
+    domain.listingMediaCollectionSchema.safeParse([signed, { ...signed, id: SECOND_MEDIA_ID }])
+      .success,
     false,
   );
 });
@@ -428,11 +447,76 @@ test('recommendation result accepts only auditable rule labels and reason codes'
   );
 });
 
+test('community creation, chat, and native bridge payloads reject client authority', () => {
+  assert.equal(
+    domain.createCommunityPostSchema.safeParse({
+      sport: 'tennis',
+      type: 'meetup',
+      title: '주말 코트 게스트 모집',
+      body: '일요일 오전 두 시간 복식 게스트를 모집합니다.',
+    }).success,
+    true,
+  );
+  assert.equal(
+    domain.createCommunityPostSchema.safeParse({
+      sport: 'tennis',
+      type: 'announcement',
+      title: '허용되지 않은 유형',
+      body: '서버 enum과 다른 유형은 저장할 수 없습니다.',
+      authorId: USER_ID,
+    }).success,
+    false,
+  );
+
+  const conversationId = '99999999-9999-4999-8999-999999999999';
+  assert.equal(
+    domain.createChatMessageSchema.safeParse({
+      conversationId,
+      body: '주말 직거래 가능할까요?',
+    }).success,
+    true,
+  );
+  assert.equal(
+    domain.createChatMessageSchema.safeParse({
+      conversationId,
+      body: '권한 위조',
+      senderId: USER_ID,
+    }).success,
+    false,
+  );
+
+  assert.equal(
+    domain.nativeBridgeRequestSchema.safeParse({
+      type: 'SUMMERGEAR_PICK_MEDIA',
+      requestId: 'request-1',
+      source: 'camera',
+      maxCount: 1,
+    }).success,
+    true,
+  );
+  assert.equal(
+    domain.nativeBridgeRequestSchema.safeParse({
+      type: 'SUMMERGEAR_PICK_MEDIA',
+      requestId: 'request-1',
+      source: 'camera',
+      maxCount: 20,
+      arbitraryNativeCode: true,
+    }).success,
+    false,
+  );
+});
+
 test('root and schemas entry points expose the canonical runtime validators', () => {
   assert.equal(domain.RECOMMENDATION_LABEL, '맞춤 추천');
   assert.equal(domain.recommendationResultSchema, schemaModule.recommendationResultSchema);
   assert.equal(domain.onboardingPayloadSchema, schemaModule.onboardingPayloadSchema);
   assert.equal(domain.communityReactionSchema, schemaModule.communityReactionSchema);
   assert.equal(domain.listingMediaStateSchema, schemaModule.listingMediaStateSchema);
-  assert.equal(domain.listingPublicationTransitionSchema, schemaModule.listingPublicationTransitionSchema);
+  assert.equal(domain.createCommunityPostSchema, schemaModule.createCommunityPostSchema);
+  assert.equal(domain.createChatMessageSchema, schemaModule.createChatMessageSchema);
+  assert.equal(domain.nativeBridgeRequestSchema, schemaModule.nativeBridgeRequestSchema);
+  assert.equal(
+    domain.listingPublicationTransitionSchema,
+    schemaModule.listingPublicationTransitionSchema,
+  );
 });

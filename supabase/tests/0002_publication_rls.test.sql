@@ -32,8 +32,8 @@ $$;
 
 insert into public.sports (id, slug, name, description)
 values
-  ('11111111-1111-4111-8111-111111111111', 'ski', 'Ski', 'Test reference sport'),
-  ('22222222-2222-4222-8222-222222222222', 'hockey', 'Hockey', 'Test reference sport')
+  ('11111111-1111-4111-8111-111111111111', 'surf', '서핑', 'Test reference sport'),
+  ('22222222-2222-4222-8222-222222222222', 'tennis', '테니스', 'Test reference sport')
 on conflict (slug) do update
 set is_active = true;
 
@@ -119,7 +119,7 @@ select is(
     values (
       'c2000000-0000-4000-8000-000000000099',
       'a2000000-0000-4000-8000-000000000001',
-      (select id from public.sports where slug = 'ski'),
+      (select id from public.sports where slug = 'surf'),
       'Forbidden active insert',
       10,
       'active',
@@ -138,7 +138,7 @@ select lives_ok(
     values (
       'c2000000-0000-4000-8000-000000000001',
       'a2000000-0000-4000-8000-000000000001',
-      (select id from public.sports where slug = 'ski'),
+      (select id from public.sports where slug = 'surf'),
       'Seller draft',
       10,
       'draft'
@@ -155,7 +155,7 @@ select lives_ok(
     values (
       'c2000000-0000-4000-8000-000000000002',
       'a2000000-0000-4000-8000-000000000001',
-      (select id from public.sports where slug = 'hockey'),
+      (select id from public.sports where slug = 'tennis'),
       'Second seller draft',
       20,
       'draft'
@@ -359,6 +359,36 @@ select is(
 
 select lives_ok(
   $sql$
+    update public.listings
+    set status = 'pending_review'
+    where id = 'c2000000-0000-4000-8000-000000000002'
+  $sql$,
+  'an operator can move a draft into review'
+);
+
+select lives_ok(
+  $sql$
+    update public.listings
+    set status = 'rejected'
+    where id = 'c2000000-0000-4000-8000-000000000002'
+  $sql$,
+  'a moderator can reject a pending listing'
+);
+
+select is(
+  (
+    select count(*)::bigint
+    from public.publication_audit_events
+    where actor_id = 'a2000000-0000-4000-8000-000000000003'
+      and target_id = 'c2000000-0000-4000-8000-000000000002'
+      and action = 'reject'
+  ),
+  1::bigint,
+  'listing rejection is audited'
+);
+
+select lives_ok(
+  $sql$
     update public.community_posts
     set status = 'active'
     where id = 'b2000000-0000-4000-8000-000000000001'
@@ -488,7 +518,7 @@ select is(
     where id = 'c2000000-0000-4000-8000-000000000002'
   ),
   0::bigint,
-  'anonymous callers cannot read a draft listing'
+  'anonymous callers cannot read a rejected listing'
 );
 
 select is(

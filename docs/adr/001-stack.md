@@ -1,5 +1,7 @@
 # ADR 001: SummerGear 하계 스포츠 및 모바일 퍼스트 Next.js + WebView 스택 선정
 
+> 2026-09-18 부분 대체: 백엔드 책임은 [ADR 003](003-go-backend-and-social-auth.md)으로 변경합니다. Next.js·Expo 방향은 유지하며 아래 내용은 결정 당시 이력입니다.
+
 - **상태:** 채택 및 구현 완료 (Accepted & Implemented)
 - **작성일:** 2026-08-20
 - **범위:** SummerGear MVP 모노레포 아키텍처

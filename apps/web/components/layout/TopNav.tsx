@@ -10,12 +10,19 @@ interface TopNavProps {
   showBack?: boolean;
 }
 
+const TOP_LEVEL_PATHS: Record<string, true> = {
+  '/': true,
+  '/market': true,
+  '/community': true,
+  '/chats': true,
+  '/profile': true,
+};
+
 export function TopNav({ title, showBack }: TopNavProps) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const isRoot = pathname === '/';
-  const shouldShowBack = showBack ?? !isRoot;
+  const shouldShowBack = showBack ?? TOP_LEVEL_PATHS[pathname] !== true;
 
   return (
     <header className="top-nav">
@@ -35,12 +42,12 @@ export function TopNav({ title, showBack }: TopNavProps) {
           >
             <ArrowLeft size={22} color="var(--text-main)" />
           </button>
-        ) : (
+        ) : !title ? (
           <Link href="/" className="top-nav-logo">
             <Waves size={24} color="var(--primary)" />
             <span>SummerGear</span>
           </Link>
-        )}
+        ) : null}
 
         {title && <span className="top-nav-title">{title}</span>}
       </div>

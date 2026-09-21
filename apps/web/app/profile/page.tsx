@@ -1,40 +1,112 @@
 'use client';
 
+import type { SkillLevel } from '@icegear/domain';
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { MobileShell } from '@/components/layout/MobileShell';
 import {
-  User,
-  Settings,
-  Heart,
-  Package,
-  FileText,
-  Sliders,
+  Bell,
   ChevronRight,
+  FileText,
+  Heart,
+  LoaderCircle,
+  Package,
+  Settings,
   ShieldCheck,
-  Waves,
-  Trophy,
   Sparkles,
-  LogOut,
+  Trophy,
+  Waves,
 } from 'lucide-react';
+import { requestNativePushToken, triggerNativeHaptic } from '@/lib/native-bridge';
+import { useProfile } from '@/lib/profile/use-profile';
+import { registerPushToken } from '@/lib/supabase/mutations';
+
+const SURF_SKILL_LABELS: Record<SkillLevel, string> = {
+  beginner: '입문 · 소프트보드/롱보드',
+  intermediate: '중급 · 숏보드/펀보드',
+  advanced: '상급 · 퍼포먼스 숏보드',
+  expert: '전문 · 고성능 보드',
+};
+
+const TENNIS_SKILL_LABELS: Record<SkillLevel, string> = {
+  beginner: '입문 · NTRP 1.5~2.5',
+  intermediate: '중급 · NTRP 3.0~3.5',
+  advanced: '상급 · NTRP 4.0~4.5',
+  expert: '선수급 · NTRP 5.0+',
+};
 
 export default function ProfilePage() {
+  const { profile, source, saveSkills } = useProfile();
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
-  const [profile, setProfile] = useState({
-    displayName: '서퍼앤테니스러버',
-    handle: '@summer_rider',
-    location: '강원도 양양 / 서울 송파',
-    surfSkill: '중급 (숏보드/펀보드)',
-    surfBoardPref: '5\'11" ~ 7\'2" (32L~47L)',
-    tennisSkill: '구력 3년 (NTRP 3.5)',
-    tennisRacketPref: '100 sq.in, 300g, 2그립',
-    transactionCount: 8,
-    savedCount: 14,
-  });
+  const [draftSurfSkill, setDraftSurfSkill] = useState<SkillLevel>(profile.surfSkill);
+  const [draftTennisSkill, setDraftTennisSkill] = useState<SkillLevel>(profile.tennisSkill);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const [preferenceError, setPreferenceError] = useState('');
+  const [notificationState, setNotificationState] = useState<
+    'idle' | 'loading' | 'enabled' | 'error'
+  >('idle');
+  const [notificationMessage, setNotificationMessage] = useState(
+    '거래 메시지와 검토 결과를 놓치지 않도록 알려드려요.',
+  );
+
+  const enableNotifications = async () => {
+    setNotificationState('loading');
+    try {
+      const token = await requestNativePushToken();
+      if (!token) {
+        setNotificationState('error');
+        setNotificationMessage('푸시 알림은 SummerGear 모바일 앱에서 켤 수 있어요.');
+        return;
+      }
+
+      const result = await registerPushToken(token.token, token.platform);
+      if (!result.ok) {
+        setNotificationState('error');
+        setNotificationMessage(result.message);
+        triggerNativeHaptic('error');
+        return;
+      }
+
+      setNotificationState('enabled');
+      setNotificationMessage('이 기기로 거래 알림을 받을 수 있어요.');
+      triggerNativeHaptic('success');
+    } catch {
+      setNotificationState('error');
+      setNotificationMessage('알림 권한을 확인하지 못했어요. 기기 설정을 확인해 주세요.');
+      triggerNativeHaptic('error');
+    }
+  };
+
+  const openPreferences = () => {
+    setDraftSurfSkill(profile.surfSkill);
+    setDraftTennisSkill(profile.tennisSkill);
+    setPreferenceError('');
+    setShowOnboardingModal(true);
+  };
+
+  const savePreferences = async () => {
+    setIsSavingPreferences(true);
+    setPreferenceError('');
+    const result = await saveSkills(draftSurfSkill, draftTennisSkill);
+    setIsSavingPreferences(false);
+    if (!result.ok) {
+      setPreferenceError(result.message);
+      triggerNativeHaptic('error');
+      return;
+    }
+    setShowOnboardingModal(false);
+    triggerNativeHaptic('success');
+  };
 
   return (
     <MobileShell title="마이페이지">
       <div style={{ paddingBottom: 30 }}>
+        {source === 'demo' ? (
+          <div className="demo-mode-banner">
+            <span>DEMO</span> 로그인하면 내 프로필과 맞춤 설정을 Supabase에 저장해요.
+          </div>
+        ) : null}
         {/* Profile Card Header */}
         <div
           style={{
@@ -44,10 +116,13 @@ export default function ProfilePage() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <img
+            <Image
+              alt="SummerGear 프로필"
+              height={64}
               src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80"
-              alt="profile"
-              style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover' }}
+              style={{ borderRadius: '50%', objectFit: 'cover' }}
+              unoptimized
+              width={64}
             />
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
@@ -132,7 +207,7 @@ export default function ProfilePage() {
               <h3 style={{ fontSize: '0.98rem', fontWeight: 800 }}>내 스포츠 & 장비 맞춤 설정</h3>
             </div>
             <button
-              onClick={() => setShowOnboardingModal(true)}
+              onClick={openPreferences}
               style={{
                 fontSize: '0.8rem',
                 color: 'var(--primary)',
@@ -169,7 +244,7 @@ export default function ProfilePage() {
                 <span>서핑 (Surf)</span>
               </div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                실력: <strong>{profile.surfSkill}</strong>
+                실력: <strong>{SURF_SKILL_LABELS[profile.surfSkill]}</strong>
               </div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 선호 스펙: <strong>{profile.surfBoardPref}</strong>
@@ -198,7 +273,7 @@ export default function ProfilePage() {
                 <span>테니스 (Tennis)</span>
               </div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                실력: <strong>{profile.tennisSkill}</strong>
+                실력: <strong>{TENNIS_SKILL_LABELS[profile.tennisSkill]}</strong>
               </div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 선호 스펙: <strong>{profile.tennisRacketPref}</strong>
@@ -206,6 +281,25 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        <section className="profile-notification-card">
+          <span className="profile-notification-icon">
+            <Bell size={20} />
+          </span>
+          <div>
+            <strong>거래 알림</strong>
+            <p>{notificationMessage}</p>
+          </div>
+          <button
+            className={notificationState === 'enabled' ? 'enabled' : ''}
+            disabled={notificationState === 'loading' || notificationState === 'enabled'}
+            onClick={() => void enableNotifications()}
+            type="button"
+          >
+            {notificationState === 'loading' ? <LoaderCircle className="spin" size={15} /> : null}
+            {notificationState === 'enabled' ? '켜짐' : '켜기'}
+          </button>
+        </section>
 
         {/* Menu Links */}
         <div
@@ -314,7 +408,7 @@ export default function ProfilePage() {
               }}
             >
               <Settings size={18} color="var(--text-muted)" />
-              <span>계정 및 알림 설정</span>
+              <span>로그인 / 계정 관리</span>
             </div>
             <ChevronRight size={16} color="var(--text-subtle)" />
           </Link>
@@ -357,12 +451,14 @@ export default function ProfilePage() {
               <label className="form-label">서핑 실력 레벨</label>
               <select
                 className="form-select"
-                value={profile.surfSkill}
-                onChange={(e) => setProfile({ ...profile, surfSkill: e.target.value })}
+                value={draftSurfSkill}
+                onChange={(e) => setDraftSurfSkill(e.target.value as SkillLevel)}
               >
-                <option value="입문 (소프트보드/롱보드)">입문 (소프트보드/롱보드)</option>
-                <option value="중급 (숏보드/펀보드)">중급 (숏보드/펀보드)</option>
-                <option value="상급 (퍼포먼스 숏보드)">상급 (퍼포먼스 숏보드)</option>
+                {Object.entries(SURF_SKILL_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -370,23 +466,31 @@ export default function ProfilePage() {
               <label className="form-label">테니스 구력 / NTRP</label>
               <select
                 className="form-select"
-                value={profile.tennisSkill}
-                onChange={(e) => setProfile({ ...profile, tennisSkill: e.target.value })}
+                value={draftTennisSkill}
+                onChange={(e) => setDraftTennisSkill(e.target.value as SkillLevel)}
               >
-                <option value="입문 / 1년 미만 (NTRP 1.5~2.5)">
-                  입문 / 1년 미만 (NTRP 1.5~2.5)
-                </option>
-                <option value="구력 1~3년 (NTRP 3.0~3.5)">구력 1~3년 (NTRP 3.0~3.5)</option>
-                <option value="구력 4년 이상 (NTRP 4.0+)">구력 4년 이상 (NTRP 4.0+)</option>
+                {Object.entries(TENNIS_SKILL_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </div>
 
+            {preferenceError ? (
+              <p className="form-error" role="alert">
+                {preferenceError}
+              </p>
+            ) : null}
             <button
-              onClick={() => setShowOnboardingModal(false)}
               className="btn-primary"
+              disabled={isSavingPreferences}
+              onClick={() => void savePreferences()}
               style={{ marginTop: 16 }}
+              type="button"
             >
-              저장 완료
+              {isSavingPreferences ? <LoaderCircle className="spin" size={17} /> : null}
+              {isSavingPreferences ? '저장 중' : '저장 완료'}
             </button>
           </div>
         </div>

@@ -1,10 +1,6 @@
 import { z } from 'zod';
 
-import {
-  isoTimestampSchema,
-  nonEmptyTrimmedTextSchema,
-  uuidSchema,
-} from './common.js';
+import { isoTimestampSchema, nonEmptyTrimmedTextSchema, uuidSchema } from './common.js';
 import { communityPostStatusSchema } from './publication.js';
 import { sportSchema } from './sports.js';
 
@@ -12,13 +8,30 @@ export const COMMUNITY_POST_TYPES = [
   'discussion',
   'question',
   'guide',
+  'meetup',
   'review',
-  'event',
-  'announcement',
 ] as const;
 export type CommunityPostType = (typeof COMMUNITY_POST_TYPES)[number];
 export const communityPostTypeSchema = z.enum(COMMUNITY_POST_TYPES);
 
+export const createCommunityPostSchema = z
+  .object({
+    sport: sportSchema.optional(),
+    type: communityPostTypeSchema,
+    title: nonEmptyTrimmedTextSchema.max(160),
+    body: nonEmptyTrimmedTextSchema.max(10_000),
+    tags: z.array(nonEmptyTrimmedTextSchema.max(40)).max(20).optional(),
+  })
+  .strict();
+export type CreateCommunityPost = z.infer<typeof createCommunityPostSchema>;
+
+export const createCommunityCommentSchema = z
+  .object({
+    postId: uuidSchema,
+    body: nonEmptyTrimmedTextSchema.max(5_000),
+  })
+  .strict();
+export type CreateCommunityComment = z.infer<typeof createCommunityCommentSchema>;
 export const COMMUNITY_REACTION_KINDS = ['like'] as const;
 export type CommunityReactionKind = (typeof COMMUNITY_REACTION_KINDS)[number];
 export const communityReactionKindSchema = z.enum(COMMUNITY_REACTION_KINDS);
@@ -51,9 +64,7 @@ export const communityReactionCollectionSchema = z
     });
   });
 
-export type CommunityReactionCollection = z.infer<
-  typeof communityReactionCollectionSchema
->;
+export type CommunityReactionCollection = z.infer<typeof communityReactionCollectionSchema>;
 
 export const communityAggregateCountsSchema = z
   .object({

@@ -13,6 +13,7 @@ export const publicationRoleSchema = z.enum(PUBLICATION_ROLES);
 export const LISTING_PUBLICATION_STATES = [
   'draft',
   'pending_review',
+  'rejected',
   'active',
   'archived',
   'removed',
@@ -27,14 +28,17 @@ export const communityPostStatusSchema = z.enum(COMMUNITY_POST_STATUSES);
 export const LISTING_PUBLICATION_TRANSITIONS = {
   user: {
     draft: ['pending_review'],
+    rejected: ['draft'],
   },
   moderator: {
-    pending_review: ['active', 'archived', 'removed'],
+    pending_review: ['active', 'rejected', 'archived', 'removed'],
+    rejected: ['draft', 'removed'],
     active: ['archived', 'removed'],
     archived: ['active', 'removed'],
   },
   admin: {
-    pending_review: ['active', 'archived', 'removed'],
+    pending_review: ['active', 'rejected', 'archived', 'removed'],
+    rejected: ['draft', 'removed'],
     active: ['archived', 'removed'],
     archived: ['active', 'removed'],
   },
@@ -72,12 +76,7 @@ export const listingPublicationTransitionSchema = z
   .strict()
   .superRefine((value, context) => {
     if (
-      !includesTransition(
-        LISTING_PUBLICATION_TRANSITIONS,
-        value.actorRole,
-        value.from,
-        value.to,
-      )
+      !includesTransition(LISTING_PUBLICATION_TRANSITIONS, value.actorRole, value.from, value.to)
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -98,12 +97,7 @@ export const communityPublicationTransitionSchema = z
   .strict()
   .superRefine((value, context) => {
     if (
-      !includesTransition(
-        COMMUNITY_PUBLICATION_TRANSITIONS,
-        value.actorRole,
-        value.from,
-        value.to,
-      )
+      !includesTransition(COMMUNITY_PUBLICATION_TRANSITIONS, value.actorRole, value.from, value.to)
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -113,9 +107,7 @@ export const communityPublicationTransitionSchema = z
     }
   });
 
-export type CommunityPublicationTransition = z.infer<
-  typeof communityPublicationTransitionSchema
->;
+export type CommunityPublicationTransition = z.infer<typeof communityPublicationTransitionSchema>;
 
 export const publicationAuditEventSchema = z
   .object({
@@ -124,7 +116,7 @@ export const publicationAuditEventSchema = z
     actorRole: publicationRoleSchema,
     targetId: uuidSchema,
     targetType: z.enum(['listing', 'community_post']),
-    action: z.enum(['publish', 'archive', 'hide', 'remove', 'restore']),
+    action: z.enum(['publish', 'reject', 'archive', 'hide', 'remove', 'restore']),
     fromStatus: z.string().trim().min(1).max(40),
     toStatus: z.string().trim().min(1).max(40),
     occurredAt: isoTimestampSchema,
@@ -132,4 +124,3 @@ export const publicationAuditEventSchema = z
   .strict();
 
 export type PublicationAuditEvent = z.infer<typeof publicationAuditEventSchema>;
-

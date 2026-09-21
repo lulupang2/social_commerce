@@ -7,7 +7,7 @@
 -- Fixed namespaces:
 --   sports       11111111... (surf) / 22222222... (tennis)
 --   auth/profile aaaaaaaa... / bbbbbbbb... / cccccccc...
---   listings     10000000-0000-4000-8000-000000000001..014
+--   listings     10000000-0000-4000-8000-000000000001..006
 --   posts        30000000-0000-4000-8000-000000000001..004
 
 begin;
@@ -201,6 +201,40 @@ values
     timestamptz '2026-08-10 17:20:00+09',
     timestamptz '2026-08-10 17:20:00+09',
     timestamptz '2026-08-10 17:20:00+09'
+  ),
+  (
+    '10000000-0000-4000-8000-000000000005',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '11111111-1111-4111-8111-111111111111',
+    'apparel',
+    '[데모] O''Neill Hyperfreak 3/2mm 풀슈트 웻슈트 (M)',
+    '담수 세척과 그늘 건조를 지켜 관리했습니다. 두 번 착용해 신축성과 지퍼 상태가 좋습니다.',
+    180000,
+    'KRW',
+    'like_new',
+    'active',
+    '{"sport":"surf","brand":"O''Neill","model":"Hyperfreak","equipmentType":"wetsuit","size":"M","wetsuitThickness":"3_2mm"}'::jsonb,
+    '제주 서귀포시 중문',
+    timestamptz '2026-08-09 11:10:00+09',
+    timestamptz '2026-08-09 11:10:00+09',
+    timestamptz '2026-08-09 11:10:00+09'
+  ),
+  (
+    '10000000-0000-4000-8000-000000000006',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '22222222-2222-4222-8222-222222222222',
+    'footwear',
+    '[데모] Nike Court Air Zoom Vapor Pro 2 올코트화 270mm',
+    '실내 하드코트에서 두 번 신었습니다. 아웃솔 마모가 거의 없고 정품 박스를 포함합니다.',
+    95000,
+    'KRW',
+    'like_new',
+    'active',
+    '{"sport":"tennis","brand":"Nike","model":"Air Zoom Vapor Pro 2","equipmentType":"shoes","shoeSizeMm":270}'::jsonb,
+    '서울 송파구 잠실동',
+    timestamptz '2026-08-08 15:30:00+09',
+    timestamptz '2026-08-08 15:30:00+09',
+    timestamptz '2026-08-08 15:30:00+09'
   )
 on conflict (id) do update
 set seller_id = excluded.seller_id,
@@ -214,6 +248,78 @@ set seller_id = excluded.seller_id,
     status = excluded.status,
     details = excluded.details,
     location_text = excluded.location_text,
+    published_at = excluded.published_at,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at;
+
+insert into public.community_posts (
+  id,
+  author_id,
+  sport_id,
+  post_type,
+  title,
+  body,
+  status,
+  published_at,
+  created_at,
+  updated_at
+)
+values
+  (
+    '30000000-0000-4000-8000-000000000001',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '11111111-1111-4111-8111-111111111111',
+    'guide',
+    '양양 입문 서퍼를 위한 라인업 에티켓과 파도 보는 법',
+    '피크 우선권과 패들 아웃 동선을 먼저 확인하세요. 입수 전 10분 동안 세트 주기와 이안류 위치를 보는 습관이 안전한 세션을 만듭니다.',
+    'active',
+    timestamptz '2026-08-14 08:00:00+09',
+    timestamptz '2026-08-14 08:00:00+09',
+    timestamptz '2026-08-14 08:00:00+09'
+  ),
+  (
+    '30000000-0000-4000-8000-000000000002',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '22222222-2222-4222-8222-222222222222',
+    'review',
+    '프로스태프 v14와 스피드 MP 한 달 사용 비교',
+    '컨트롤 중심인 프로스태프와 스핀·반발력이 좋은 스피드 MP를 번갈아 사용했습니다. 스트로크 임팩트와 발리 반응에서 느낀 차이를 정리합니다.',
+    'active',
+    timestamptz '2026-08-13 19:30:00+09',
+    timestamptz '2026-08-13 19:30:00+09',
+    timestamptz '2026-08-13 19:30:00+09'
+  ),
+  (
+    '30000000-0000-4000-8000-000000000003',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '11111111-1111-4111-8111-111111111111',
+    'meetup',
+    '[토요일] 양양 죽도 새벽 세션 카풀 두 분 모집',
+    '새벽 4시 서울 잠실에서 출발해 양양 죽도로 갑니다. 보드 적재 가능하고 세션 뒤 함께 식사할 분을 찾습니다.',
+    'active',
+    timestamptz '2026-08-12 21:00:00+09',
+    timestamptz '2026-08-12 21:00:00+09',
+    timestamptz '2026-08-12 21:00:00+09'
+  ),
+  (
+    '30000000-0000-4000-8000-000000000004',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '22222222-2222-4222-8222-222222222222',
+    'meetup',
+    '서울 반포 일요일 복식 게스트 모집',
+    '일요일 저녁 반포 코트에서 NTRP 2.5~3.5 복식 경기를 진행합니다. 매너 있게 두 시간 함께 뛸 게스트를 모집합니다.',
+    'active',
+    timestamptz '2026-08-11 18:00:00+09',
+    timestamptz '2026-08-11 18:00:00+09',
+    timestamptz '2026-08-11 18:00:00+09'
+  )
+on conflict (id) do update
+set author_id = excluded.author_id,
+    sport_id = excluded.sport_id,
+    post_type = excluded.post_type,
+    title = excluded.title,
+    body = excluded.body,
+    status = excluded.status,
     published_at = excluded.published_at,
     created_at = excluded.created_at,
     updated_at = excluded.updated_at;
