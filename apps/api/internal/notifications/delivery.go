@@ -108,40 +108,53 @@ func (s *ExpoSender) Send(ctx context.Context, token, title, body, route string)
 	return Ticket{}, errors.New("expo_ticket_rejected")
 }
 
+// Expo rejects /getReceipts requests with more than 1000 ticket IDs.
 func (s *ExpoSender) GetReceipts(ctx context.Context, ids []string) (map[string]Receipt, error) {
 	if len(ids) == 0 {
 		return map[string]Receipt{}, nil
 	}
-	payload, err := json.Marshal(struct {
-		IDs []string `json:"ids"`
-	}{IDs: ids})
-	if err != nil {
-		return nil, err
-	}
+	result := make(map[string]Receipt, len(ids))
 	endpoint := s.URL
 	if endpoint == "" {
 		endpoint = "https://exp.host/--/api/v2/push/getReceipts"
 	}
+	client := s.Client
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	for len(ids) > 0 {
+		count := min(len(ids), 1000)
+		if err := s.getReceiptBatch(ctx, client, endpoint, ids[:count], result); err != nil {
+			return nil, err
+		}
+		ids = ids[count:]
+	}
+	return result, nil
+}
+
+func (s *ExpoSender) getReceiptBatch(ctx context.Context, client *http.Client, endpoint string, ids []string, result map[string]Receipt) error {
+	payload, err := json.Marshal(struct {
+		IDs []string `json:"ids"`
+	}{IDs: ids})
+	if err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	if s.AccessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+s.AccessToken)
 	}
-	client := s.Client
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
-	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, errors.New("expo_transport_failure")
+		return errors.New("expo_transport_failure")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, errors.New("expo_http_failure")
+		return errors.New("expo_http_failure")
 	}
 	var response struct {
 		Data map[string]struct {
@@ -151,10 +164,9 @@ func (s *ExpoSender) GetReceipts(ctx context.Context, ids []string) (map[string]
 			} `json:"details"`
 		} `json:"data"`
 	}
-	if err = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&response); err != nil || response.Data == nil {
-		return nil, errors.New("expo_invalid_response")
+	if err = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&response); err != nil || response.Data == nil {
+		return errors.New("expo_invalid_response")
 	}
-	result := make(map[string]Receipt, len(response.Data))
 	for id, item := range response.Data {
 		switch item.Status {
 		case "ok":
@@ -162,10 +174,10 @@ func (s *ExpoSender) GetReceipts(ctx context.Context, ids []string) (map[string]
 		case "error":
 			result[id] = Receipt{Status: "error", Details: receiptErrorCode(item.Details.Error)}
 		default:
-			return nil, errors.New("expo_invalid_response")
+			return errors.New("expo_invalid_response")
 		}
 	}
-	return result, nil
+	return nil
 }
 
 func receiptErrorCode(code string) string {

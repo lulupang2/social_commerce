@@ -3,8 +3,10 @@ package notifications
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 )
 
@@ -143,5 +145,48 @@ func TestExpoSenderSanitizesBatchedReceiptFailures(t *testing.T) {
 	receipts, err := sender.GetReceipts(context.Background(), []string{"a", "b"})
 	if err != nil || receipts["a"].Status != "ok" || receipts["b"].Details != "expo_receipt_error" {
 		t.Fatalf("batch receipt must retain success and sanitize provider data: %+v, %v", receipts, err)
+	}
+}
+
+func TestExpoSenderGetReceiptsAcrossLargeBatches(t *testing.T) {
+	ids := make([]string, 1001)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("receipt-%04d", i)
+	}
+	var requests, returned atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			IDs []string `json:"ids"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Error(err)
+			return
+		}
+		if len(payload.IDs) == 0 || len(payload.IDs) > 1000 {
+			t.Errorf("Expo permits at most 1000 receipt IDs per request: %d", len(payload.IDs))
+		}
+		requests.Add(1)
+		reply := struct {
+			Data map[string]struct {
+				Status string `json:"status"`
+			} `json:"data"`
+		}{Data: make(map[string]struct {
+			Status string `json:"status"`
+		}, len(payload.IDs))}
+		for _, id := range payload.IDs {
+			reply.Data[id] = struct {
+				Status string `json:"status"`
+			}{Status: "ok"}
+			returned.Add(1)
+		}
+		if err := json.NewEncoder(w).Encode(reply); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	sender := &ExpoSender{URL: server.URL, Client: server.Client()}
+	receipts, err := sender.GetReceipts(context.Background(), ids)
+	if err != nil || len(receipts) != len(ids) || receipts[ids[0]].Status != "ok" || receipts[ids[len(ids)-1]].Status != "ok" || requests.Load() != 2 || returned.Load() != int32(len(ids)) {
+		t.Fatalf("large receipt batches lost results: receipts=%d requests=%d returned=%d err=%v", len(receipts), requests.Load(), returned.Load(), err)
 	}
 }
