@@ -47,6 +47,7 @@ check-db.sh는 foundation → auth → 공통 fixture runner의 DB 통합 패키
 fixture runner는 `internal/*/*integration_test.go`가 있는 모듈(현재 jobs, listingimages,
 listings, memberdata, notifications, orders, recovery, social)을 자동 선택한다. foundation/auth는
 중복 실행하지 않으며, runner가 패키지 실행 전에 격리 DB migration을 적용한다.
+Go verification 이미지에는 DB fixture 패키지 자동 발견용 `ops/nhn-rocky/in-toolchain.sh`를 포함한다.
 integration 태그의 빈 실행은 컴파일 검사이지 실제 DB 검사가 아니다.
 check-web.sh는 먼저 @icegear/domain의 dist·타입 선언과 Next route 타입을 생성한 뒤 workspace 전체 typecheck와 @icegear/web test, lint, production build를 수행한다.
 실패는 그대로 CI 실패이며 실제 키나 실패 무시 옵션을 요구하지 않는다.

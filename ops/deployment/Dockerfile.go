@@ -6,6 +6,7 @@ RUN go mod download
 COPY apps/api/ ./
 COPY supabase/migrations/ /workspace/supabase/migrations/
 COPY ops/deployment/check-go.sh ops/deployment/check-db.sh /workspace/ops/deployment/
+COPY ops/nhn-rocky/in-toolchain.sh /workspace/ops/nhn-rocky/
 
 FROM source AS verification
 RUN mkdir -p /workspace/.foundation-cache/bin && \
