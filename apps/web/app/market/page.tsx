@@ -1,44 +1,66 @@
 'use client';
 
 import { CalendarDays, Search, ShoppingBag, Waves } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { WebListingCard } from '@/components/listings/WebListingCard';
 import { MobileShell } from '@/components/layout/MobileShell';
 import { CourtTransfers } from '@/components/vertical/CourtTransfers';
 import { WaveBriefing } from '@/components/vertical/WaveBriefing';
+import { emptyCatalogFilters, useCatalog, type CatalogFilters } from '@/lib/go-listings/use-catalog';
+import { toMockListing } from '@/lib/listings/use-listings';
 import { useFavorites } from '@/lib/listings/use-favorites';
 import { useListings } from '@/lib/listings/use-listings';
 
 type MarketMode = 'gear' | 'waves' | 'courts';
-type SportFilter = 'all' | 'surf' | 'tennis';
-type CategoryFilter = 'all' | 'equipment' | 'apparel' | 'footwear' | 'accessories';
+
+const filterKeys = ['sport', 'category', 'search', 'location', 'minPrice', 'maxPrice', 'sort'] as const;
+function readFilters(): CatalogFilters {
+  const params = new URLSearchParams(window.location.search);
+  return Object.fromEntries(filterKeys.map((key) => [key, params.get(key) ?? emptyCatalogFilters[key]])) as CatalogFilters;
+}
 
 export default function MarketPage() {
-  const { listings: allListings, source } = useListings();
-  const { favorites, updateFavorite } = useFavorites();
+  const { listings: demoListings } = useListings('demo');
+  const { favorites, updateFavorite, error: favoriteError } = useFavorites();
+  const [source, setSource] = useState<'demo' | 'server'>('server');
   const [mode, setMode] = useState<MarketMode>('gear');
-  const [selectedSport, setSelectedSport] = useState<SportFilter>('all');
-  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredListings = allListings.filter((item) => {
-    const matchesSport = selectedSport === 'all' || item.sport === selectedSport;
-    const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-    const matchesSearch =
-      normalizedQuery.length === 0 ||
-      item.title.toLowerCase().includes(normalizedQuery) ||
-      item.location.toLowerCase().includes(normalizedQuery) ||
-      Object.values(item.specs).some((value) => value.toLowerCase().includes(normalizedQuery));
-    return matchesSport && matchesCategory && matchesSearch;
-  });
-
-  const resetFilters = () => {
-    setSelectedSport('all');
-    setSelectedCategory('all');
-    setSearchQuery('');
+  const [filters, setFilters] = useState<CatalogFilters>(emptyCatalogFilters);
+  const [committed, setCommitted] = useState<CatalogFilters>(emptyCatalogFilters);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const restore = () => { const next = readFilters(); setFilters(next); setCommitted(next); setReady(true); };
+    restore();
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+  useEffect(() => {
+    if (!ready) return;
+    const timer = setTimeout(() => setCommitted(filters), 250);
+    return () => clearTimeout(timer);
+  }, [filters, ready]);
+  const filtersPending = JSON.stringify(filters) !== JSON.stringify(committed);
+  const catalog = useCatalog(committed, ready && source === 'server' && !filtersPending);
+  const isLoading = !ready || filtersPending || catalog.loading;
+  const error = catalog.error;
+  const retry = catalog.retry;
+  const allListings = source === 'server'
+    ? filtersPending ? [] : catalog.items.flatMap((item) => { const mapped = toMockListing(item, 'go'); return mapped ? [mapped] : []; })
+    : demoListings;
+  const filteredListings = source === 'server' ? allListings : allListings.filter((item) =>
+    (!filters.sport || item.sport === filters.sport) &&
+    (!filters.category || item.category === filters.category) &&
+    (!filters.search || item.title.toLowerCase().includes(filters.search.trim().toLowerCase()))
+  );
+  const updateFilters = (changes: Partial<CatalogFilters>, replace = false) => {
+    const next = { ...filters, ...changes };
+    const params = new URLSearchParams();
+    for (const key of filterKeys) if (next[key] && !(key === 'sort' && next[key] === 'recent')) params.set(key, next[key]);
+    const query = params.toString();
+    window.history[replace ? 'replaceState' : 'pushState'](null, '', `/market${query ? `?${query}` : ''}`);
+    setFilters(next);
   };
+  const resetFilters = () => updateFilters(emptyCatalogFilters);
 
   return (
     <MobileShell title="썸머 마켓">
@@ -80,11 +102,13 @@ export default function MarketPage() {
 
       {mode === 'gear' ? (
         <>
-          {source === 'demo' ? (
-            <div className="demo-mode-banner">
-              <span>DEMO</span> Supabase 연결 전에도 전체 흐름을 체험할 수 있어요.
-            </div>
-          ) : null}
+          <div className="demo-mode-banner">
+            <span>{source === 'demo' ? 'DEMO' : 'SERVER'}</span>{' '}
+            {source === 'demo' ? '체험용 장비입니다. 서버 상품이나 구매 가능 재고가 아닙니다.' : '서버 매물만 표시합니다. 표시된 수는 현재 불러온 항목 기준입니다.'}
+            <button className="btn-outline" type="button" onClick={() => setSource(source === 'demo' ? 'server' : 'demo')}>
+              {source === 'demo' ? '서버 매물 보기' : '데모 체험하기'}
+            </button>
+          </div>
 
           <div className="search-container">
             <div className="search-input-wrapper">
@@ -95,35 +119,35 @@ export default function MarketPage() {
               <input
                 className="search-input"
                 id="market-search"
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="보드, 라켓, 스펙, 거래 지역 검색"
+                onChange={(event) => updateFilters({ search: event.target.value }, true)}
+                placeholder="상품명·설명·거래 지역 검색"
                 type="search"
-                value={searchQuery}
+                value={filters.search}
               />
             </div>
           </div>
 
           <div className="sport-tabs" role="group" aria-label="스포츠 필터">
             <button
-              aria-pressed={selectedSport === 'all'}
-              className={`sport-tab ${selectedSport === 'all' ? 'active' : ''}`}
-              onClick={() => setSelectedSport('all')}
+              aria-pressed={filters.sport === ''}
+              className={`sport-tab ${filters.sport === '' ? 'active' : ''}`}
+              onClick={() => updateFilters({ sport: '' })}
               type="button"
             >
               전체
             </button>
             <button
-              aria-pressed={selectedSport === 'surf'}
-              className={`sport-tab ${selectedSport === 'surf' ? 'active' : ''}`}
-              onClick={() => setSelectedSport('surf')}
+              aria-pressed={filters.sport === 'surf'}
+              className={`sport-tab ${filters.sport === 'surf' ? 'active' : ''}`}
+              onClick={() => updateFilters({ sport: 'surf' })}
               type="button"
             >
               🏄‍♂️ 서핑
             </button>
             <button
-              aria-pressed={selectedSport === 'tennis'}
-              className={`sport-tab ${selectedSport === 'tennis' ? 'active' : ''}`}
-              onClick={() => setSelectedSport('tennis')}
+              aria-pressed={filters.sport === 'tennis'}
+              className={`sport-tab ${filters.sport === 'tennis' ? 'active' : ''}`}
+              onClick={() => updateFilters({ sport: 'tennis' })}
               type="button"
             >
               🎾 테니스
@@ -132,42 +156,65 @@ export default function MarketPage() {
 
           <div className="market-filter-bar">
             <p>
-              총 <strong>{filteredListings.length}</strong>개의 장비
+              {source === 'demo' ? '데모 · ' : '현재 불러온 장비 · '}
+              {isLoading ? '불러오는 중' : error && filteredListings.length === 0 ? '조회 실패' : <><strong>{filteredListings.length}</strong>개</>}
             </p>
             <label className="visually-hidden" htmlFor="category-filter">
               카테고리
             </label>
             <select
               id="category-filter"
-              onChange={(event) => setSelectedCategory(event.target.value as CategoryFilter)}
-              value={selectedCategory}
+              onChange={(event) => updateFilters({ category: event.target.value })}
+              value={filters.category}
             >
-              <option value="all">전체 카테고리</option>
+              <option value="">전체 카테고리</option>
               <option value="equipment">보드 / 라켓 / 장비</option>
               <option value="apparel">의류 / 웻슈트</option>
               <option value="footwear">신발</option>
               <option value="accessories">액세서리</option>
+              <option value="protective">보호 장비</option>
+              <option value="other">기타</option>
             </select>
           </div>
+          <div className="market-filter-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <label>지역 <input aria-label="지역" value={filters.location} maxLength={160} onChange={(event) => updateFilters({ location: event.target.value }, true)} /></label>
+            <label>최저 가격 <input aria-label="최저 가격" inputMode="numeric" value={filters.minPrice} onChange={(event) => updateFilters({ minPrice: event.target.value }, true)} /></label>
+            <label>최고 가격 <input aria-label="최고 가격" inputMode="numeric" value={filters.maxPrice} onChange={(event) => updateFilters({ maxPrice: event.target.value }, true)} /></label>
+            <label>정렬 <select aria-label="정렬" value={filters.sort} onChange={(event) => updateFilters({ sort: event.target.value })}>
+              <option value="recent">최신순</option><option value="price_asc">낮은 가격순</option><option value="price_desc">높은 가격순</option>
+            </select></label>
+          </div>
+          {favoriteError ? <p className="form-error" role="alert">{favoriteError}</p> : null}
 
-          {filteredListings.length === 0 ? (
-            <div className="empty-state compact">
-              <p>조건에 맞는 장비가 없어요. 검색어나 필터를 바꿔 보세요.</p>
-              <button className="btn-outline" onClick={resetFilters} type="button">
-                필터 초기화
-              </button>
-            </div>
+          {source === 'server' && isLoading && allListings.length === 0 ? (
+            <div className="empty-state compact" role="status">매물을 불러오고 있어요.</div>
           ) : (
-            <div className="product-grid">
-              {filteredListings.map((listing) => (
-                <WebListingCard
-                  favorite={favorites[listing.id] ?? false}
-                  key={listing.id}
-                  listing={listing}
-                  onFavorite={updateFavorite}
-                />
-              ))}
-            </div>
+            <>
+              {source === 'server' && error ? (
+                <div className="empty-state compact" role="alert">
+                  <p>{error}</p>
+                  <button className="btn-outline" onClick={retry} type="button">다시 시도</button>
+                </div>
+              ) : null}
+              {filteredListings.length === 0 && !error && !isLoading ? (
+                <div className="empty-state compact">
+                  <p>{allListings.length === 0 ? '현재 공개된 장비가 없어요.' : '조건에 맞는 장비가 없어요. 검색어나 필터를 바꿔 보세요.'}</p>
+                  {allListings.length > 0 ? <button className="btn-outline" onClick={resetFilters} type="button">필터 초기화</button> : null}
+                </div>
+              ) : (
+                <div className="product-grid">
+                  {filteredListings.map((listing) => (
+                    <WebListingCard
+                      favorite={favorites[listing.dataSource === 'go' ? `go:${listing.id}` : listing.id] ?? false}
+                      key={`${listing.dataSource ?? 'demo'}:${listing.id}`}
+                      listing={listing}
+                      onFavorite={updateFavorite}
+                    />
+                  ))}
+                </div>
+              )}
+              {source === 'server' && catalog.nextCursor ? <button className="btn-outline" type="button" disabled={isLoading} onClick={() => void catalog.loadMore()}>{isLoading ? '다음 상품 불러오는 중' : '상품 더 보기'}</button> : null}
+            </>
           )}
         </>
       ) : null}

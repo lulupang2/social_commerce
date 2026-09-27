@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SummerGear Go API",
-    "version": "0.4.0",
+    "version": "0.6.0",
     "description": "Go service-session authentication, listings, and private listing image lifecycle. Social provider credentials and Storage credentials may remain disabled in isolated test environments."
   },
   "paths": {
@@ -97,7 +97,11 @@
     "/api/v1/auth/dev-login": {
       "post": {
         "operationId": "authDevLogin",
-        "description": "Test-only login. The route is registered only when AUTH_DEV_LOGIN_ENABLED=true.",
+        "description": "Test-only login. Optional role body is accepted only for isolated fixture DB roles; public preview keeps the no-body login.",
+        "requestBody": { "required": false, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["role"], "additionalProperties": false,
+          "properties": { "role": { "type": "string", "enum": ["buyer_a", "buyer_b", "seller_a", "seller_b", "reviewer"] } }
+        } } } },
         "responses": {
           "200": {
             "description": "Test member service session created or rotated.",
@@ -283,6 +287,159 @@
         }
       }
     },
+    "/api/v1/auth/fixture-roles": {
+      "get": {
+        "operationId": "fixtureRoles",
+        "description": "Registered only with dev login in an isolated fixture test DB; never in public preview.",
+        "responses": {
+          "200": {
+            "description": "Allowed fixture account roles.",
+            "content": { "application/json": { "schema": {
+              "type": "object", "required": ["roles"], "additionalProperties": false,
+              "properties": { "roles": { "type": "array", "items": { "type": "string", "enum": ["buyer_a", "buyer_b", "seller_a", "seller_b", "reviewer"] } } }
+            } } }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "getMemberProfile",
+        "responses": {
+          "200": { "description": "Current Go session member, skills, and visible saved/confirmed-order counts.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberProfile" } } } },
+          "401": { "description": "Session required.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Database unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "put": {
+        "operationId": "updateMemberProfile",
+        "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberProfileUpdate" } } } },
+        "responses": {
+          "200": { "description": "Saved member settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberProfile" } } } },
+          "400": { "description": "Invalid settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Session required.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Origin or CSRF rejected.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Database unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/recommendations": {
+      "get": { "operationId": "recommendPurchasableListings", "description": "Newest 200 active, seller-approved, in-stock listings form the candidate pool; return up to 12 scored by stored sport (4), matching listing skill (1), budget (2), and region (2). Score ties sort by publication time then ID descending. Anonymous or unset preferences get latest eligible items without fabricated reasons.", "responses": {
+        "200": { "description": "Ranked eligible listings with only actual-match reasons.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecommendationList" } } } },
+        "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+      } }
+    },
+    "/api/v1/me/listings": {
+      "get": {
+        "operationId": "myListings",
+        "responses": {
+          "200": { "description": "All statuses owned by current Go member, newest first.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PersonalListings" } } } },
+          "401": { "description": "Session required.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Database or image signing unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/me/favorites": {
+      "get": {
+        "operationId": "myFavorites",
+        "responses": {
+          "200": { "description": "Active Go listings saved by current member, newest favorite first.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PersonalListings" } } } },
+          "401": { "description": "Session required.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Database or image signing unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/me/favorites/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/ListingID" }],
+      "put": {
+        "operationId": "saveFavorite",
+        "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }],
+        "responses": {
+          "200": { "description": "Current member saved an active Go listing.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FavoriteResult" } } } },
+          "400": { "description": "Invalid listing ID.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Session required.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Origin or CSRF rejected.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Listing not active or not found.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Database unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "delete": {
+        "operationId": "removeFavorite",
+        "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }],
+        "responses": {
+          "200": { "description": "Current member no longer saves the listing.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FavoriteResult" } } } },
+          "400": { "description": "Invalid listing ID.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Session required.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Origin or CSRF rejected.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Database unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/reviews": {
+      "get": { "operationId": "listPendingReviews", "description": "Only an enrolled reviewer in the isolated test fixture can see pending listings and signed ready images.",
+        "responses": {
+          "200": { "description": "Pending listings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PersonalListings" } } } },
+          "401": { "$ref": "#/components/responses/SessionRequired" },
+          "403": { "description": "Reviewer access required.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/reviews/{id}/approve": {
+      "post": { "operationId": "approveListing", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }],
+        "description": "Database-authorized operator transitions pending_review to active; never provisions seller or inventory.",
+        "responses": {
+          "200": { "description": "Approved listing.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Listing" } } } },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/SessionRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/reviews/{id}/reject": {
+      "post": { "operationId": "rejectListing", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["reason"], "additionalProperties": false, "properties": { "reason": { "type": "string", "minLength": 1, "maxLength": 1000 } } } } } },
+        "responses": {
+          "200": { "description": "Rejected listing and audited reason.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Listing" } } } },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/SessionRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/listings/{id}/resubmit": {
+      "post": { "operationId": "resubmitListing", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }],
+        "description": "Owner transitions rejected listing to pending_review after editing. Active listing and ready image changes remain forbidden.",
+        "responses": {
+          "200": { "description": "Submitted for re-review.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Listing" } } } },
+          "401": { "$ref": "#/components/responses/SessionRequired" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/listings/{id}/reviews": {
+      "get": { "operationId": "getListingReviewHistory", "parameters": [{ "$ref": "#/components/parameters/ListingID" }],
+        "responses": {
+          "200": { "description": "Owner/reviewer audit history, newest first.", "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ReviewEvent" } } } } } } },
+          "401": { "$ref": "#/components/responses/SessionRequired" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/listings/{id}/availability": {
+      "get": { "operationId": "listingAvailability", "parameters": [{ "$ref": "#/components/parameters/ListingID" }],
+        "responses": {
+          "200": { "description": "Public listing eligibility; checked again atomically on order creation.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ListingAvailability" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/v1/listings": {
       "get": {
         "operationId": "listListings",
@@ -312,11 +469,17 @@
               "type": "string",
               "maxLength": 120
             }
-          }
+          },
+          { "name": "location", "in": "query", "schema": { "type": "string", "maxLength": 160 } },
+          { "name": "minPrice", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 999999999999 } },
+          { "name": "maxPrice", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 999999999999 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["recent", "price_asc", "price_desc"], "default": "recent" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 24 } },
+          { "name": "cursor", "in": "query", "schema": { "type": "string", "maxLength": 1024 }, "description": "Opaque cursor bound to normalized filters and sort." }
         ],
         "responses": {
           "200": {
-            "description": "Public active Go-owned listings.",
+            "description": "Public active listings ordered by the requested sort and unique ID tie-breaker. No total count is calculated.",
             "content": {
               "application/json": {
                 "schema": {
@@ -762,9 +925,841 @@
           }
         }
       }
+    },
+    "/api/v1/orders": {
+      "post": {
+        "operationId": "createOrder",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created with inventory reservation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or malformed UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF, origin or ownership rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order or purchasable listing not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stock or order state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or payment provider unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Single server listing, quantity 1. Repeating a pending purchase for the same buyer and listing returns the same order. Stock must be explicitly provisioned for an approved seller."
+      },
+      "get": {
+        "operationId": "listOrders",
+        "responses": {
+          "200": {
+            "description": "Buyer's orders.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or malformed UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF, origin or ownership rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order or purchasable listing not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stock or order state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or payment provider unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{orderId}": {
+      "get": {
+        "operationId": "getOrder",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or malformed UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF, origin or ownership rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order or purchasable listing not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stock or order state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or payment provider unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/orders/{orderId}/cancel": {
+      "post": {
+        "operationId": "cancelOrder",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unpaid order cancelled; duplicate cancellation does not release stock twice.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelOrderResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or malformed UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF, origin or ownership rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order or purchasable listing not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stock or order state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or payment provider unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/payments/toss/webhook": {
+      "post": {
+        "operationId": "paymentWebhook",
+        "description": "Untrusted PAYMENT_STATUS_CHANGED hint, deduplicated by provider and transmission ID. Only authoritative PG lookup can update an existing payment attempt. Customer/card payloads are not persisted.",
+        "responses": {
+          "200": {
+            "description": "Event durably received; claimed status is not trusted."
+          },
+          "400": {
+            "description": "Invalid event.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or configured payment provider unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "tosspayments-webhook-transmission-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "eventType",
+                  "data"
+                ],
+                "properties": {
+                  "eventType": {
+                    "const": "PAYMENT_STATUS_CHANGED"
+                  },
+                  "data": {
+                    "type": "object",
+                    "required": [
+                      "orderId",
+                      "paymentKey",
+                      "status"
+                    ],
+                    "properties": {
+                      "orderId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "paymentKey": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "DONE",
+                          "CANCELED",
+                          "PARTIAL_CANCELED",
+                          "ABORTED",
+                          "EXPIRED"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{orderId}/payments/confirm": {
+      "post": {
+        "operationId": "confirmPayment",
+        "description": "Test-only approval using configured Toss widget test credentials, or the isolated fake fixture gateway when keys are absent. Server validates buyer, amount and provider. Pending outcomes require authoritative lookup; replays do not approve again.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmPaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server verified payment result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Approval outcome is pending; poll order status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or malformed UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF, origin or ownership rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order or purchasable listing not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stock or order state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or payment provider unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{orderId}/refunds": {
+      "post": {
+        "operationId": "refundOrder",
+        "description": "Buyer-only full test cancellation before handover. CSRF required. One durable cancellation per order; same provider idempotency key on retry. No partial refunds or seller payouts.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server verified payment result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Cancellation outcome pending; poll order status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or malformed UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF, origin or ownership rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order or purchasable listing not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stock or order state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or payment provider unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{orderId}/payments/config": {
+      "get": {
+        "operationId": "getPaymentConfig",
+        "description": "Buyer-only public SDK configuration. No secret key is returned.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrderID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public test payment configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "provider",
+                    "clientKey",
+                    "customerKey"
+                  ],
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "fake_toss",
+                        "toss_test"
+                      ]
+                    },
+                    "clientKey": {
+                      "type": "string"
+                    },
+                    "customerKey": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or malformed UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF, origin or ownership rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order or purchasable listing not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stock or order state conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage or payment provider unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/seller-application": {
+      "get": { "operationId": "mySellerStatus", "description": "Current member's latest seller application, active approved seller, and DB-backed operator role.", "responses": { "200": { "description": "Seller status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SellerStatus" } } } }, "401": { "$ref": "#/components/responses/SessionRequired" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } },
+      "post": { "operationId": "applySeller", "description": "Member applies; approval is operator-only and a pending application cannot be duplicated.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["type", "displayName"], "additionalProperties": false, "properties": { "type": { "type": "string", "enum": ["individual", "business"] }, "displayName": { "type": "string", "minLength": 1, "maxLength": 120 } } } } } }, "responses": { "201": { "description": "Pending application.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SellerApplication" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
+    "/api/v1/seller-applications": { "get": { "operationId": "pendingSellerApplications", "description": "DB-backed operator queue.", "responses": { "200": { "description": "Pending applications.", "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/SellerApplication" } } } } } } }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" } } } },
+    "/api/v1/seller-applications/{id}/approve": { "post": { "operationId": "approveSellerApplication", "description": "Operator creates approved seller and owner membership atomically; cannot review own application.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "reason": { "type": "string", "maxLength": 0 } } } } } }, "responses": { "200": { "description": "Approved application.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SellerApplication" } } } }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/api/v1/seller-applications/{id}/reject": { "post": { "operationId": "rejectSellerApplication", "description": "Operator rejects application with a reason.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["reason"], "properties": { "reason": { "type": "string", "minLength": 1, "maxLength": 1000 } } } } } }, "responses": { "200": { "description": "Rejected application.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SellerApplication" } } } }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/api/v1/listings/{id}/inventory": {
+      "get": { "operationId": "ownerInventory", "description": "Listing owner sees registered stock or null.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }], "responses": { "200": { "description": "Inventory.", "content": { "application/json": { "schema": { "type": "object", "required": ["inventory"], "properties": { "inventory": { "oneOf": [{ "type": "null" }, { "$ref": "#/components/schemas/InventoryView" }] } } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "put": { "operationId": "setOwnerInventory", "description": "Approved seller and active owner listing only. Unit-one stock is not replenished while reserved or consumed.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["availableQuantity"], "additionalProperties": false, "properties": { "availableQuantity": { "type": "integer", "enum": [0, 1] } } } } } }, "responses": { "200": { "description": "Updated inventory.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InventoryView" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
+    "/api/v1/seller/orders": { "get": { "operationId": "listSellerOrders", "description": "Latest 50 orders of current member's active seller memberships; payment approval is distinct from handover.", "responses": { "200": { "description": "Seller orders.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderListResponse" } } } }, "401": { "$ref": "#/components/responses/SessionRequired" } } } },
+    "/api/v1/seller/orders/{id}/accept": { "post": { "operationId": "acceptSellerOrder", "description": "Active seller membership transitions approved, confirmed awaiting_acceptance order to accepted. Replays are idempotent.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false } } } }, "responses": { "200": { "description": "Accepted order.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderView" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/api/v1/seller/orders/{id}/hand-over": { "post": { "operationId": "handOverSellerOrder", "description": "Active seller transitions accepted order to handed_over; full buyer refund is no longer permitted.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false } } } }, "responses": { "200": { "description": "Handed-over order.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderView" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/api/v1/orders/{orderId}/receive": { "post": { "operationId": "receiveOrder", "description": "Buyer confirms receipt after handover; this is completion, not payment approval.", "parameters": [{ "$ref": "#/components/parameters/OrderID" }, { "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false } } } }, "responses": { "200": { "description": "Completed order.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderView" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/api/v1/orders/{orderId}/fulfillment": { "get": { "operationId": "orderFulfillmentHistory", "description": "Buyer or active seller membership sees audited fulfillment transitions.", "parameters": [{ "$ref": "#/components/parameters/OrderID" }], "responses": { "200": { "description": "Fulfillment event history.", "content": { "application/json": { "schema": { "type": "object", "required": ["events"], "properties": { "events": { "type": "array", "items": { "$ref": "#/components/schemas/FulfillmentEvent" } } } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } } },
+    "/api/v1/operator/recovery": { "get": { "operationId": "operatorRecoveryDashboard", "description": "DB-authorized operator-only unresolved/failed payment attempts, safe retry history, failed River jobs, failed pushes and unverified payment events. No provider keys or tokens are returned.", "responses": { "200": { "description": "Recovery dashboard.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecoveryDashboard" } } } }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" } } } },
+    "/api/v1/operator/recovery/{id}/recheck": { "post": { "operationId": "operatorPaymentRecheck", "description": "Queue one auditable provider-authoritative check by payment attempt ID. Never manually approve or resurrect terminal failed orders; a queued duplicate returns its original request.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["reason"], "properties": { "reason": { "type": "string", "minLength": 1, "maxLength": 500 } } } } } }, "responses": { "202": { "description": "Audited check queued.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentRecoveryRequest" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } } } },
+    "/api/v1/me/push-devices": {
+      "post": { "operationId": "registerGoPushDevice", "description": "Register a native Expo token against the current Go auth session. Re-registering transfers this physical token to the current member. Logout/expiry prevents delivery.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PushDeviceRequest" } } } }, "responses": { "200": { "description": "Device registered.", "content": { "application/json": { "schema": { "type": "object", "required": ["registered"], "properties": { "registered": { "const": true } } } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } },
+      "delete": { "operationId": "unregisterGoPushDevice", "description": "Disable this device for the current Go session; CSRF and origin required.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PushDeviceRequest" } } } }, "responses": { "204": { "description": "Device disabled or already absent." }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
+    },
+    "/api/v1/conversations": {
+      "get": { "operationId": "listConversations", "description": "Authenticated participant's conversations and unread counts.", "responses": { "200": { "description": "Conversation list.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConversationList" } } } }, "401": { "$ref": "#/components/responses/SessionRequired" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } },
+      "post": { "operationId": "startConversation", "description": "Start or return a conversation for an active listing; seller is resolved from the database. Cannot start one's own listing.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["listingId"], "additionalProperties": false, "properties": { "listingId": { "type": "string", "format": "uuid" } } } } } }, "responses": { "200": { "description": "Conversation ID.", "content": { "application/json": { "schema": { "type": "object", "required": ["conversationId"], "additionalProperties": false, "properties": { "conversationId": { "type": "string", "format": "uuid" } } } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
+    },
+    "/api/v1/conversations/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/ListingID" }],
+      "get": { "operationId": "getConversation", "description": "Participant-only cursor-paged chronological messages. Latest page by default; before loads older, after loads newer. Limit defaults to 30 and may not exceed 100. hasMore follows the requested direction.", "parameters": [{ "name": "before", "in": "query", "schema": { "type": "string" } }, { "name": "after", "in": "query", "schema": { "type": "string" } }, { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100 } }], "responses": { "200": { "description": "Bounded conversation page.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Conversation" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "404": { "$ref": "#/components/responses/NotFound" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
+    },
+    "/api/v1/conversations/{id}/messages": {
+      "parameters": [{ "$ref": "#/components/parameters/ListingID" }],
+      "post": { "operationId": "sendConversationMessage", "description": "Participant-only; same client nonce and body return the original message; changed body conflicts.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["body", "clientNonce"], "additionalProperties": false, "properties": { "body": { "type": "string", "minLength": 1, "maxLength": 5000 }, "clientNonce": { "type": "string", "format": "uuid" } } } } } }, "responses": { "201": { "description": "Created or existing message.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatMessage" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
+    },
+    "/api/v1/conversations/{id}/read": {
+      "parameters": [{ "$ref": "#/components/parameters/ListingID" }],
+      "post": { "operationId": "markConversationRead", "description": "Participant acknowledges inbound messages only through a specific inbound message from this room. Later arrivals remain unread.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["throughMessageId"], "additionalProperties": false, "properties": { "throughMessageId": { "type": "string", "format": "uuid" } } } } } }, "responses": { "204": { "description": "Bounded messages marked read." }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
+    },
+    "/api/v1/community/posts": {
+      "get": { "operationId": "listCommunityPosts", "description": "Public approved posts; likes reflect current member if authenticated.", "responses": { "200": { "description": "Public posts.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPostList" } } } }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } },
+      "post": { "operationId": "createCommunityPost", "description": "Authenticated post starts pending review, not public.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPostInput" } } } }, "responses": { "201": { "description": "Pending post.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPost" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
+    },
+    "/api/v1/me/posts": { "get": { "operationId": "listMyCommunityPosts", "description": "Author sees pending, rejected (with reason), and active posts.", "responses": { "200": { "description": "My posts.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPostList" } } } }, "401": { "$ref": "#/components/responses/SessionRequired" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } } },
+    "/api/v1/community/posts/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/ListingID" }],
+      "get": { "operationId": "getCommunityPost", "description": "Public active or author-owned post.", "responses": { "200": { "description": "Post.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPost" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "404": { "$ref": "#/components/responses/NotFound" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } },
+      "patch": { "operationId": "editCommunityPost", "description": "Owner may edit non-active post; rejected post remains rejected until resubmission.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["title", "body"], "additionalProperties": false, "properties": { "title": { "type": "string", "minLength": 4, "maxLength": 160 }, "body": { "type": "string", "minLength": 10, "maxLength": 10000 } } } } } }, "responses": { "200": { "description": "Updated post.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPost" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
+    },
+    "/api/v1/community/posts/{id}/resubmit": { "post": { "operationId": "resubmitCommunityPost", "description": "Owner transitions rejected post to pending review.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }], "responses": { "200": { "description": "Pending post.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPost" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } } },
+    "/api/v1/community/reviews": { "get": { "operationId": "listPendingCommunityPosts", "description": "Database-authorized operator only; pending posts.", "responses": { "200": { "description": "Pending posts.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPostList" } } } }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } } },
+    "/api/v1/community/reviews/{id}/approve": { "post": { "operationId": "approveCommunityPost", "description": "Database-authorized operator approves pending post and audits transition.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }], "responses": { "200": { "description": "Public post.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPost" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } } },
+    "/api/v1/community/reviews/{id}/reject": { "post": { "operationId": "rejectCommunityPost", "description": "Database-authorized operator records a rejection reason and audits transition.", "parameters": [{ "$ref": "#/components/parameters/ListingID" }, { "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["reason"], "additionalProperties": false, "properties": { "reason": { "type": "string", "minLength": 1, "maxLength": 1000 } } } } } }, "responses": { "200": { "description": "Rejected post.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityPost" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } } },
+    "/api/v1/community/posts/{id}/comments": {
+      "parameters": [{ "$ref": "#/components/parameters/ListingID" }],
+      "get": { "operationId": "listCommunityComments", "description": "Public comments of active post.", "responses": { "200": { "description": "Comments.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityCommentList" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "404": { "$ref": "#/components/responses/NotFound" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } },
+      "post": { "operationId": "addCommunityComment", "description": "Authenticated member comments on active post.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["body"], "additionalProperties": false, "properties": { "body": { "type": "string", "minLength": 1, "maxLength": 5000 } } } } } }, "responses": { "201": { "description": "Comment.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityComment" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
+    },
+    "/api/v1/community/posts/{id}/like": {
+      "parameters": [{ "$ref": "#/components/parameters/ListingID" }],
+      "put": { "operationId": "likeCommunityPost", "description": "Idempotently like an active post.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "responses": { "200": { "description": "Reaction and count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityReaction" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } },
+      "delete": { "operationId": "unlikeCommunityPost", "description": "Idempotently remove own reaction.", "parameters": [{ "$ref": "#/components/parameters/CSRFToken" }], "responses": { "200": { "description": "Reaction and count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommunityReaction" } } } }, "400": { "$ref": "#/components/responses/InvalidRequest" }, "401": { "$ref": "#/components/responses/SessionRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
     }
   },
   "components": {
+    "responses": {
+      "InvalidRequest": { "description": "Invalid request.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "SessionRequired": { "description": "Session required.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Forbidden": { "description": "Reviewer access or origin/CSRF denied.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Listing unavailable to requester.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Conflict": { "description": "State conflict.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "ServiceUnavailable": { "description": "Backing database or dependency unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    },
     "parameters": {
       "Provider": {
         "name": "provider",
@@ -803,9 +1798,52 @@
           "type": "string",
           "format": "uuid"
         }
+      },
+      "OrderID": {
+        "name": "orderId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
       }
     },
     "schemas": {
+      "SellerApplication": { "type": "object", "additionalProperties": false, "required": ["id", "applicantId", "type", "displayName", "status", "sellerId", "reason", "reviewedBy", "createdAt", "reviewedAt"], "properties": { "id": { "type": "string", "format": "uuid" }, "applicantId": { "type": "string", "format": "uuid" }, "type": { "type": "string", "enum": ["individual", "business"] }, "displayName": { "type": "string" }, "status": { "type": "string", "enum": ["pending", "approved", "rejected"] }, "sellerId": { "type": ["string", "null"], "format": "uuid" }, "reason": { "type": ["string", "null"] }, "reviewedBy": { "type": ["string", "null"], "format": "uuid" }, "createdAt": { "type": "string", "format": "date-time" }, "reviewedAt": { "type": ["string", "null"], "format": "date-time" } } },
+      "SellerStatus": { "type": "object", "additionalProperties": false, "required": ["application", "seller", "reviewer"], "properties": { "application": { "oneOf": [{ "type": "null" }, { "$ref": "#/components/schemas/SellerApplication" }] }, "seller": { "oneOf": [{ "type": "null" }, { "type": "object", "required": ["id", "displayName", "status"], "properties": { "id": { "type": "string", "format": "uuid" }, "displayName": { "type": "string" }, "status": { "type": "string", "enum": ["approved"] } } }] }, "reviewer": { "type": "boolean" } } },
+      "InventoryView": { "type": "object", "additionalProperties": false, "required": ["listingId", "sellerId", "availableQuantity", "reservedQuantity"], "properties": { "listingId": { "type": "string", "format": "uuid" }, "sellerId": { "type": "string", "format": "uuid" }, "availableQuantity": { "type": "integer", "minimum": 0, "maximum": 1 }, "reservedQuantity": { "type": "integer", "minimum": 0 } } },
+      "FulfillmentEvent": { "type": "object", "additionalProperties": false, "required": ["id", "actorMemberId", "fromStatus", "toStatus", "createdAt"], "properties": { "id": { "type": "integer" }, "actorMemberId": { "type": "string", "format": "uuid" }, "fromStatus": { "type": "string", "enum": ["awaiting_acceptance", "accepted", "handed_over"] }, "toStatus": { "type": "string", "enum": ["accepted", "handed_over", "completed"] }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "PushDeviceRequest": { "type": "object", "additionalProperties": false, "required": ["token", "platform"], "properties": { "token": { "type": "string", "pattern": "^(Expo|Exponent)PushToken\\[[a-zA-Z0-9_-]{10,240}\\]$" }, "platform": { "type": "string", "enum": ["ios", "android"] } } },
+      "PaymentRecoveryRequest": { "type": "object", "additionalProperties": false, "required": ["id","orderId","attemptId","actorMemberId","reason","status","jobId","lastErrorCode","requestedAt","finishedAt"], "properties": { "id": { "type": "string", "format": "uuid" }, "orderId": { "type": "string", "format": "uuid" }, "attemptId": { "type": "string", "format": "uuid" }, "actorMemberId": { "type": "string", "format": "uuid" }, "reason": { "type": "string" }, "status": { "type": "string", "enum": ["queued","checked","failed"] }, "jobId": { "type": ["integer","null"] }, "lastErrorCode": { "type": ["string","null"] }, "requestedAt": { "type": "string", "format": "date-time" }, "finishedAt": { "type": ["string","null"], "format": "date-time" } } },
+      "RecoveryDashboard": { "type": "object", "additionalProperties": false, "required": ["attempts","jobs","notifications","paymentEvents","requests"], "properties": {
+        "attempts": { "type": "array", "items": { "type": "object", "required": ["id","orderId","status","paymentStatus","updatedAt","recheckable"], "properties": { "id": { "type": "string", "format": "uuid" }, "orderId": { "type": "string", "format": "uuid" }, "status": { "type": "string" }, "paymentStatus": { "type": "string" }, "updatedAt": { "type": "string", "format": "date-time" }, "recheckable": { "type": "boolean" } } } },
+        "jobs": { "type": "array", "items": { "type": "object", "required": ["id","kind","state","attempt","createdAt"], "properties": { "id": { "type": "integer" }, "kind": { "type": "string" }, "state": { "type": "string" }, "attempt": { "type": "integer" }, "createdAt": { "type": "string", "format": "date-time" } } } },
+        "notifications": { "type": "array", "items": { "type": "object", "required": ["id","kind","attempts","lastErrorCode","createdAt"], "properties": { "id": { "type": "string", "format": "uuid" }, "kind": { "type": "string" }, "attempts": { "type": "integer" }, "lastErrorCode": { "type": ["string","null"] }, "createdAt": { "type": "string", "format": "date-time" } } } },
+        "paymentEvents": { "type": "array", "items": { "type": "object", "required": ["id","orderId","state","retries","verified"], "properties": { "id": { "type": "string", "format": "uuid" }, "orderId": { "type": ["string","null"], "format": "uuid" }, "state": { "type": "string" }, "retries": { "type": "integer" }, "verified": { "type": "boolean" } } } },
+        "requests": { "type": "array", "items": { "$ref": "#/components/schemas/PaymentRecoveryRequest" } }
+      } },
+      "ChatMessage": { "type": "object", "additionalProperties": false, "required": ["id", "conversationId", "senderId", "body", "readAt", "createdAt"], "properties": {
+        "id": { "type": "string", "format": "uuid" }, "conversationId": { "type": "string", "format": "uuid" }, "senderId": { "type": "string", "format": "uuid" }, "body": { "type": "string", "maxLength": 5000 }, "readAt": { "type": ["string", "null"], "format": "date-time" }, "createdAt": { "type": "string", "format": "date-time" }
+      } },
+      "Conversation": { "type": "object", "additionalProperties": false, "required": ["id", "currentUserId", "otherUserName", "listing", "messages", "beforeCursor", "afterCursor", "hasMore"], "properties": {
+        "id": { "type": "string", "format": "uuid" }, "currentUserId": { "type": "string", "format": "uuid" }, "otherUserName": { "type": "string" }, "listing": { "oneOf": [{ "type": "null" }, { "type": "object", "required": ["id", "title", "price"], "additionalProperties": false, "properties": { "id": { "type": "string", "format": "uuid" }, "title": { "type": "string" }, "price": { "type": "integer" } } }] }, "messages": { "type": "array", "items": { "$ref": "#/components/schemas/ChatMessage" } }, "beforeCursor": { "type": ["string", "null"] }, "afterCursor": { "type": ["string", "null"] }, "hasMore": { "type": "boolean" }
+      } },
+      "ConversationList": { "type": "object", "required": ["items"], "additionalProperties": false, "properties": { "items": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "listingId", "listingTitle", "listingPrice", "otherUserName", "lastMessage", "lastMessageTime", "unreadCount"], "properties": {
+        "id": { "type": "string", "format": "uuid" }, "listingId": { "type": "string", "format": "uuid" }, "listingTitle": { "type": "string" }, "listingPrice": { "type": ["integer", "null"] }, "otherUserName": { "type": "string" }, "lastMessage": { "type": "string" }, "lastMessageTime": { "type": ["string", "null"], "format": "date-time" }, "unreadCount": { "type": "integer", "minimum": 0 }
+      } } } } },
+      "CommunityPostInput": { "type": "object", "additionalProperties": false, "required": ["sport", "type", "title", "body"], "properties": {
+        "sport": { "type": "string", "enum": ["surf", "tennis"] }, "type": { "type": "string", "enum": ["guide", "review", "meetup", "discussion"] }, "title": { "type": "string", "minLength": 4, "maxLength": 160 }, "body": { "type": "string", "minLength": 10, "maxLength": 10000 }
+      } },
+      "CommunityPost": { "type": "object", "additionalProperties": false, "required": ["id", "authorId", "authorName", "sport", "type", "title", "body", "status", "reason", "likes", "liked", "comments", "publishedAt", "createdAt", "updatedAt"], "properties": {
+        "id": { "type": "string", "format": "uuid" }, "authorId": { "type": "string", "format": "uuid" }, "authorName": { "type": "string" }, "sport": { "type": "string", "enum": ["surf", "tennis"] }, "type": { "type": "string", "enum": ["guide", "review", "meetup", "discussion"] }, "title": { "type": "string" }, "body": { "type": "string" }, "status": { "type": "string", "enum": ["pending_review", "rejected", "active"] }, "reason": { "type": ["string", "null"] }, "likes": { "type": "integer", "minimum": 0 }, "liked": { "type": "boolean" }, "comments": { "type": "integer", "minimum": 0 }, "publishedAt": { "type": ["string", "null"], "format": "date-time" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }
+      } },
+      "CommunityPostList": { "type": "object", "required": ["items"], "additionalProperties": false, "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/CommunityPost" } } } },
+      "CommunityComment": { "type": "object", "additionalProperties": false, "required": ["id", "postId", "authorId", "author", "body", "createdAt"], "properties": {
+        "id": { "type": "string", "format": "uuid" }, "postId": { "type": "string", "format": "uuid" }, "authorId": { "type": "string", "format": "uuid" }, "author": { "type": "string" }, "body": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }
+      } },
+      "CommunityCommentList": { "type": "object", "required": ["items"], "additionalProperties": false, "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/CommunityComment" } } } },
+      "CommunityReaction": { "type": "object", "required": ["liked", "likes"], "additionalProperties": false, "properties": { "liked": { "type": "boolean" }, "likes": { "type": "integer", "minimum": 0 } } },
       "Error": {
         "type": "object",
         "required": [
@@ -1025,6 +2063,26 @@
           "poor"
         ]
       },
+      "ReviewEvent": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "listingId", "actorMemberId", "fromStatus", "toStatus", "reason", "createdAt"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "listingId": { "type": "string", "format": "uuid" },
+          "actorMemberId": { "type": "string", "format": "uuid" },
+          "fromStatus": { "type": "string", "enum": ["pending_review", "rejected"] },
+          "toStatus": { "type": "string", "enum": ["active", "rejected", "pending_review"] },
+          "reason": { "type": ["string", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ListingAvailability": {
+        "type": "object", "additionalProperties": false, "required": ["purchasable", "reason"],
+        "properties": {
+          "purchasable": { "type": "boolean" },
+          "reason": { "type": "string", "enum": ["available", "not_public", "not_prepared", "sold_out"] }
+        }
+      },
       "ListingStatus": {
         "type": "string",
         "enum": [
@@ -1057,6 +2115,52 @@
             ]
           }
         }
+      },
+      "MemberProfileUpdate": {
+        "type": "object", "additionalProperties": false,
+        "required": ["displayName", "surfSkill", "tennisSkill", "preferredSport", "maxBudgetKrw", "preferredRegion"],
+        "properties": {
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "surfSkill": { "$ref": "#/components/schemas/MemberSkill" },
+          "tennisSkill": { "$ref": "#/components/schemas/MemberSkill" },
+          "preferredSport": { "type": ["string", "null"], "enum": ["surf", "tennis", null] },
+          "maxBudgetKrw": { "type": ["integer", "null"], "minimum": 1, "maximum": 999999999999 },
+          "preferredRegion": { "type": "string", "maxLength": 120 }
+        }
+      },
+      "MemberSkill": {
+        "type": "string", "enum": ["beginner", "intermediate", "advanced", "expert"]
+      },
+      "MemberProfile": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "displayName", "surfSkill", "tennisSkill", "preferredSport", "maxBudgetKrw", "preferredRegion", "savedCount", "transactionCount"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "displayName": { "type": "string", "maxLength": 80 },
+          "surfSkill": { "$ref": "#/components/schemas/MemberSkill" },
+          "tennisSkill": { "$ref": "#/components/schemas/MemberSkill" },
+          "preferredSport": { "type": ["string", "null"], "enum": ["surf", "tennis", null] },
+          "maxBudgetKrw": { "type": ["integer", "null"], "minimum": 1, "maximum": 999999999999 },
+          "preferredRegion": { "type": "string", "maxLength": 120 },
+          "savedCount": { "type": "integer", "minimum": 0 },
+          "transactionCount": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "RecommendationList": { "type": "object", "required": ["items"], "additionalProperties": false, "properties": { "items": { "type": "array", "maxItems": 12, "items": { "type": "object", "required": ["listing", "reason", "score"], "additionalProperties": false, "properties": {
+        "listing": { "$ref": "#/components/schemas/Listing" }, "reason": { "type": ["string", "null"] }, "score": { "type": "integer", "minimum": 0 }
+      } } } } },
+      "FavoriteResult": {
+        "type": "object", "additionalProperties": false,
+        "required": ["listingId", "favorite"],
+        "properties": {
+          "listingId": { "type": "string", "format": "uuid" },
+          "favorite": { "type": "boolean" }
+        }
+      },
+      "PersonalListings": {
+        "type": "object", "additionalProperties": false,
+        "required": ["items"],
+        "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Listing" } } }
       },
       "Listing": {
         "type": "object",
@@ -1144,17 +2248,11 @@
       },
       "ListingList": {
         "type": "object",
-        "required": [
-          "items"
-        ],
+        "required": ["items", "nextCursor"],
         "additionalProperties": false,
         "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Listing"
-            }
-          }
+          "items": { "type": "array", "maxItems": 50, "items": { "$ref": "#/components/schemas/Listing" } },
+          "nextCursor": { "type": ["string", "null"], "description": "Null when no further page exists." }
         }
       },
       "CreateListingRequest": {
@@ -1394,6 +2492,268 @@
             "const": "ready"
           }
         }
+      },
+      "CreateOrderRequest": {
+        "type": "object",
+        "required": [
+          "listingId",
+          "quantity"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "listingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "const": 1
+          }
+        }
+      },
+      "OrderView": {
+        "type": "object",
+        "required": [
+          "id",
+          "buyerId",
+          "sellerId",
+          "listingId",
+          "itemName",
+          "unitPriceKrw",
+          "quantity",
+          "totalAmountKrw",
+          "currency",
+          "status",
+          "paymentStatus",
+          "fulfillmentStatus",
+          "acceptedAt",
+          "handedOverAt",
+          "receivedAt",
+          "createdAt",
+          "shippingFeeKrw",
+          "serviceFeeKrw",
+          "updatedAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "buyerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sellerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "listingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "unitPriceKrw": {
+            "type": "integer"
+          },
+          "quantity": {
+            "type": "integer",
+            "const": 1
+          },
+          "shippingFeeKrw": {
+            "type": "integer"
+          },
+          "serviceFeeKrw": {
+            "type": "integer"
+          },
+          "totalAmountKrw": {
+            "type": "integer"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "KRW"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "cancelled",
+              "confirmed"
+            ]
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "unpaid",
+              "pending_approval",
+              "approved",
+              "failed",
+              "pending_cancel",
+              "cancelled"
+            ]
+          },
+          "fulfillmentStatus": { "type": "string", "enum": ["awaiting_acceptance", "accepted", "handed_over", "completed"] },
+          "acceptedAt": { "type": ["string", "null"], "format": "date-time" },
+          "handedOverAt": { "type": ["string", "null"], "format": "date-time" },
+          "receivedAt": { "type": ["string", "null"], "format": "date-time" },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          },
+          "reservation": {
+            "$ref": "#/components/schemas/Reservation"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "OrderItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "listingId",
+          "itemName",
+          "unitPriceKrw",
+          "quantity",
+          "lineTotalKrw",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "listingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "unitPriceKrw": {
+            "type": "integer"
+          },
+          "quantity": {
+            "type": "integer",
+            "const": 1
+          },
+          "lineTotalKrw": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Reservation": {
+        "type": "object",
+        "required": [
+          "id",
+          "listingId",
+          "orderId",
+          "quantity",
+          "expiresAt",
+          "state"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "listingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "const": 1
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "consumed",
+              "expired",
+              "released"
+            ]
+          }
+        }
+      },
+      "OrderListResponse": {
+        "type": "object",
+        "required": [
+          "orders"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderView"
+            }
+          }
+        }
+      },
+      "CancelOrderResponse": {
+        "type": "object",
+        "required": [
+          "order"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/OrderView"
+          }
+        }
+      },
+      "ConfirmPaymentRequest": {
+        "type": "object",
+        "required": [
+          "paymentKey",
+          "amount"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "paymentKey": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,200}$"
+          },
+          "amount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 999999999999
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-sg_session"
       }
     }
   }

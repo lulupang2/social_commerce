@@ -29,6 +29,8 @@ type ProviderConfig struct {
 
 // Never serialize Config: it contains provider credentials.
 type Config struct {
+	IsolatedDevLogin                                       bool
+	FixtureRoles                                           bool
 	PublicURL                                              string
 	Providers                                              map[string]ProviderConfig
 	AllowedPaths                                           map[string]bool
@@ -60,6 +62,7 @@ func LoadConfig(envFile string, db platform.Config) (Config, error) {
 func ParseConfig(get func(string) string, db platform.Config) (Config, error) {
 	c := Config{PublicURL: get("PUBLIC_WEB_URL"), Providers: map[string]ProviderConfig{}, AllowedPaths: map[string]bool{TestPath: true},
 		IdleTTL: 30 * time.Minute, AbsoluteTTL: 7 * 24 * time.Hour, LoginTTL: 10 * time.Minute, ReauthTTL: 5 * time.Minute, HTTPTimeout: 8 * time.Second}
+	c.IsolatedDevLogin = db.TossSecretKey != ""
 	if err := configureFixture(&c, get, db); err != nil {
 		return c, err
 	}
@@ -72,6 +75,7 @@ func ParseConfig(get func(string) string, db platform.Config) (Config, error) {
 			return c, errors.New("AUTH_DEV_LOGIN_ENABLED is test-only")
 		}
 	}
+	c.FixtureRoles = c.DevLogin && db.Target == "fixture" && get("APP_ENV") == "test"
 	durations := []struct {
 		key      string
 		dst      *time.Duration

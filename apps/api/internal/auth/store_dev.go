@@ -2,12 +2,21 @@ package auth
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"time"
 )
 
 const devMemberID = "00000000-0000-4000-8000-000000000001"
 
-func (s *Store) DevLogin(ctx context.Context, oldToken string) (string, SessionView, error) {
+var fixtureMembers = map[string]struct{ id, name string }{
+	"buyer_a":  {"00000000-0000-4000-8000-000000000011", "구매자 A"},
+	"buyer_b":  {"00000000-0000-4000-8000-000000000012", "구매자 B"},
+	"seller_a": {"00000000-0000-4000-8000-000000000013", "판매자 A"},
+	"seller_b": {"00000000-0000-4000-8000-000000000014", "판매자 B"},
+	"reviewer": {"00000000-0000-4000-8000-000000000015", "검토 운영자"},
+}
+
+func (s *Store) DevLogin(ctx context.Context, oldToken, role string) (string, SessionView, error) {
 	view := SessionView{}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -17,12 +26,26 @@ func (s *Store) DevLogin(ctx context.Context, oldToken string) (string, SessionV
 
 	displayName := "SummerGear Test User"
 	email := "dev@summergear.local"
+	memberID := devMemberID
+	if s.Config.IsolatedDevLogin {
+		memberID = uuid.NewString()
+		displayName = "독립 테스트 구매자"
+		email = "test-" + memberID + "@summergear.invalid"
+	}
+	if role != "" {
+		fixture, ok := fixtureMembers[role]
+		if !s.Config.FixtureRoles || !ok {
+			return "", view, errRequest
+		}
+		memberID, displayName = fixture.id, fixture.name
+		email = role + "@summergear.invalid"
+	}
 	var status string
 	err = tx.QueryRow(ctx, `INSERT INTO summergear_app.members(id,display_name,email,onboarded)
   VALUES($1,$2,$3,true)
-  ON CONFLICT(id) DO UPDATE SET display_name=EXCLUDED.display_name,email=EXCLUDED.email
+  ON CONFLICT(id) DO UPDATE SET email=EXCLUDED.email
   RETURNING id::text,display_name,email,onboarded,status`,
-		devMemberID, displayName, email).Scan(
+		memberID, displayName, email).Scan(
 		&view.Member.ID, &view.Member.DisplayName, &view.Member.Email, &view.Member.Onboarded, &status)
 	if err != nil {
 		return "", view, errDB

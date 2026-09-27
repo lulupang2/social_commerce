@@ -2,6 +2,9 @@
 
 상태: 테스트 PG 선정, 구현 전 · 기준일: 2026-09-18
 
+2026-09-22의 구체적인 실행 범위·인수 조건은 [거래·PG 작업 계획](commerce-payment-work-plan.md),
+다음 구현 요청 문안은 [구현 프롬프트](prompts/commerce-payment-implementation.md)를 따른다.
+
 DB는 Supabase PostgreSQL, 인증·API는 Go + Fiber, 작업 큐는 River입니다. 테스트 앱과 worker는 nhn-rocky에서 실행합니다. PG는 토스페이먼츠 테스트 환경이며 실제 결제·판매자 지급은 포함하지 않습니다.
 
 ## 사용자가 준비할 것

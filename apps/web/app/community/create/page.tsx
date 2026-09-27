@@ -6,15 +6,13 @@ import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
 
 import { MobileShell } from '@/components/layout/MobileShell';
-import { saveLocalPost } from '@/lib/data/local-store';
-import { SUMMER_COMMUNITY_POSTS, type MockCommunityPost } from '@/lib/data/summer-mock-data';
+import { createPost } from '@/lib/community/client';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
-import { createCommunityPost } from '@/lib/supabase/mutations';
 
 type Sport = 'surf' | 'tennis';
 type EditorCategory = 'tip' | 'review' | 'meetup' | 'discussion';
 
-const POST_TYPE_BY_CATEGORY: Record<EditorCategory, CommunityPostType> = {
+const POST_TYPE_BY_CATEGORY: Record<EditorCategory, Exclude<CommunityPostType, 'question'>> = {
   tip: 'guide',
   review: 'review',
   meetup: 'meetup',
@@ -36,30 +34,7 @@ export default function CommunityCreatePage() {
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [completion, setCompletion] = useState<'supabase' | 'local' | null>(null);
-
-  const saveDemoPost = () => {
-    const fallback =
-      SUMMER_COMMUNITY_POSTS.find((post) => post.sport === sport) ?? SUMMER_COMMUNITY_POSTS[0];
-    const post: MockCommunityPost = {
-      id: `local-post-${Date.now()}`,
-      sport,
-      sportLabel: sport === 'surf' ? '서핑' : '테니스',
-      category,
-      categoryLabel: CATEGORY_LABELS[category],
-      title: title.trim(),
-      content: content.trim(),
-      author: {
-        name: '나 (기기 데모)',
-        avatar: fallback.author.avatar,
-        level: sport === 'surf' ? '서핑 크루' : '테니스 크루',
-      },
-      likes: 0,
-      comments: 0,
-      createdAt: '방금 전',
-    };
-    return saveLocalPost(post);
-  };
+  const [completion, setCompletion] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -78,32 +53,18 @@ export default function CommunityCreatePage() {
 
     setIsSubmitting(true);
     try {
-      const result = await createCommunityPost({
+      const result = await createPost({
         sport,
         type: POST_TYPE_BY_CATEGORY[category],
         title: title.trim(),
         body: content.trim(),
       });
       if (result.ok) {
-        setCompletion('supabase');
+        setCompletion(true);
         triggerNativeHaptic('success');
         return;
       }
-      if (result.reason === 'unconfigured' || result.reason === 'unavailable') {
-        if (!saveDemoPost()) {
-          setError('브라우저 저장 공간이 부족해 데모 게시글을 저장하지 못했어요.');
-          triggerNativeHaptic('error');
-          return;
-        }
-        setCompletion('local');
-        triggerNativeHaptic('success');
-        return;
-      }
-      if (result.reason === 'unauthenticated') {
-        setError('실제 커뮤니티 글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.');
-      } else {
-        setError(result.message);
-      }
+      setError(result.status === 401 ? '게시글 작성은 로그인 후 이용할 수 있어요.' : result.message);
       triggerNativeHaptic('error');
     } catch {
       setError('게시글을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
@@ -120,17 +81,11 @@ export default function CommunityCreatePage() {
           <div className="completion-icon">
             <CheckCircle2 size={44} />
           </div>
-          <p className="completion-kicker">
-            {completion === 'supabase' ? '검토 대기 중' : '기기 데모 저장 완료'}
-          </p>
+          <p className="completion-kicker">검토 대기 중</p>
           <h1>이야기를 저장했어요</h1>
-          <p>
-            {completion === 'supabase'
-              ? '운영자 검토가 끝나면 라운지에 공개돼요.'
-              : '이 브라우저의 커뮤니티에서 바로 확인할 수 있어요.'}
-          </p>
-          <button className="btn-primary" onClick={() => router.push('/community')} type="button">
-            커뮤니티로 이동
+          <p>운영자 검토가 끝나면 라운지에 공개돼요.</p>
+          <button className="btn-primary" onClick={() => router.push('/my/posts')} type="button">
+            내 게시글 보기
           </button>
         </div>
       </MobileShell>

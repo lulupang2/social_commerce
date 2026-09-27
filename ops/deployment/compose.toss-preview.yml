@@ -1,0 +1,17 @@
+# Explicit opt-in for the existing non-production fixture preview.
+# PAYMENT_ENV_FILE contains ONLY TOSS_CLIENT_KEY and TOSS_SECRET_KEY (0600).
+services:
+  migration:
+    image: ${MIGRATION_IMAGE:?immutable migration image required}
+  api:
+    image: ${API_IMAGE:?immutable API image required}
+    env_file: ["${PAYMENT_ENV_FILE:?private payment env required}"]
+    networks: [default, payment-egress]
+  worker:
+    image: ${WORKER_IMAGE:?immutable worker image required}
+    env_file: ["${PAYMENT_ENV_FILE:?private payment env required}"]
+    networks: [default, payment-egress]
+  web:
+    image: ${WEB_IMAGE:?immutable web image required}
+networks:
+  payment-egress:

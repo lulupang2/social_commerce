@@ -4,12 +4,10 @@ import test from 'node:test';
 import {
   getFavoriteIds,
   getLocalListings,
-  getLocalPosts,
   saveLocalListing,
-  saveLocalPost,
   setListingFavorite,
 } from './local-store';
-import { SUMMER_COMMUNITY_POSTS, SUMMER_LISTINGS } from './summer-mock-data';
+import { SUMMER_LISTINGS } from './summer-mock-data';
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -23,7 +21,7 @@ class MemoryStorage {
   }
 }
 
-test('local demo store persists only canonical local listing and post shapes', () => {
+test('local demo store persists canonical listings and favorites', () => {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
@@ -37,11 +35,8 @@ test('local demo store persists only canonical local listing and post shapes', (
 
   try {
     const listing = { ...SUMMER_LISTINGS[0], id: 'local-listing-test' };
-    const post = { ...SUMMER_COMMUNITY_POSTS[0], id: 'local-post-test' };
     assert.equal(saveLocalListing(listing), true);
-    assert.equal(saveLocalPost(post), true);
     assert.equal(getLocalListings()[0]?.id, listing.id);
-    assert.equal(getLocalPosts()[0]?.id, post.id);
 
     assert.equal(setListingFavorite(listing.id, true), true);
     assert.deepEqual(getFavoriteIds(), [listing.id]);

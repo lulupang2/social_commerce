@@ -20,6 +20,7 @@ import {
   listGoListingImages,
   uploadGoListingImage,
 } from '@/lib/go-listings/images';
+import { invalidateListingFeed } from '@/lib/listings/use-listings';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
 import { createListing as createLegacyListing } from '@/lib/supabase/mutations';
 
@@ -311,6 +312,7 @@ export default function SellPage() {
       const verifyError = await verifyGoImages(pendingGoListingId, result.items);
       if (!verifyError) {
         setSubmission({ mode: 'go', listingId: pendingGoListingId });
+        invalidateListingFeed();
         triggerNativeHaptic('success');
         setIsSubmitting(false);
         return;
@@ -417,6 +419,7 @@ export default function SellPage() {
       if (goResult?.ok) {
         const listingId = goResult.data.id;
         setPendingGoListingId(listingId);
+        invalidateListingFeed();
         const upload = await uploadGoMedia(listingId, media);
         if (upload.error) {
           setFormError(upload.error);
@@ -446,6 +449,7 @@ export default function SellPage() {
 
       const result = await createLegacyListing(payload, files);
       if (result.ok) {
+        invalidateListingFeed();
         setSubmission({ mode: 'supabase', listingId: result.data.id });
         triggerNativeHaptic('success');
         return;
@@ -504,7 +508,7 @@ export default function SellPage() {
           </p>
           <button
             className="btn-primary"
-            onClick={() => router.push(`/market/${submission.listingId}`)}
+            onClick={() => router.push(submission.mode === 'local' ? `/market/${submission.listingId}?source=local` : `/market/${submission.listingId}?source=${submission.mode}`)}
             type="button"
           >
             등록한 장비 보기

@@ -20,8 +20,13 @@ import (
 	"github.com/lulupang2/social_commerce/apps/api/internal/jobs"
 	"github.com/lulupang2/social_commerce/apps/api/internal/listingimages"
 	"github.com/lulupang2/social_commerce/apps/api/internal/listings"
+	"github.com/lulupang2/social_commerce/apps/api/internal/memberdata"
 	"github.com/lulupang2/social_commerce/apps/api/internal/migrate"
+	"github.com/lulupang2/social_commerce/apps/api/internal/notifications"
+	"github.com/lulupang2/social_commerce/apps/api/internal/orders"
 	"github.com/lulupang2/social_commerce/apps/api/internal/platform"
+	"github.com/lulupang2/social_commerce/apps/api/internal/recovery"
+	"github.com/lulupang2/social_commerce/apps/api/internal/social"
 )
 
 func Main(kind string) int {
@@ -85,7 +90,8 @@ func run(kind string, logger *slog.Logger) error {
 	switch kind {
 	case "api":
 		// Construct an insert-only River client; the HTTP process never starts workers.
-		if _, err = jobs.NewClient(pool, cfg, logger, false); err != nil {
+		queue, err := jobs.NewClient(pool, cfg, logger, false)
+		if err != nil {
 			return err
 		}
 		if err = platform.Ready(ctx, pool); err != nil {
@@ -94,6 +100,8 @@ func run(kind string, logger *slog.Logger) error {
 		authStore := &auth.Store{Pool: pool, Config: authConfig}
 		listingStore := &listings.Store{Pool: pool}
 		imageStore := &listingimages.Store{Pool: pool}
+		orderStore := &orders.Store{Pool: pool}
+		memberStore := &memberdata.Store{Pool: pool}
 		imageStorage, storageConfigured, storageErr := listingimages.LoadStorage(*envFile)
 		if storageErr != nil {
 			return storageErr
@@ -109,7 +117,13 @@ func run(kind string, logger *slog.Logger) error {
 			if err := listingStore.Ready(c); err != nil {
 				return err
 			}
-			return imageStore.Ready(c)
+			if err := imageStore.Ready(c); err != nil {
+				return err
+			}
+			if err := memberStore.Ready(c); err != nil {
+				return err
+			}
+			return orderStore.Ready(c)
 		}
 		if err = ready(ctx); err != nil {
 			return errors.New("API application schema is not ready")
@@ -118,6 +132,13 @@ func run(kind string, logger *slog.Logger) error {
 		authHandler := auth.Register(s.App, authConfig, pool, logger)
 		imageHandler := listingimages.Register(s.App, pool, authHandler, imageStorage, logger)
 		listings.Register(s.App, pool, authHandler, imageHandler.Service, logger)
+		memberdata.Register(s.App, pool, authHandler, imageHandler.Service, logger)
+		fakePG := orders.ConfiguredGateway(pool, cfg)
+		orders.Register(s.App, pool, authHandler, fakePG, logger)
+		notifications.Register(s.App, pool, authHandler, logger)
+		social.Register(s.App, pool, authHandler, logger)
+		recovery.Register(s.App, pool, authHandler, queue, logger)
+		orders.RegisterWebhook(s.App, pool, fakePG, logger)
 		listenErr := make(chan error, 1)
 		go func() { listenErr <- s.App.Listen(cfg.Address, fiber.ListenConfig{DisableStartupMessage: true}) }()
 		logger.Info("api_starting")

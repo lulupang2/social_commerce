@@ -3,13 +3,16 @@
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo"
+mount_repo=$repo
+if [[ -n ${MSYSTEM:-} ]]; then mount_repo=$(cygpath -m "$repo"); fi
 mkdir -p .foundation-cache/{mod,build,bin,results}
 image='golang:1.27.1-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b'
 args=(--rm --name summergear-foundation-toolchain --memory=768m --cpus=1 --pids-limit=256
   --user "$(id -u):$(id -g)" -e GOMAXPROCS=2 -e GOMEMLIMIT=384MiB
   -e GOTOOLCHAIN=local -e HOME=/tmp -e GOMODCACHE=/workspace/.foundation-cache/mod
-  -e GOCACHE=/workspace/.foundation-cache/build -v "$repo:/workspace"
+  -e GOCACHE=/workspace/.foundation-cache/build -v "$mount_repo:/workspace"
   -w /workspace/apps/api)
+if [[ -n ${MSYSTEM:-} ]]; then args+=(-e GOFLAGS=-buildvcs=false); fi
 if [[ ${1:-prepare} == integration || ${1:-prepare} == auth-integration || ${1:-prepare} == listings-integration ]]; then
   # All credentials below are public disposable-fixture credentials, never test.env.
   network=summergear-foundation-test_default

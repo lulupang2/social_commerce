@@ -49,7 +49,7 @@ func TestListingSessionOwnershipAndRLS(t *testing.T) {
 	logger := platform.NewLogger(io.Discard, "error")
 	status, err := migrate.Run(ctx, pools[platform.Migration], files, true, logger)
 	must(t, err)
-	if !status.Ready || status.AppVersion != migrate.ListingImagesVersion {
+	if !status.Ready || status.AppVersion != migrate.PushReceiptsVersion {
 		t.Fatal("listing migration is not ready")
 	}
 
@@ -201,9 +201,77 @@ func TestListingSessionOwnershipAndRLS(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatal("active listing was not publicly readable")
 	}
-	resp, data = anonymous(Prefix)
+	resp, data = anonymous(Prefix + "?search=Go%20API")
 	if resp.StatusCode != 200 || !bytes.Contains(data, []byte(created.ID)) {
-		t.Fatal("active listing was not returned by public list")
+		t.Fatalf("active listing was not returned by filtered public list: %d %s", resp.StatusCode, data)
+	}
+
+	// An active listing is not purchasable until a reviewer approves its
+	// applicant and the owner explicitly makes one unit available.
+	resp, data = request("GET", "/api/v1/me/seller-application", "", nil)
+	var initial SellerStatus
+	must(t, json.Unmarshal(data, &initial))
+	if resp.StatusCode != 200 || initial.Reviewer || initial.Seller != nil {
+		t.Fatalf("applicant has an unexpected role: %d %s", resp.StatusCode, data)
+	}
+	resp, data = request("POST", "/api/v1/me/seller-application",
+		`{"type":"individual","displayName":"거래 테스트 판매자"}`, mutationHeaders)
+	if resp.StatusCode != 201 {
+		t.Fatalf("seller application: %d %s", resp.StatusCode, data)
+	}
+	var application SellerApplication
+	must(t, json.Unmarshal(data, &application))
+	if application.Status != "pending" || application.SellerID != nil {
+		t.Fatal("applicant was approved before review")
+	}
+	if _, err := store.ReviewSellerApplication(ctx, session.Member.ID, application.ID, "approve", ""); !errors.Is(err, errReviewForbidden) {
+		t.Fatalf("applicant could approve itself: %v", err)
+	}
+	if _, err := store.PendingSellerApplications(ctx, otherMember); !errors.Is(err, errReviewForbidden) {
+		t.Fatalf("other member could list operator queue: %v", err)
+	}
+	if _, err := store.SetInventory(ctx, session.Member.ID, created.ID, 1); !errors.Is(err, errNotFound) {
+		t.Fatalf("unapproved seller could set inventory: %v", err)
+	}
+	reviewerID := "00000000-0000-4000-8000-000000000015"
+	pending, err := store.PendingSellerApplications(ctx, reviewerID)
+	must(t, err)
+	found := false
+	for _, item := range pending {
+		if item.ID == application.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("reviewer queue omitted seller application")
+	}
+	approved, err := store.ReviewSellerApplication(ctx, reviewerID, application.ID, "approve", "")
+	must(t, err)
+	if approved.Status != "approved" || approved.SellerID == nil {
+		t.Fatal("approval did not create seller membership")
+	}
+	if _, err := store.ReviewSellerApplication(ctx, reviewerID, application.ID, "approve", ""); !errors.Is(err, errSellerConflict) {
+		t.Fatalf("duplicate review did not conflict: %v", err)
+	}
+	if _, err := store.SetInventory(ctx, otherMember, created.ID, 1); !errors.Is(err, errNotFound) {
+		t.Fatalf("non-owner could set inventory: %v", err)
+	}
+	resp, data = request("PUT", Prefix+"/"+created.ID+"/inventory", `{"availableQuantity":1}`, mutationHeaders)
+	if resp.StatusCode != 200 {
+		t.Fatalf("stock create: %d %s", resp.StatusCode, data)
+	}
+	var stock InventoryView
+	must(t, json.Unmarshal(data, &stock))
+	if stock.AvailableQuantity != 1 || stock.SellerID != *approved.SellerID {
+		t.Fatal("stock not bound to approved seller")
+	}
+	resp, data = request("PUT", Prefix+"/"+created.ID+"/inventory", `{"availableQuantity":0}`, mutationHeaders)
+	if resp.StatusCode != 200 {
+		t.Fatalf("stock pause: %d %s", resp.StatusCode, data)
+	}
+	resp, data = request("PUT", Prefix+"/"+created.ID+"/inventory", `{"availableQuantity":1}`, mutationHeaders)
+	if resp.StatusCode != 200 {
+		t.Fatalf("stock resume: %d %s", resp.StatusCode, data)
 	}
 
 	_, err = pools[platform.Worker].Exec(ctx, "SELECT * FROM summergear_app.listings LIMIT 0")

@@ -1,5 +1,6 @@
 export interface MockListing {
   id: string;
+  dataSource?: 'go' | 'supabase';
   sellerId?: string;
   sport: 'surf' | 'tennis';
   sportLabel: string;
@@ -237,107 +238,6 @@ export const SUMMER_LISTINGS: MockListing[] = [
   },
 ];
 
-export interface MockCommunityPost {
-  id: string;
-  sport: 'surf' | 'tennis';
-  sportLabel: string;
-  category: 'tip' | 'review' | 'meetup' | 'discussion';
-  categoryLabel: string;
-  title: string;
-  content: string;
-  author: {
-    name: string;
-    avatar: string;
-    level: string;
-  };
-  image?: string;
-  likes: number;
-  comments: number;
-  createdAt: string;
-}
-
-export const SUMMER_COMMUNITY_POSTS: MockCommunityPost[] = [
-  {
-    id: 'post-001',
-    sport: 'surf',
-    sportLabel: '서핑',
-    category: 'tip',
-    categoryLabel: '서핑 꿀팁',
-    title: '양양 입문 서퍼들을 위한 라인업 에티켓 & 파도 보는 법',
-    content:
-      '여름 시즌 양양이나 송정 가시는 분들 많으시죠! 피크 우선권(Peak Priority) 규칙과 패들 아웃할 때 라인업 방해하지 않는 기본 수칙 정리해 드립니다...',
-    author: {
-      name: '웨이브체이서',
-      avatar:
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      level: '서핑 5년차',
-    },
-    image:
-      'https://images.unsplash.com/photo-1502680390469-be75c86b636f?w=800&auto=format&fit=crop&q=80',
-    likes: 48,
-    comments: 16,
-    createdAt: '4시간 전',
-  },
-  {
-    id: 'post-002',
-    sport: 'tennis',
-    sportLabel: '테니스',
-    category: 'review',
-    categoryLabel: '라켓 시타기',
-    title: 'Wilson 프로스태프 v14 vs 헤드 스피드 MP 1개월 실사용 비교',
-    content:
-      '컨트롤 위주의 프로스태프와 스핀/반발력 위주의 스피드 MP를 번갈아가며 사용해봤습니다. 스트로크 임팩트감과 발리 반응성에서 어떤 차이가 있는지 공유합니다!',
-    author: {
-      name: '랠리왕김테니스',
-      avatar:
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      level: '구력 3년차 (NTRP 3.5)',
-    },
-    image:
-      'https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?w=800&auto=format&fit=crop&q=80',
-    likes: 62,
-    comments: 24,
-    createdAt: '7시간 전',
-  },
-  {
-    id: 'post-003',
-    sport: 'surf',
-    sportLabel: '서핑',
-    category: 'meetup',
-    categoryLabel: '번개/모임',
-    title: '[이번주 토] 양양 죽도 새벽 세션 카풀 & 같이 서핑하실 분!',
-    content:
-      '토요일 새벽 4시 서울 잠실 출발해서 양양 죽도 당일치기 세션 가실 분 2분 모십니다. 숏보드/펀보드 적재 가능합니다. 뒷정리하고 막국수 같이 먹어요!',
-    author: {
-      name: '동해파도러버',
-      avatar:
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-      level: '서핑 2년차',
-    },
-    likes: 31,
-    comments: 9,
-    createdAt: '12시간 전',
-  },
-  {
-    id: 'post-004',
-    sport: 'tennis',
-    sportLabel: '테니스',
-    category: 'meetup',
-    categoryLabel: '클럽/게스트',
-    title: '[매주 일] 서울 서초/반포 테니스클럽 2030 게스트 모집 (NTRP 2.5~3.5)',
-    content:
-      '매주 일요일 저녁 6시~8시 반포 코트에서 복식 경기 함께 하실 게스트 분들 환영합니다. 매너 좋고 즐겁게 땀 흘리실 분 댓글이나 채팅 남겨주세요.',
-    author: {
-      name: '반포에이스',
-      avatar:
-        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-      level: 'NTRP 4.0',
-    },
-    likes: 27,
-    comments: 14,
-    createdAt: '1일 전',
-  },
-];
 
 export interface MockChatMessage {
   id: string;

@@ -28,6 +28,9 @@ const (
 // Config contains only settings used by this process, never credentials for
 // unrelated roles. Do not serialize Config. Errors expose setting names, never values.
 type Config struct {
+	TossClientKey            string
+	TossSecretKey            string
+	ExpoPushAccessToken      string
 	Role                     Role
 	DatabaseURL              string
 	Target                   string
@@ -112,6 +115,17 @@ func ParseConfig(role Role, get func(string) string) (Config, error) {
 	}
 	if value := get("PAYMENT_MODE"); value != "" && value != "test" {
 		return c, errors.New("PAYMENT_MODE must be test")
+	}
+	if role == API || role == Worker {
+		c.TossClientKey, c.TossSecretKey = get("TOSS_CLIENT_KEY"), get("TOSS_SECRET_KEY")
+		if c.TossClientKey != "" || c.TossSecretKey != "" {
+			if get("PAYMENT_MODE") != "test" || !regexp.MustCompile(`^test_gck_[a-zA-Z0-9_-]+$`).MatchString(c.TossClientKey) || !regexp.MustCompile(`^test_gsk_[a-zA-Z0-9_-]+$`).MatchString(c.TossSecretKey) {
+				return c, errors.New("TOSS_CLIENT_KEY and TOSS_SECRET_KEY must be paired widget test keys with PAYMENT_MODE=test")
+			}
+		}
+	}
+	if role == Worker {
+		c.ExpoPushAccessToken = get("EXPO_PUSH_ACCESS_TOKEN")
 	}
 	c.Target, c.TargetID = get("DB_TARGET"), get("DB_TARGET_ID")
 	if c.Target != "fixture" && c.Target != "supabase-test" {

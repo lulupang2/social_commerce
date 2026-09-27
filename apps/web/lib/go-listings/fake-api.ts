@@ -67,7 +67,7 @@ export class FakeListingApi {
     } else if (this.listing.status !== 'active' && this.memberId !== this.ownerId) return fail(404);
     if (path === '/api/v1/listings') {
       if (method === 'POST') { Object.assign(this.listing, body); return Response.json(this.listing, { status: 201 }); }
-      return Response.json({ items: [this.listing] });
+      return Response.json({ items: [this.listing], nextCursor: null });
     }
     const parts = path.split('/').filter(Boolean);
     if (parts[3] !== this.listing.id) return fail(404);

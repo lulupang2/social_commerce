@@ -47,8 +47,18 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
   const [isConnecting, setIsConnecting] = useState(!demoChat);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
+  const [hasOlder, setHasOlder] = useState(false);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [visibleGeneration, setVisibleGeneration] = useState(0);
+  const acknowledged = useRef<string | null>(null);
+  const lastRendered = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) setVisibleGeneration((value) => value + 1); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
   useEffect(() => {
     if (demoChat) return;
     let active = true;
@@ -63,12 +73,14 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
       }
 
       setSession(result.session);
+      setHasOlder(result.session.model.hasMore);
+      acknowledged.current = null;
       setMessages(
         result.session.model.messages.map((message) =>
           toDisplayMessage(message, result.session.model.currentUserId),
         ),
       );
-      void result.session.markRead();
+      // Read receipts are sent only after a visible render, below.
       unsubscribe = result.session.subscribe((message) => {
         if (!active) return;
         const displayMessage = toDisplayMessage(message, result.session.model.currentUserId);
@@ -82,8 +94,12 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
           if (document.hidden) {
             showNativeLocalNotification('새 거래 메시지', displayMessage.text, `/chat/${id}`);
           }
-          void result.session.markRead();
         }
+      }, (message) => { if (active) setError(message); }, () => {
+        if (!active) return;
+        setMessages([]);
+        setSession(null);
+        setError('로그인 계정이 변경됐어요. 채팅 목록에서 다시 열어 주세요.');
       });
     });
 
@@ -94,8 +110,36 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
   }, [demoChat, id]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const latest = messages.at(-1)?.id ?? null;
+    if (latest && latest !== lastRendered.current) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    lastRendered.current = latest;
   }, [messages]);
+
+  useEffect(() => {
+    if (!session || document.hidden) return;
+    const latestInbound = [...messages].reverse().find((message) => message.sender === 'other');
+    if (!latestInbound || acknowledged.current === latestInbound.id) return;
+    acknowledged.current = latestInbound.id;
+    void session.markRead(latestInbound.id).catch(() => {
+      if (acknowledged.current === latestInbound.id) acknowledged.current = null;
+      setError('읽음 상태를 저장하지 못했어요.');
+    });
+  }, [session, messages, visibleGeneration]);
+
+  const loadOlder = async () => {
+    if (!session || isLoadingOlder) return;
+    setIsLoadingOlder(true);
+    try {
+      const page = await session.loadOlder();
+      setMessages((current) => [
+        ...page.messages.map((message) => toDisplayMessage(message, session.model.currentUserId)),
+        ...current,
+      ]);
+      setHasOlder(page.hasMore);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '이전 메시지를 불러오지 못했어요.');
+    } finally { setIsLoadingOlder(false); }
+  };
 
   const sendMessage = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -129,8 +173,8 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
       }
       setInputText('');
       triggerNativeHaptic('success');
-    } catch {
-      setError('메시지를 보내지 못했어요. 연결을 확인해 주세요.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '메시지를 보내지 못했어요. 연결을 확인해 주세요.');
       triggerNativeHaptic('error');
     } finally {
       setIsSending(false);
@@ -154,7 +198,7 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
       <MobileShell title="채팅 연결 중" showBack hideNav>
         <div className="empty-state">
           <LoaderCircle className="spin" size={28} />
-          <p>실시간 대화를 불러오고 있어요.</p>
+          <p>대화를 불러오고 있어요.</p>
         </div>
       </MobileShell>
     );
@@ -197,6 +241,9 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
         </div>
 
         <div aria-live="polite" className="chat-message-list">
+          {hasOlder ? <button type="button" className="btn-outline" disabled={isLoadingOlder} onClick={() => void loadOlder()}>
+            {isLoadingOlder ? '이전 메시지를 불러오는 중…' : '이전 메시지 보기'}
+          </button> : null}
           {messages.map((message) => (
             <div className={`chat-message ${message.sender}`} key={message.id}>
               <div className={message.sender === 'me' ? 'chat-bubble-me' : 'chat-bubble-other'}>
@@ -220,7 +267,7 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
           <input
             className="form-input"
             id="chat-message"
-            maxLength={10000}
+            maxLength={5000}
             onChange={(event) => setInputText(event.target.value)}
             placeholder="메시지를 입력하세요"
             value={inputText}

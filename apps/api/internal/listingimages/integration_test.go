@@ -37,7 +37,7 @@ func TestImageOwnershipVisibilityAndRLS(t *testing.T) {
 	imageMust(t, err)
 	status, err := migrate.Run(ctx, pools[platform.Migration], files, true, platform.NewLogger(io.Discard, "error"))
 	imageMust(t, err)
-	if !status.Ready || status.AppVersion != migrate.ListingImagesVersion {
+	if !status.Ready || status.AppVersion != migrate.PushReceiptsVersion {
 		t.Fatal("image migration is not current")
 	}
 
@@ -59,6 +59,24 @@ func TestImageOwnershipVisibilityAndRLS(t *testing.T) {
 
 	privateListing := createListing("private-images")
 	publicListing := createListing("public-images")
+	t.Cleanup(func() {
+		for _, id := range []string{privateListing, publicListing} {
+			if _, err := pools[platform.Migration].Exec(context.Background(),
+				"DELETE FROM summergear_app.listing_images WHERE listing_id=$1", id); err != nil {
+				t.Error(err)
+			}
+			if _, err := pools[platform.Migration].Exec(context.Background(),
+				"DELETE FROM summergear_app.listings WHERE id=$1", id); err != nil {
+				t.Error(err)
+			}
+		}
+		for _, id := range []string{owner, other} {
+			if _, err := pools[platform.Migration].Exec(context.Background(),
+				"DELETE FROM summergear_app.members WHERE id=$1", id); err != nil {
+				t.Error(err)
+			}
+		}
+	})
 	store := &Store{Pool: pools[platform.API]}
 	now := time.Now().UTC()
 	order := 0

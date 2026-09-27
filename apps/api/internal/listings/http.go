@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +34,19 @@ type Handler struct {
 func Register(app *fiber.App, pool *pgxpool.Pool, authHandler *auth.Handler, images ImageReader, logger *slog.Logger) *Handler {
 	h := &Handler{Store: &Store{Pool: pool}, Auth: authHandler, Images: images, logger: logger}
 	app.Get(Prefix, h.wrap(h.list))
+	app.Get(Prefix+"/:id/availability", h.wrap(h.availability))
+	app.Get(Prefix+"/:id/reviews", h.wrap(h.reviewHistory))
+	app.Post(Prefix+"/:id/resubmit", h.wrap(h.resubmit))
+	app.Get("/api/v1/reviews", h.wrap(h.reviewQueue))
+	app.Post("/api/v1/reviews/:id/approve", h.wrap(h.approve))
+	app.Post("/api/v1/reviews/:id/reject", h.wrap(h.reject))
+	app.Get("/api/v1/me/seller-application", h.wrap(h.mySellerStatus))
+	app.Post("/api/v1/me/seller-application", h.wrap(h.applySeller))
+	app.Get("/api/v1/seller-applications", h.wrap(h.sellerApplications))
+	app.Post("/api/v1/seller-applications/:id/approve", h.wrap(h.approveSeller))
+	app.Post("/api/v1/seller-applications/:id/reject", h.wrap(h.rejectSeller))
+	app.Get(Prefix+"/:id/inventory", h.wrap(h.ownerInventory))
+	app.Put(Prefix+"/:id/inventory", h.wrap(h.setInventory))
 	app.Get(Prefix+"/:id", h.wrap(h.get))
 	app.Post(Prefix, h.wrap(h.create))
 	app.Patch(Prefix+"/:id", h.wrap(h.update))
@@ -75,22 +90,66 @@ func (h *Handler) respond(c fiber.Ctx, err error) error {
 }
 
 func (h *Handler) list(c fiber.Ctx, ctx context.Context) error {
-	q := c.Queries()
-	for key := range q {
-		if key != "sport" && key != "category" && key != "search" {
+	raw := string(c.Request().URI().QueryString())
+	if len(raw) > 4096 {
+		return errInvalid
+	}
+	q, parseErr := url.ParseQuery(raw)
+	if parseErr != nil {
+		return errInvalid
+	}
+	for key, values := range q {
+		if len(values) != 1 || !oneOf(key, "sport", "category", "search", "location", "minPrice", "maxPrice", "sort", "limit", "cursor") {
 			return errInvalid
 		}
 	}
-	items, err := h.Store.List(ctx, Filters{Sport: q["sport"], Category: q["category"], Search: q["search"]})
+	price := func(name string) (*int64, error) {
+		value, present := q[name]
+		if !present {
+			return nil, nil
+		}
+		if len(value[0]) == 0 || len(value[0]) > 12 {
+			return nil, errInvalid
+		}
+		for _, digit := range value[0] {
+			if digit < '0' || digit > '9' {
+				return nil, errInvalid
+			}
+		}
+		amount, err := strconv.ParseInt(value[0], 10, 64)
+		if err != nil {
+			return nil, errInvalid
+		}
+		return &amount, nil
+	}
+	minPrice, err := price("minPrice")
 	if err != nil {
 		return err
 	}
-	for i := range items {
-		if err := h.attachImages(ctx, &items[i], ""); err != nil {
+	maxPrice, err := price("maxPrice")
+	if err != nil {
+		return err
+	}
+	limit := 24
+	if _, present := q["limit"]; present {
+		limit, err = strconv.Atoi(q.Get("limit"))
+		if err != nil || limit < 1 || limit > 50 {
+			return errInvalid
+		}
+	}
+	page, err := h.Store.ListPage(ctx, PageQuery{Filters: Filters{
+		Sport: q.Get("sport"), Category: q.Get("category"), Search: q.Get("search"),
+		Location: q.Get("location"), MinPrice: minPrice, MaxPrice: maxPrice, Sort: q.Get("sort"),
+	}, Limit: limit, Cursor: q.Get("cursor")})
+	if err != nil {
+		return err
+	}
+	for i := range page.Items {
+		if err := h.attachImages(ctx, &page.Items[i], ""); err != nil {
 			return err
 		}
 	}
-	return c.JSON(fiber.Map{"items": items})
+	return c.JSON(page)
 }
 
 func (h *Handler) get(c fiber.Ctx, ctx context.Context) error {

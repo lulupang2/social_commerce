@@ -34,7 +34,7 @@ func TestAuthMigrationAndAccounts(t *testing.T) {
 		for range 2 {
 			status, err := migrate.Run(ctx, admin, files, true, logger)
 			require(t, err)
-			if status.AppVersion != migrate.ListingImagesVersion || !status.Ready {
+			if status.AppVersion != migrate.PushReceiptsVersion || !status.Ready {
 				t.Fatal("auth migration incomplete")
 			}
 		}

@@ -15,7 +15,7 @@ import type { MarketListing } from '../listings/types';
 import type { MutationResult } from '../supabase/mutations';
 import { signedImageSchema } from './images';
 
-const goListingSchema = z
+export const goListingSchema = z
   .object({
     id: z.string().uuid(),
     seller: z
@@ -51,13 +51,12 @@ const goListingSchema = z
 
 export type GoListing = z.infer<typeof goListingSchema>;
 
-const goListingListSchema = z
-  .object({
-    items: z.array(goListingSchema).max(24),
-  })
-  .strict();
+const goListingListSchema = z.object({
+  items: z.array(goListingSchema).max(50),
+  nextCursor: z.string().nullable(),
+}).strict();
 
-function toMarketListing(item: GoListing): MarketListing | null {
+export function toMarketListing(item: GoListing): MarketListing | null {
   const parsedDetails =
     item.sport === 'surf'
       ? surfListingDetailsSchema.safeParse(item.details)
@@ -93,22 +92,45 @@ function toMarketListing(item: GoListing): MarketListing | null {
   };
 }
 
-export async function listGoListings(): Promise<MarketListing[] | null> {
+export type GoListingListResult =
+  | { ok: true; listings: MarketListing[]; nextCursor: string | null }
+  | { ok: false; status: number; message: string };
+
+export async function listGoListings(filters: {
+  sport?: string; category?: string; search?: string; location?: string;
+  minPrice?: string; maxPrice?: string; sort?: string; cursor?: string; limit?: number;
+} = {}): Promise<GoListingListResult> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') params.set(key, String(value));
+  }
+  const query = params.toString();
   try {
-    const response = await fetch('/api/v1/listings', {
+    const response = await fetch(`/api/v1/listings${query ? `?${query}` : ''}`, {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
       cache: 'no-store',
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        message: response.status === 401 ? '로그인 상태를 확인해 주세요.'
+          : '매물 서버에 연결하지 못했어요. 다시 시도해 주세요.',
+      };
+    }
     const parsed = goListingListSchema.safeParse(await response.json());
-    if (!parsed.success) return null;
-    return parsed.data.items.flatMap((item) => {
-      const mapped = toMarketListing(item);
-      return mapped ? [mapped] : [];
-    });
+    if (!parsed.success) return { ok: false, status: response.status, message: '매물 서버 응답을 확인할 수 없어요.' };
+    return {
+      ok: true,
+      listings: parsed.data.items.flatMap((item) => {
+        const mapped = toMarketListing(item);
+        return mapped ? [mapped] : [];
+      }),
+      nextCursor: parsed.data.nextCursor,
+    };
   } catch {
-    return null;
+    return { ok: false, status: 0, message: '매물 서버에 연결하지 못했어요. 다시 시도해 주세요.' };
   }
 }
 

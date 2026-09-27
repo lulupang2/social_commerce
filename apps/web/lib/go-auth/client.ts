@@ -27,6 +27,10 @@ export type GoSessionResult =
   | { ok: false; message: string; code?: string; status?: number };
 
 export type DevLoginResult = GoSessionResult;
+export const AUTH_SESSION_EVENT = 'summergear:auth-session-changed';
+export function notifyGoSessionChanged() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(AUTH_SESSION_EVENT));
+}
 
 export async function getGoSession(): Promise<GoSessionResult> {
   try {
@@ -55,12 +59,13 @@ export async function getGoSession(): Promise<GoSessionResult> {
   }
 }
 
-export async function devSignIn(): Promise<DevLoginResult> {
+export async function devSignIn(role?: 'buyer_a' | 'buyer_b' | 'seller_a' | 'seller_b' | 'reviewer'): Promise<DevLoginResult> {
   try {
     const response = await fetch('/api/v1/auth/dev-login', {
       method: 'POST',
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...(role ? { 'Content-Type': 'application/json' } : {}) },
+      ...(role ? { body: JSON.stringify({ role }) } : {}),
     });
 
     const data = (await response.json().catch(() => null)) as GoAuthSessionView | GoAuthError | null;
@@ -84,6 +89,7 @@ export async function devSignIn(): Promise<DevLoginResult> {
     if (!session?.member?.id || !session.csrfToken) {
       return { ok: false, message: '로그인 서버 응답을 확인할 수 없어요.' };
     }
+    notifyGoSessionChanged();
     return { ok: true, session };
   } catch {
     return {
@@ -91,4 +97,28 @@ export async function devSignIn(): Promise<DevLoginResult> {
       message: 'Go API에 연결하지 못했어요. 웹 API 프록시와 서버 실행 상태를 확인해 주세요.',
     };
   }
+}
+
+export async function fixtureRoles(): Promise<string[]> {
+  try {
+    const response = await fetch('/api/v1/auth/fixture-roles', { credentials: 'same-origin', cache: 'no-store' });
+    if (!response.ok) return [];
+    const data: unknown = await response.json();
+    if (!data || typeof data !== 'object' || !('roles' in data) || !Array.isArray(data.roles)) return [];
+    return data.roles.filter((role): role is string =>
+      role === 'buyer_a' || role === 'buyer_b' || role === 'seller_a' || role === 'seller_b' || role === 'reviewer');
+  } catch { return []; }
+}
+
+export async function signOut(): Promise<{ ok: true } | { ok: false; message: string }> {
+  const session = await getGoSession();
+  if (!session.ok) return { ok: false, message: session.message };
+  try {
+    const response = await fetch('/api/v1/auth/logout', {
+      method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': session.session.csrfToken },
+    });
+    if (!response.ok) return { ok: false, message: '로그아웃하지 못했어요. 다시 시도해 주세요.' };
+    notifyGoSessionChanged();
+    return { ok: true };
+  } catch { return { ok: false, message: '로그아웃 응답을 확인하지 못했어요.' }; }
 }

@@ -55,7 +55,7 @@ func TestListingImageHTTPAuthOwnershipLifecycleAndSignedResponses(t *testing.T) 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	status, err := migrate.Run(ctx, pools[platform.Migration], files, true, logger)
 	must(t, err)
-	if !status.Ready || status.AppVersion != migrate.ListingImagesVersion {
+	if !status.Ready || status.AppVersion != migrate.PushReceiptsVersion {
 		t.Fatal("listing image migration is not current")
 	}
 
@@ -357,9 +357,35 @@ func TestListingImageHTTPAuthOwnershipLifecycleAndSignedResponses(t *testing.T) 
 		t.Fatalf("private listing was anonymously visible: %d %s", resp.StatusCode, data)
 	}
 
-	_, err = pools[platform.Migration].Exec(ctx,
-		"UPDATE summergear_app.listings SET status='active',published_at=clock_timestamp() WHERE id=$1", created.ID)
+	_, err = pools[platform.Migration].Exec(ctx, `INSERT INTO summergear_app.members(id,display_name,onboarded)
+		VALUES('00000000-0000-4000-8000-000000000015','Fixture reviewer',true) ON CONFLICT(id) DO NOTHING`)
 	must(t, err)
+	_, err = pools[platform.Migration].Exec(ctx, `INSERT INTO summergear_app.listing_reviewers(member_id)
+		VALUES('00000000-0000-4000-8000-000000000015') ON CONFLICT DO NOTHING`)
+	must(t, err)
+	t.Cleanup(func() {
+		_, _ = pools[platform.Migration].Exec(context.Background(),
+			"DELETE FROM summergear_app.notification_events WHERE kind='listing_review' AND resource_id=$1", created.ID)
+		_, _ = pools[platform.Migration].Exec(context.Background(),
+			"DELETE FROM summergear_app.listing_review_events WHERE listing_id=$1", created.ID)
+	})
+	reviewerClient := &listingHTTPClient{cookies: map[string]string{}}
+	resp, data = request(reviewerClient, http.MethodPost, auth.Prefix+"/dev-login",
+		[]byte(`{"role":"reviewer"}`), map[string]string{"Origin": authConfig.PublicURL})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reviewer login returned %d: %s", resp.StatusCode, data)
+	}
+	var reviewerSession auth.SessionView
+	must(t, json.Unmarshal(data, &reviewerSession))
+	resp, data = request(reviewerClient, http.MethodGet, "/api/v1/reviews", nil, nil)
+	if resp.StatusCode != http.StatusOK || !bytes.Contains(data, []byte(finalSlot.ImageID)) {
+		t.Fatalf("review queue did not include signed image: %d %s", resp.StatusCode, data)
+	}
+	resp, data = request(reviewerClient, http.MethodPost, "/api/v1/reviews/"+created.ID+"/approve",
+		nil, map[string]string{"Origin": authConfig.PublicURL, "X-CSRF-Token": reviewerSession.CSRFToken})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("image listing approval returned %d: %s", resp.StatusCode, data)
+	}
 
 	resp, data = request(otherClient, http.MethodGet, Prefix+"/"+created.ID+"/images", nil, nil)
 	if resp.StatusCode != http.StatusOK {

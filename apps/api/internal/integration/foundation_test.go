@@ -61,7 +61,7 @@ func TestFoundation(t *testing.T) {
 	t.Run("upgrade_to_current_app_manifest", func(t *testing.T) {
 		status, err := migrate.Run(ctx, admin, files, true, logger)
 		must(t, err)
-		if !status.Ready || status.AppVersion != migrate.ListingImagesVersion || status.RiverVersion != 7 {
+		if !status.Ready || status.AppVersion != migrate.PushReceiptsVersion || status.RiverVersion != 7 {
 			t.Fatal("current app migration manifest not ready")
 		}
 	})

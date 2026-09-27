@@ -176,3 +176,16 @@ func TestListingImageStorageConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestTossOnlyAcceptsPairedWidgetTestKeys(t *testing.T) {
+	values := map[string]string{"APP_ENV": "test", "PAYMENT_MODE": "test", "DB_TARGET": "fixture", "DB_TARGET_ID": FixtureID, "DATABASE_URL": "postgres://summergear_api:fixture@localhost/summergear_foundation_test?sslmode=disable"}
+	get := func(k string) string { return values[k] }
+	for _, pair := range [][2]string{{"test_gck_fixture_key", "test_gsk_fixture_key"}, {"live_gck_fixture", "live_gsk_fixture"}, {"test_gck_fixture", ""}, {"test_ck_fixture", "test_gsk_fixture"}} {
+		values["TOSS_CLIENT_KEY"], values["TOSS_SECRET_KEY"] = pair[0], pair[1]
+		_, err := ParseConfig(API, get)
+		want := pair[0] == "test_gck_fixture_key" && pair[1] == "test_gsk_fixture_key"
+		if (err == nil) != want {
+			t.Fatal("incorrect key guard")
+		}
+	}
+}

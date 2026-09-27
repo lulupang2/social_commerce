@@ -81,7 +81,9 @@ Supabase Auth와 이메일 OTP는 목표 인증에서 제외합니다. 소셜 �
 
 ## 개발용 임시 로그인
 
-실제 네이버·카카오 키 연결 전 개발을 막지 않기 위해 테스트 환경에서만 `POST /api/v1/auth/dev-login`을 사용할 수 있습니다. `AUTH_DEV_LOGIN_ENABLED=true`일 때만 경로를 등록하며 `fixture` 또는 `supabase-test` DB 대상에서만 허용합니다. 같은 출처 `Origin`을 확인한 뒤 고정 테스트 회원을 만들거나 재사용하고, 일반 로그인과 같은 `auth_sessions` 레코드와 HttpOnly 서비스 세션 쿠키를 발급합니다. 가짜 네이버·카카오 identity는 만들지 않습니다.
+실제 네이버·카카오 키 연결 전 개발을 막지 않기 위해 테스트 환경에서만 `POST /api/v1/auth/dev-login`을 사용할 수 있습니다. `AUTH_DEV_LOGIN_ENABLED=true`일 때만 경로를 등록하며 `fixture` 또는 `supabase-test` DB 대상에서만 허용합니다. 같은 출처 `Origin`을 확인하고 일반 로그인과 같은 `auth_sessions` 레코드와 HttpOnly 서비스 세션 쿠키를 발급합니다. 요청 바디가 없는 기존 임시 로그인은 그대로 유지하며 가짜 네이버·카카오 identity를 만들지 않습니다.
+
+격리 `fixture` DB에서 `APP_ENV=test`와 `AUTH_DEV_LOGIN_ENABLED=true`를 모두 만족하면 `GET /api/v1/auth/fixture-roles`가 구매자 A/B·판매자 A/B·검토자 역할을 반환합니다. 이때만 `POST /api/v1/auth/dev-login`의 `{ "role": "buyer_a" | "buyer_b" | "seller_a" | "seller_b" | "reviewer" }` 요청이 허용됩니다. 검토자 로그인만으로 권한을 부여하지 않으며 DB의 `listing_reviewers` 등록도 필요합니다. 서버가 고정한 회원 ID만 사용하며 재로그인해도 개인 설정을 덮어쓰지 않습니다. `supabase-test`를 포함한 공유 preview에서는 역할 선택 경로와 역할 바디를 제공하지 않습니다. 기존 독립 구매자 로그인 정책도 유지합니다.
 
 Next.js는 `SUMMERGEAR_GO_API_ORIGIN`이 설정된 개발 환경에서 `/api/v1`을 Go API로 프록시합니다. 모바일은 기존 `/auth` WebView를 그대로 사용합니다. 실제 소셜 로그인 전환 시 임시 로그인 플래그와 UI를 제거하거나 비활성화합니다.
 

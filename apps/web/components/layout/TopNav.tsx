@@ -1,9 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { ArrowLeft, MessageCircle, Waves } from 'lucide-react';
+import { listRealtimeConversations } from '@/lib/chat/realtime';
+import { AUTH_SESSION_EVENT } from '@/lib/go-auth/client';
 
 interface TopNavProps {
   title?: string;
@@ -21,6 +23,19 @@ const TOP_LEVEL_PATHS: Record<string, true> = {
 export function TopNav({ title, showBack }: TopNavProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const [unread, setUnread] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      void listRealtimeConversations().then((result) => {
+        if (active) setUnread(result.ok ? result.conversations.reduce((total, item) => total + item.unreadCount, 0) : null);
+      });
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 10000);
+    window.addEventListener(AUTH_SESSION_EVENT, refresh);
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener(AUTH_SESSION_EVENT, refresh); };
+  }, [pathname]);
 
   const shouldShowBack = showBack ?? TOP_LEVEL_PATHS[pathname] !== true;
 
@@ -61,11 +76,13 @@ export function TopNav({ title, showBack }: TopNavProps) {
             cursor: 'pointer',
             padding: 6,
             display: 'flex',
+            position: 'relative',
             alignItems: 'center',
           }}
           aria-label="채팅 목록"
         >
           <MessageCircle size={22} color="var(--text-main)" />
+          {unread !== null && unread > 0 ? <span aria-label={`읽지 않은 채팅 ${unread}개`} className="chat-nav-unread">{Math.min(unread, 99)}</span> : null}
         </Link>
       </div>
     </header>

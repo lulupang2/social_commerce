@@ -1,7 +1,6 @@
-import type { MockCommunityPost, MockListing } from './summer-mock-data';
+import type { MockListing } from './summer-mock-data';
 
 const LISTINGS_KEY = 'summergear:local-listings:v1';
-const POSTS_KEY = 'summergear:local-posts:v1';
 const FAVORITES_KEY = 'summergear:favorites:v1';
 export const LOCAL_STORE_EVENT = 'summergear:local-store-change';
 
@@ -40,17 +39,6 @@ function isLocalListing(value: unknown): value is MockListing {
   );
 }
 
-function isLocalPost(value: unknown): value is MockCommunityPost {
-  if (!value || typeof value !== 'object') return false;
-  const post = value as Partial<MockCommunityPost>;
-  return (
-    typeof post.id === 'string' &&
-    post.id.startsWith('local-post-') &&
-    (post.sport === 'surf' || post.sport === 'tennis') &&
-    typeof post.title === 'string' &&
-    typeof post.content === 'string'
-  );
-}
 
 export function getLocalListings(): MockListing[] {
   return readArray(LISTINGS_KEY).filter(isLocalListing).slice(0, 50);
@@ -63,19 +51,6 @@ export function saveLocalListing(listing: MockListing): boolean {
 
 export function findLocalListing(id: string): MockListing | null {
   return getLocalListings().find((listing) => listing.id === id) ?? null;
-}
-
-export function getLocalPosts(): MockCommunityPost[] {
-  return readArray(POSTS_KEY).filter(isLocalPost).slice(0, 50);
-}
-
-export function saveLocalPost(post: MockCommunityPost): boolean {
-  const posts = getLocalPosts().filter((item) => item.id !== post.id);
-  return writeArray(POSTS_KEY, [post, ...posts].slice(0, 50));
-}
-
-export function findLocalPost(id: string): MockCommunityPost | null {
-  return getLocalPosts().find((post) => post.id === id) ?? null;
 }
 
 export function getFavoriteIds(): string[] {

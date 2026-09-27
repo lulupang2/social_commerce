@@ -9,11 +9,12 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lulupang2/social_commerce/apps/api/internal/notifications"
+	"github.com/lulupang2/social_commerce/apps/api/internal/orders"
+	"github.com/lulupang2/social_commerce/apps/api/internal/platform"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivertype"
-
-	"github.com/lulupang2/social_commerce/apps/api/internal/platform"
 )
 
 const Queue = "foundation"
@@ -155,15 +156,42 @@ func (w *SampleWorker) Apply(ctx context.Context, requestID string) error {
 func NewClient(pool *pgxpool.Pool, cfg platform.Config, logger *slog.Logger, execute bool) (*river.Client[pgx.Tx], error) {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &SampleWorker{Pool: pool, Fixture: cfg.Target == "fixture"})
+	river.AddWorker(workers, &ReservationExpireWorker{Pool: pool})
+
+	pg := orders.ConfiguredGateway(pool, cfg)
+	river.AddWorker(workers, &PaymentReconcileWorker{Pool: pool, PGAdapter: pg})
+	river.AddWorker(workers, &PaymentRecheckWorker{Pool: pool, PGAdapter: pg})
+	river.AddWorker(workers, &notifications.DispatchWorker{
+		Pool:   pool,
+		Sender: &notifications.ExpoSender{AccessToken: cfg.ExpoPushAccessToken},
+	})
+	river.AddWorker(workers, &notifications.ReconcileWorker{
+		Pool:          pool,
+		Sender:        &notifications.ExpoSender{AccessToken: cfg.ExpoPushAccessToken},
+		MinReceiptAge: 15 * time.Minute,
+	})
+
 	c := &river.Config{
 		Schema: platform.RiverSchema, Logger: logger, Workers: workers,
 		JobTimeout: 30 * time.Second, RescueStuckJobsAfter: time.Minute,
-		// Reindexing needs ownership. It is an explicit DBA maintenance task,
-		// never a reason to give the runtime worker DDL/owner privileges.
 		ReindexerIndexNames: []string{}, DiscardedJobRetentionPeriod: -1,
 	}
 	if execute {
-		c.Queues = map[string]river.QueueConfig{Queue: {MaxWorkers: cfg.MaxWorkers}}
+		c.PeriodicJobs = []*river.PeriodicJob{
+			river.NewPeriodicJob(river.PeriodicInterval(time.Minute), func() (river.JobArgs, *river.InsertOpts) {
+				return ReservationExpireArgs{Version: 1}, &river.InsertOpts{Queue: OrdersQueue, MaxAttempts: 5}
+			}, &river.PeriodicJobOpts{ID: "orders-expire", RunOnStart: true}),
+			river.NewPeriodicJob(river.PeriodicInterval(time.Minute), func() (river.JobArgs, *river.InsertOpts) {
+				return PaymentReconcileArgs{Version: 1}, &river.InsertOpts{Queue: OrdersQueue, MaxAttempts: 5}
+			}, &river.PeriodicJobOpts{ID: "orders-reconcile", RunOnStart: true}),
+			river.NewPeriodicJob(river.PeriodicInterval(5*time.Second), func() (river.JobArgs, *river.InsertOpts) {
+				return notifications.DispatchArgs{Version: 1}, &river.InsertOpts{Queue: Queue, MaxAttempts: 5}
+			}, &river.PeriodicJobOpts{ID: "push-dispatch", RunOnStart: true}),
+			river.NewPeriodicJob(river.PeriodicInterval(time.Minute), func() (river.JobArgs, *river.InsertOpts) {
+				return notifications.ReconcileArgs{Version: 1}, &river.InsertOpts{Queue: Queue, MaxAttempts: 5}
+			}, &river.PeriodicJobOpts{ID: "push-reconcile", RunOnStart: false}),
+		}
+		c.Queues = map[string]river.QueueConfig{Queue: {MaxWorkers: cfg.MaxWorkers}, OrdersQueue: {MaxWorkers: cfg.MaxWorkers}}
 	}
 	if cfg.FixtureFast {
 		c.TestOnly = true

@@ -1,275 +1,67 @@
 'use client';
 
 import { Heart, LoaderCircle, Send, Share2 } from 'lucide-react';
-import Image from 'next/image';
 import Link from 'next/link';
-import React, { use, useEffect, useState } from 'react';
-
+import { use, useEffect, useState } from 'react';
 import { MobileShell } from '@/components/layout/MobileShell';
-import {
-  addCommunityComment,
-  loadCommunityComments,
-  setCommunityLike,
-} from '@/lib/community/actions';
-import { useCommunityPosts } from '@/lib/data/use-community-posts';
-import { triggerNativeHaptic } from '@/lib/native-bridge';
-
-interface CommentItem {
-  id: string;
-  author: string;
-  avatar: string;
-  text: string;
-  time: string;
-}
-
-const DEMO_COMMENTS: CommentItem[] = [
-  {
-    id: 'demo-comment-1',
-    author: '바다사나이',
-    avatar:
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
-    text: '정말 유익한 정보 감사합니다! 이번 주말 세션 전에 꼭 다시 볼게요.',
-    time: '2시간 전',
-  },
-  {
-    id: 'demo-comment-2',
-    author: '서프초보',
-    avatar:
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80',
-    text: '헷갈렸던 부분을 깔끔하게 이해했어요.',
-    time: '1시간 전',
-  },
-];
-
-function commentTime(timestamp: string): string {
-  const value = new Date(timestamp).getTime();
-  if (!Number.isFinite(value)) return '방금 전';
-  const minutes = Math.max(0, Math.floor((Date.now() - value) / 60_000));
-  if (minutes < 1) return '방금 전';
-  if (minutes < 60) return `${minutes}분 전`;
-  return `${Math.floor(minutes / 60)}시간 전`;
-}
+import { changeLike, createComment, getPost, listComments, type CommunityComment, type CommunityPost } from '@/lib/community/client';
+import { getGoSession } from '@/lib/go-auth/client';
 
 export default function CommunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const posts = useCommunityPosts();
-  const post = posts.find((item) => item.id === id) ?? null;
-  const [liked, setLiked] = useState(false);
-  const [likeDelta, setLikeDelta] = useState(0);
-  const [commentInput, setCommentInput] = useState('');
-  const [comments, setComments] = useState<CommentItem[]>(
-    id.startsWith('post-') ? DEMO_COMMENTS : [],
-  );
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [post, setPost] = useState<CommunityPost | null>(null);
+  const [comments, setComments] = useState<CommunityComment[]>([]);
+  const [memberId, setMemberId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
-
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [generation, setGeneration] = useState(0);
   useEffect(() => {
-    if (!post) return;
-
     let active = true;
-    void loadCommunityComments(post.id).then((items) => {
-      if (!active || items === null) return;
-      setComments(
-        items.map((comment) => ({
-          id: comment.id,
-          author: comment.author,
-          avatar: post.author.avatar,
-          text: comment.body,
-          time: commentTime(comment.createdAt),
-        })),
-      );
+    void Promise.all([getPost(id), listComments(id), getGoSession()]).then(([postResult, commentResult, session]) => {
+      if (!active) return;
+      if (postResult.ok && commentResult.ok) {
+        setPost(postResult.data); setComments(commentResult.data.items); setError('');
+        if (session.ok) setMemberId(session.session.member.id);
+      } else setError(!postResult.ok ? postResult.message : !commentResult.ok ? commentResult.message : '게시글을 불러올 수 없어요.');
+      setLoading(false);
     });
-    return () => {
-      active = false;
-    };
-  }, [post]);
-
-  if (!post) {
-    return (
-      <MobileShell title="게시글을 찾을 수 없어요" showBack hideNav>
-        <div className="empty-state">
-          <p>삭제되었거나 존재하지 않는 게시글이에요.</p>
-          <Link className="btn-primary" href="/community">
-            커뮤니티로 돌아가기
-          </Link>
-        </div>
-      </MobileShell>
-    );
-  }
-
-  const likeCount = post.likes + likeDelta;
-
-  const toggleLike = async () => {
-    const nextLiked = !liked;
-    setLiked(nextLiked);
-    setLikeDelta((delta) => delta + (nextLiked ? 1 : -1));
-    setActionError('');
-    triggerNativeHaptic('selection');
-
-    const result = await setCommunityLike(post.id, nextLiked);
-    if (!result.ok) {
-      setLiked(!nextLiked);
-      setLikeDelta((delta) => delta + (nextLiked ? -1 : 1));
-      setActionError(result.message);
-      triggerNativeHaptic('error');
-    }
+    return () => { active = false; };
+  }, [id, generation]);
+  const toggle = async () => {
+    if (!post || busy) return;
+    setBusy(true);
+    const result = await changeLike(id, !post.liked);
+    if (result.ok) { setPost((current) => current ? { ...current, liked: result.data.liked, likes: result.data.likes } : null); setActionError(''); }
+    else setActionError(result.message);
+    setBusy(false);
   };
-
-  const addComment = async (event: React.FormEvent) => {
+  const comment = async (event: React.FormEvent) => {
     event.preventDefault();
-    const body = commentInput.trim();
-    if (!body || isSubmitting) return;
-    setActionError('');
-    setIsSubmitting(true);
-
-    const result = await addCommunityComment(post.id, body);
-    if (result.ok) {
-      setComments((current) => [
-        ...current,
-        {
-          id: result.comment.id,
-          author: result.comment.author,
-          avatar: post.author.avatar,
-          text: result.comment.body,
-          time: '방금 전',
-        },
-      ]);
-      setCommentInput('');
-      triggerNativeHaptic('success');
-    } else if (post.id.startsWith('post-') || post.id.startsWith('local-post-')) {
-      setComments((current) => [
-        ...current,
-        {
-          id: `local-comment-${Date.now()}`,
-          author: '나 (기기 데모)',
-          avatar: post.author.avatar,
-          text: body,
-          time: '방금 전',
-        },
-      ]);
-      setCommentInput('');
-      triggerNativeHaptic('success');
-    } else {
-      setActionError(result.message);
-      triggerNativeHaptic('error');
-    }
-    setIsSubmitting(false);
+    if (!input.trim() || busy) return;
+    setBusy(true);
+    const result = await createComment(id, input.trim());
+    if (result.ok) { setComments((items) => [...items, result.data]); setInput(''); setActionError(''); }
+    else setActionError(result.message);
+    setBusy(false);
   };
-
-  const sharePost = async () => {
-    try {
-      if (navigator.share)
-        await navigator.share({ title: post.title, text: post.title, url: window.location.href });
-      else await navigator.clipboard.writeText(window.location.href);
-      triggerNativeHaptic('success');
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === 'AbortError'))
-        setActionError('게시글을 공유하지 못했어요.');
-    }
+  const share = async () => {
+    try { if (navigator.share) await navigator.share({ title: post?.title, url: window.location.href }); else await navigator.clipboard.writeText(window.location.href); }
+    catch (cause) { if (!(cause instanceof DOMException && cause.name === 'AbortError')) setActionError('게시글을 공유하지 못했어요.'); }
   };
-
-  return (
-    <MobileShell showBack hideNav>
-      <article className="community-detail">
-        <header className="community-author-row">
-          <Image
-            alt={post.author.name}
-            height={44}
-            src={post.author.avatar}
-            unoptimized
-            width={44}
-          />
-          <div>
-            <strong>{post.author.name}</strong>
-            <span>
-              {post.author.level} · {post.createdAt}
-            </span>
-          </div>
-          <b>{post.categoryLabel}</b>
-        </header>
-
-        <h1>{post.title}</h1>
-        <p className="community-post-body">{post.content}</p>
-        {post.image ? (
-          <Image
-            alt={`${post.title} 첨부 사진`}
-            className="community-hero-image"
-            height={560}
-            src={post.image}
-            unoptimized
-            width={840}
-          />
-        ) : null}
-
-        <div className="community-action-row">
-          <button
-            aria-pressed={liked}
-            className={liked ? 'liked' : ''}
-            onClick={() => void toggleLike()}
-            type="button"
-          >
-            <Heart fill={liked ? 'currentColor' : 'none'} size={17} />
-            좋아요 {likeCount}
-          </button>
-          <button onClick={() => void sharePost()} type="button">
-            <Share2 size={17} />
-            공유
-          </button>
-        </div>
-      </article>
-
-      <section className="comment-section">
-        <h2>
-          댓글 <strong>{comments.length}</strong>
-        </h2>
-        {comments.length === 0 ? (
-          <p className="comment-empty">첫 댓글로 이야기를 이어가 보세요.</p>
-        ) : null}
-        <div className="comment-list">
-          {comments.map((comment) => (
-            <article key={comment.id}>
-              <Image alt="" height={36} src={comment.avatar} unoptimized width={36} />
-              <div>
-                <header>
-                  <strong>{comment.author}</strong>
-                  <time>{comment.time}</time>
-                </header>
-                <p>{comment.text}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {actionError ? (
-        <p className="chat-error community-error" role="alert">
-          {actionError}
-        </p>
-      ) : null}
-      <form
-        className="sticky-bottom-action comment-composer"
-        onSubmit={(event) => void addComment(event)}
-      >
-        <label className="visually-hidden" htmlFor="comment-input">
-          댓글
-        </label>
-        <input
-          className="form-input"
-          id="comment-input"
-          maxLength={5000}
-          onChange={(event) => setCommentInput(event.target.value)}
-          placeholder="댓글을 입력하세요"
-          value={commentInput}
-        />
-        <button
-          aria-label="댓글 작성"
-          className="btn-primary"
-          disabled={isSubmitting || !commentInput.trim()}
-          type="submit"
-        >
-          {isSubmitting ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}
-        </button>
-      </form>
-    </MobileShell>
-  );
+  if (loading) return <MobileShell title="게시글 불러오는 중" showBack hideNav><div className="empty-state"><LoaderCircle className="spin" size={24} /></div></MobileShell>;
+  if (error || !post) return <MobileShell title="게시글을 열 수 없어요" showBack hideNav><div className="empty-state"><p role="alert">{error || '공개되지 않았거나 존재하지 않는 게시글이에요.'}</p><button className="btn-outline" type="button" onClick={() => { setLoading(true); setGeneration((n) => n + 1); }}>다시 시도</button><Link href="/community">커뮤니티로</Link></div></MobileShell>;
+  return <MobileShell showBack hideNav>
+    <article className="community-detail">
+      <header className="community-author-row"><div className="chat-avatar">{post.authorName.slice(0, 1)}</div><div><strong>{post.authorName}</strong><span>{new Date(post.createdAt).toLocaleString('ko-KR')}</span></div><b>{post.sport === 'surf' ? '서핑' : '테니스'}</b></header>
+      <h1>{post.title}</h1><p className="community-post-body">{post.body}</p>
+      {post.authorId === memberId && post.status !== 'active' ? <Link href={`/community/${id}/edit`}>게시글 수정 · 검토 상태</Link> : null}
+      <div className="community-action-row"><button type="button" disabled={busy || post.status !== 'active'} aria-pressed={post.liked} className={post.liked ? 'liked' : ''} onClick={() => void toggle()}><Heart size={17} fill={post.liked ? 'currentColor' : 'none'} />좋아요 {post.likes}</button><button type="button" onClick={() => void share()}><Share2 size={17} />공유</button></div>
+    </article>
+    <section className="comment-section"><h2>댓글 <strong>{comments.length}</strong></h2><div className="comment-list">{comments.map((item) => <article key={item.id}><div className="chat-avatar">{item.author.slice(0, 1)}</div><div><header><strong>{item.author}</strong><time>{new Date(item.createdAt).toLocaleString('ko-KR')}</time></header><p>{item.body}</p></div></article>)}</div></section>
+    {actionError ? <p className="chat-error community-error" role="alert">{actionError}</p> : null}
+    <form className="sticky-bottom-action comment-composer" onSubmit={(event) => void comment(event)}><label className="visually-hidden" htmlFor="comment-input">댓글</label><input id="comment-input" className="form-input" value={input} maxLength={5000} onChange={(event) => setInput(event.target.value)} placeholder="댓글을 입력하세요" /><button className="btn-primary" type="submit" aria-label="댓글 작성" disabled={busy || !input.trim()}><Send size={18} /></button></form>
+  </MobileShell>;
 }

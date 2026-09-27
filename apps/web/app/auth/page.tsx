@@ -2,22 +2,25 @@
 
 import { ArrowRight, LoaderCircle, ShieldCheck, Waves } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { MobileShell } from '@/components/layout/MobileShell';
-import { devSignIn } from '@/lib/go-auth/client';
+import { devSignIn, fixtureRoles } from '@/lib/go-auth/client';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
 
 export default function AuthPage() {
   const router = useRouter();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState('');
+  const [roles, setRoles] = useState<string[]>([]);
+  const [selectedRole, setSelectedRole] = useState('');
+  useEffect(() => { void fixtureRoles().then(setRoles); }, []);
 
   const handleDevSignIn = async () => {
     setError('');
     setIsSigningIn(true);
 
-    const result = await devSignIn();
+    const result = await devSignIn(selectedRole ? selectedRole as 'buyer_a' | 'buyer_b' | 'seller_a' | 'seller_b' | 'reviewer' : undefined);
     setIsSigningIn(false);
 
     if (!result.ok) {
@@ -51,6 +54,16 @@ export default function AuthPage() {
             쿠키를 사용합니다.
           </p>
 
+          {roles.length > 0 ? (
+            <label className="form-group">격리 fixture 계정
+              <select className="form-select" value={selectedRole} onChange={(event) => setSelectedRole(event.target.value)}>
+                <option value="">기존 임시 로그인</option>
+                {roles.map((role) => (
+                  <option key={role} value={role}>{({ buyer_a: '구매자 A', buyer_b: '구매자 B', seller_a: '판매자 A', seller_b: '판매자 B', reviewer: '검토 운영자' } as Record<string, string>)[role]}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           {error ? (
             <p className="form-error form-submit-error" role="alert">
               {error}

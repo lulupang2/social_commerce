@@ -17,39 +17,55 @@ import { useRouter } from 'next/navigation';
 import React, { use, useEffect, useState } from 'react';
 
 import { MobileShell } from '@/components/layout/MobileShell';
+import { ListingImage } from '@/components/media/ListingImage';
 import { startListingConversation } from '@/lib/chat/realtime';
 import { SUMMER_CHAT_ROOMS } from '@/lib/data/summer-mock-data';
 import { getGoSession } from '@/lib/go-auth/client';
-import { getGoListing } from '@/lib/go-listings/client';
+import { getEditableGoListing, toMarketListing } from '@/lib/go-listings/client';
 import { listGoListingImages } from '@/lib/go-listings/images';
+import { listingAvailability, type ListingAvailability } from '@/lib/go-listings/reviews';
 import { useFavorites } from '@/lib/listings/use-favorites';
 import { toMockListing, useListings } from '@/lib/listings/use-listings';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
 
-export default function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function ListingDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ source?: string }> }) {
   const { id } = use(params);
+  const { source } = use(searchParams);
   const router = useRouter();
-  const { listings, isLoading: isFeedLoading } = useListings();
-  const { favorites, updateFavorite } = useFavorites();
-  const feedListing = listings.find((item) => item.id === id) ?? null;
+  const { listings, isLoading: isFeedLoading, error: feedError, retry } = useListings(source === 'demo' || source === 'local' ? 'demo' : 'server');
+  const { favorites, updateFavorite, error: favoriteError } = useFavorites();
+  const feedListing = listings.find((item) => item.id === id && (!source || (item.dataSource ?? (item.id.startsWith('local-listing-') ? 'local' : 'demo')) === source)) ?? null;
   const [goLookup, setGoLookup] = useState<{
     id: string;
     listing: ReturnType<typeof toMockListing>;
+    status: string | null;
   } | null>(null);
-  const goListing = goLookup?.id === id ? goLookup.listing : null;
+  const goListing = (source === 'go' || !source) && goLookup?.id === id ? goLookup.listing : null;
   const baseListing = feedListing ?? goListing;
+  const goReviewStatus = goLookup?.id === id ? goLookup.status : null;
+  const usesGoImages = baseListing?.dataSource === 'go';
   const [imageLookup, setImageLookup] = useState<{ id: string; images: string[] } | null>(null);
   const listing =
     baseListing && imageLookup?.id === id
       ? { ...baseListing, images: imageLookup.images }
       : baseListing;
-  const isLoading = isFeedLoading || (!feedListing && goLookup?.id !== id);
+  const isLoading = isFeedLoading || (!feedListing && (source === 'go' || !source) && goLookup?.id !== id);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [actionMessage, setActionMessage] = useState('');
   const [isOpeningChat, setIsOpeningChat] = useState(false);
   const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
   const [imageError, setImageError] = useState('');
+  const [imageNeedsLogin, setImageNeedsLogin] = useState(false);
   const [imageRefresh, setImageRefresh] = useState(0);
+  const [availability, setAvailability] = useState<{ id: string; value: ListingAvailability | null; error: string } | null>(null);
+  useEffect(() => {
+    if (!usesGoImages || goReviewStatus !== 'active') return;
+    let active = true;
+    void listingAvailability(id).then((result) => {
+      if (active) setAvailability({ id, value: result.ok ? result.data : null, error: result.ok ? '' : result.message });
+    });
+    return () => { active = false; };
+  }, [id, usesGoImages, goReviewStatus]);
 
   useEffect(() => {
     let active = true;
@@ -62,15 +78,18 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
   }, []);
 
   useEffect(() => {
+    if (!usesGoImages) return;
     let active = true;
     let expiryTimer: ReturnType<typeof setTimeout> | undefined;
     void listGoListingImages(id).then((result) => {
       if (!active) return;
       if (!result.ok) {
         setImageError(result.message);
+        setImageNeedsLogin(result.status === 401);
         return;
       }
       setImageError('');
+      setImageNeedsLogin(false);
       setImageLookup({ id, images: result.data.map((image) => image.url) });
       setActiveImageIndex(0);
       const expiresAt = Math.min(...result.data.map((image) => Date.parse(image.expiresAt)));
@@ -82,19 +101,20 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       active = false;
       clearTimeout(expiryTimer);
     };
-  }, [id, imageRefresh]);
+  }, [id, imageRefresh, usesGoImages]);
 
   useEffect(() => {
-    if (feedListing) return;
+    if ((source && source !== 'go') || (feedListing && feedListing.dataSource !== 'go')) return;
     let active = true;
-    void getGoListing(id).then((item) => {
+    void getEditableGoListing(id).then((item) => {
       if (!active) return;
-      setGoLookup({ id, listing: item ? toMockListing(item) : null });
+      const mapped = item ? toMarketListing(item) : null;
+      setGoLookup({ id, listing: mapped ? toMockListing(mapped, 'go') : null, status: item?.status ?? null });
     });
     return () => {
       active = false;
     };
-  }, [feedListing, id]);
+  }, [feedListing, id, source]);
 
   if (!listing && isLoading) {
     return (
@@ -111,16 +131,16 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
     return (
       <MobileShell title="장비를 찾을 수 없어요" showBack hideNav>
         <div className="empty-state">
-          <p>판매가 종료됐거나 존재하지 않는 매물이에요.</p>
-          <Link className="btn-primary" href="/market">
-            마켓으로 돌아가기
-          </Link>
+          <p>{feedError && source !== 'demo' && source !== 'local' ? feedError : '판매가 종료됐거나 존재하지 않는 매물이에요.'}</p>
+          {feedError ? <button className="btn-outline" type="button" onClick={retry}>다시 시도</button> : null}
+          <Link className="btn-primary" href="/market">마켓으로 돌아가기</Link>
         </div>
       </MobileShell>
     );
   }
 
-  const isFavorite = favorites[listing.id] ?? false;
+  const favoriteId = listing.dataSource === 'go' ? `go:${listing.id}` : listing.id;
+  const isFavorite = favorites[favoriteId] ?? false;
   const activeImage = listing.images[activeImageIndex] ?? listing.images[0];
 
   const shareListing = async () => {
@@ -147,18 +167,18 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
 
   const openChat = async () => {
     setActionMessage('');
-    const demoRoom = SUMMER_CHAT_ROOMS.find((room) => room.listingId === listing.id);
+    const demoRoom = listing.dataSource === 'go' ? null : SUMMER_CHAT_ROOMS.find((room) => room.listingId === listing.id);
     if (demoRoom) {
       router.push(`/chat/${demoRoom.id}`);
       return;
     }
-    if (!listing.sellerId) {
+    if (listing.dataSource !== 'go' && !listing.sellerId) {
       router.push('/auth');
       return;
     }
 
     setIsOpeningChat(true);
-    const result = await startListingConversation(listing.id, listing.sellerId);
+    const result = await startListingConversation(listing.id);
     setIsOpeningChat(false);
     if (result.ok) {
       router.push(`/chat/${result.conversationId}`);
@@ -176,32 +196,32 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
     <MobileShell hideNav showBack>
       <div className="detail-container">
         <div className="detail-gallery">
-          {activeImage ? (
-            <Image
+            <ListingImage
+              key={`${activeImage}-${imageRefresh}`}
               alt={listing.title}
               fill
               priority
               sizes="(max-width: 480px) 100vw, 480px"
               src={activeImage}
-              onError={() => setImageError('사진 링크가 만료되었거나 불러올 수 없어요. 사진을 갱신해 주세요.')}
+              onError={() => {
+                if (usesGoImages) {
+                  setImageError('사진 링크가 만료되었거나 불러올 수 없어요. 사진을 갱신해 주세요.');
+                  setImageNeedsLogin(false);
+                }
+              }}
               unoptimized
             />
-          ) : (
-            <div className="detail-gallery-empty" role="img" aria-label="등록된 사진 없음">
-              사진이 아직 없어요
-            </div>
-          )}
           {listing.images.length > 1 ? (
             <span className="gallery-count">
               {activeImageIndex + 1} / {listing.images.length}
             </span>
           ) : null}
         </div>
-        {imageError ? (
+        {usesGoImages && imageError ? (
           <div className="image-load-error" role="alert">
             <p>{imageError}</p>
             <button className="btn-outline" type="button" onClick={() => setImageRefresh((value) => value + 1)}>사진 갱신</button>
-            <a href="/auth" target="_blank" rel="noreferrer">다시 로그인</a>
+            {imageNeedsLogin ? <a href="/auth" target="_blank" rel="noreferrer">다시 로그인</a> : null}
           </div>
         ) : null}
 
@@ -216,13 +236,14 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
                 onClick={() => setActiveImageIndex(index)}
                 type="button"
               >
-                <Image alt="" fill sizes="56px" src={image} unoptimized />
+                <ListingImage alt="" fill sizes="56px" src={image} unoptimized />
               </button>
             ))}
           </div>
         ) : null}
 
         <div className="detail-body">
+          <p className="demo-mode-banner">{listing.dataSource === 'go' ? 'Go 서버 매물 · 구매 가능 여부는 주문 생성 시 서버 재고로 확인합니다.' : listing.dataSource === 'supabase' ? '기존 서버 매물 · Go 주문 대상이 아닙니다.' : '데모 매물 · 서버 재고나 구매 가능한 상품이 아닙니다.'}</p>
           {listing.recommendationReason ? (
             <div className="rec-reason-badge detail-recommendation">
               <Sparkles size={13} />
@@ -292,6 +313,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
               </Link>
             ) : null}
           </div>
+          {favoriteError ? <p className="form-error" role="alert">{favoriteError}</p> : null}
           {actionMessage ? (
             <p className="form-error detail-action-message" role="status">
               {actionMessage}
@@ -300,36 +322,53 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="sticky-bottom-action">
-          <button
-            aria-label={isFavorite ? '찜 해제' : '찜하기'}
-            aria-pressed={isFavorite}
-            className="btn-outline detail-favorite"
-            onClick={() => updateFavorite(listing.id, !isFavorite)}
-            type="button"
-          >
-            <Heart
-              color={isFavorite ? 'var(--danger)' : 'currentColor'}
-              fill={isFavorite ? 'var(--danger)' : 'none'}
-              size={20}
-            />
-          </button>
-          <button
-            className="btn-primary"
-            disabled={isOpeningChat}
-            onClick={() => void openChat()}
-            type="button"
-          >
-            {isOpeningChat ? (
-              <LoaderCircle className="spin" size={18} />
-            ) : (
-              <MessageCircle size={18} />
-            )}
-            <span>
-              {listing.sellerId || SUMMER_CHAT_ROOMS.some((room) => room.listingId === listing.id)
-                ? '채팅으로 거래하기'
-                : '로그인하고 문의하기'}
-            </span>
-          </button>
+          {usesGoImages ? (
+            <>
+              <button
+                aria-label={isFavorite ? '찜 해제' : '찜하기'}
+                aria-pressed={isFavorite}
+                className="btn-outline detail-favorite"
+                onClick={() => updateFavorite(favoriteId, !isFavorite)}
+                type="button"
+              >
+                <Heart
+                  color={isFavorite ? 'var(--danger)' : 'currentColor'}
+                  fill={isFavorite ? 'var(--danger)' : 'none'}
+                  size={20}
+                />
+              </button>
+              {listing.sellerId !== currentMemberId ? <button className="btn-outline" type="button" disabled={isOpeningChat} onClick={() => void openChat()}><MessageCircle size={18} />{isOpeningChat ? '연결 중' : '판매자 문의'}</button> : null}
+              {goReviewStatus === 'active' && availability?.id === id && availability.value?.purchasable ? (
+                <Link href={`/order/new/${listing.id}`} className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>구매하기</Link>
+              ) : (
+                <div role="status" style={{ flex: 1 }}>
+                  {goReviewStatus && goReviewStatus !== 'active' ? '공개 전 매물이에요.'
+                    : goLookup?.id === id && !goReviewStatus ? '매물 상태를 확인할 수 없어요.'
+                      : availability?.id !== id ? '구매 가능 여부 확인 중' : availability.error || ({
+                        not_public: '공개 전 매물이에요.', not_prepared: '판매 준비 중이에요.', sold_out: '재고가 없어요.', available: '',
+                      }[availability.value?.reason ?? 'not_prepared'])}
+                </div>
+              )}
+            </>
+          ) : (
+            <button
+              className="btn-primary"
+              disabled={isOpeningChat}
+              onClick={() => void openChat()}
+              type="button"
+            >
+              {isOpeningChat ? (
+                <LoaderCircle className="spin" size={18} />
+              ) : (
+                <MessageCircle size={18} />
+              )}
+              <span>
+                {listing.sellerId || SUMMER_CHAT_ROOMS.some((room) => room.listingId === listing.id)
+                  ? '채팅으로 거래하기'
+                  : '로그인하고 문의하기'}
+              </span>
+            </button>
+          )}
         </div>
       </div>
     </MobileShell>

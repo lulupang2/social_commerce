@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -42,6 +43,11 @@ func Register(app *fiber.App, cfg Config, pool *pgxpool.Pool, logger *slog.Logge
 	app.Get(Prefix+"/providers", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"providers": cfg.Statuses()}) })
 	if cfg.DevLogin {
 		app.Post(Prefix+"/dev-login", h.wrap(h.devLogin))
+		if cfg.FixtureRoles {
+			app.Get(Prefix+"/fixture-roles", func(c fiber.Ctx) error {
+				return c.JSON(fiber.Map{"roles": []string{"buyer_a", "buyer_b", "seller_a", "seller_b", "reviewer"}})
+			})
+		}
 	}
 	app.Get(Prefix+"/session", h.wrap(h.session))
 	app.Post(Prefix+"/logout", h.wrap(func(c fiber.Ctx, ctx context.Context) error { return h.logout(c, ctx, false) }))
@@ -93,6 +99,19 @@ func cookieValue(c fiber.Ctx, name string) (string, error) {
 		return "", errRequest
 	}
 	return result, nil
+}
+
+// SessionTokenHash is for server-side binding to the already authenticated
+// Go session; callers must invoke RequireMutationSession first.
+func (h *Handler) SessionTokenHash(c fiber.Ctx) (string, error) {
+	token, err := cookieValue(c, h.Config.SessionCookie())
+	if err != nil {
+		return "", err
+	}
+	if !validToken(token) {
+		return "", errUnauthorized
+	}
+	return hashToken(token), nil
 }
 func (h *Handler) cookie(c fiber.Ctx, name, value string, expires time.Time) {
 	maxAge := int(time.Until(expires).Seconds())
@@ -170,14 +189,33 @@ func (h *Handler) devLogin(c fiber.Ctx, ctx context.Context) error {
 	if err := h.origin(c, true); err != nil {
 		return err
 	}
+	role := ""
 	if len(c.Body()) != 0 {
-		return errRequest
+		if !h.Config.FixtureRoles || !strings.HasPrefix(strings.ToLower(c.Get("Content-Type")), "application/json") || len(c.Body()) > 128 || uniqueObject(c.Body()) != nil {
+			return errRequest
+		}
+		var body struct {
+			Role string `json:"role"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(c.Body()))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&body) != nil {
+			return errRequest
+		}
+		var extra any
+		if decoder.Decode(&extra) != io.EOF {
+			return errRequest
+		}
+		role = body.Role
+		if _, ok := fixtureMembers[role]; !ok {
+			return errRequest
+		}
 	}
 	oldToken, err := cookieValue(c, h.Config.SessionCookie())
 	if err != nil {
 		return err
 	}
-	token, view, err := h.Store.DevLogin(ctx, oldToken)
+	token, view, err := h.Store.DevLogin(ctx, oldToken, role)
 	if err != nil {
 		return err
 	}

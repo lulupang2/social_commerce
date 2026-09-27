@@ -1,0 +1,6 @@
+# Replace preview.example.invalid with the preview's DNS name.
+# Install as a separate site file in the host Caddy import directory.
+preview.example.invalid {
+    header X-Robots-Tag "noindex, nofollow, noarchive"
+    reverse_proxy 127.0.0.1:18080
+}

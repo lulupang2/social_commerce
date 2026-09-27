@@ -1,0 +1,24 @@
+# Public, keyless TEST preview. Use only together with compose.ci.yml.
+# Fixture data lives in this project's volume; never attach production data.
+services:
+  postgres:
+    restart: unless-stopped
+  api:
+    restart: unless-stopped
+    environment:
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:?set the public HTTPS preview origin}
+  worker:
+    restart: unless-stopped
+  web:
+    image: ${WEB_IMAGE:-summergear-web:deployment-ci}
+    restart: unless-stopped
+  gateway:
+    restart: unless-stopped
+    networks:
+      - default
+      - ingress
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-18080}:8080"
+
+networks:
+  ingress:

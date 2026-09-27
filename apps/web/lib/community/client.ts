@@ -1,0 +1,54 @@
+'use client';
+
+import { uuidSchema } from '@icegear/domain';
+import { z } from 'zod';
+import { getGoSession } from '@/lib/go-auth/client';
+
+const date = z.string().datetime({ offset: true });
+export const postSchema = z.object({
+  id: uuidSchema, authorId: uuidSchema, authorName: z.string(), sport: z.enum(['surf', 'tennis']),
+  type: z.enum(['guide', 'review', 'meetup', 'discussion']), title: z.string(), body: z.string(),
+  status: z.enum(['pending_review', 'rejected', 'active']), reason: z.string().nullable(),
+  likes: z.number().int().nonnegative(), liked: z.boolean(), comments: z.number().int().nonnegative(),
+  publishedAt: date.nullable(), createdAt: date, updatedAt: date,
+}).strict();
+export type CommunityPost = z.infer<typeof postSchema>;
+const commentSchema = z.object({ id: uuidSchema, postId: uuidSchema, authorId: uuidSchema, author: z.string(), body: z.string(), createdAt: date }).strict();
+export type CommunityComment = z.infer<typeof commentSchema>;
+const postsSchema = z.object({ items: z.array(postSchema) }).strict();
+const commentsSchema = z.object({ items: z.array(commentSchema) }).strict();
+const likeSchema = z.object({ likes: z.number().int().nonnegative(), liked: z.boolean() }).strict();
+type Result<T> = { ok: true; data: T } | { ok: false; message: string; status: number };
+
+export async function communityRequest<T>(path: string, schema: z.ZodType<T>, method = 'GET', body?: unknown): Promise<Result<T>> {
+  try {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (method !== 'GET') {
+      const session = await getGoSession();
+      if (!session.ok) return { ok: false, status: session.status ?? 0, message: session.message };
+      headers['X-CSRF-Token'] = session.session.csrfToken;
+      if (body !== undefined) headers['Content-Type'] = 'application/json';
+    }
+    const response = await fetch(path, { method, credentials: 'same-origin', cache: 'no-store', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    if (response.status === 204) return { ok: true, data: undefined as T };
+    const value: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const failure = z.object({ message: z.string().optional() }).safeParse(value);
+      return { ok: false, status: response.status, message: failure.success && failure.data.message ? failure.data.message : '커뮤니티 서버 요청에 실패했어요.' };
+    }
+    const parsed = schema.safeParse(value);
+    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, status: response.status, message: '커뮤니티 서버 응답을 확인할 수 없어요.' };
+  } catch { return { ok: false, status: 0, message: '커뮤니티 서버에 연결하지 못했어요.' }; }
+}
+export const communityPath = (id: string) => `/api/v1/community/posts/${encodeURIComponent(id)}`;
+export const listPosts = () => communityRequest('/api/v1/community/posts', postsSchema);
+export const listMyPosts = () => communityRequest('/api/v1/me/posts', postsSchema);
+export const getPost = (id: string) => communityRequest(communityPath(id), postSchema);
+export const createPost = (input: { sport: 'surf' | 'tennis'; type: 'guide' | 'review' | 'meetup' | 'discussion'; title: string; body: string }) => communityRequest('/api/v1/community/posts', postSchema, 'POST', input);
+export const editPost = (id: string, input: { title: string; body: string }) => communityRequest(communityPath(id), postSchema, 'PATCH', input);
+export const resubmitPost = (id: string) => communityRequest(communityPath(id) + '/resubmit', postSchema, 'POST');
+export const reviewPosts = () => communityRequest('/api/v1/community/reviews', postsSchema);
+export const reviewPost = (id: string, decision: 'approve' | 'reject', reason = '') => communityRequest(`/api/v1/community/reviews/${encodeURIComponent(id)}/${decision}`, postSchema, 'POST', decision === 'reject' ? { reason } : undefined);
+export const listComments = (id: string) => communityRequest(communityPath(id) + '/comments', commentsSchema);
+export const createComment = (id: string, body: string) => communityRequest(communityPath(id) + '/comments', commentSchema, 'POST', { body });
+export const changeLike = (id: string, liked: boolean) => communityRequest(communityPath(id) + '/like', likeSchema, liked ? 'PUT' : 'DELETE');

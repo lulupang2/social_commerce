@@ -146,45 +146,40 @@ func (s *Store) Get(ctx context.Context, id, memberID string) (Listing, error) {
 	return item, nil
 }
 
-func (s *Store) List(ctx context.Context, filters Filters) ([]Listing, error) {
-	filters.Sport = strings.TrimSpace(filters.Sport)
-	filters.Category = strings.TrimSpace(filters.Category)
-	filters.Search = strings.TrimSpace(filters.Search)
-	if filters.Sport != "" && !oneOf(filters.Sport, "surf", "tennis") {
-		return nil, errInvalid
+// ListOwned reads every status under the same transaction-scoped member context as Get.
+func (s *Store) ListOwned(ctx context.Context, memberID string) ([]Listing, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, errDB
 	}
-	if filters.Category != "" && !validCategory(filters.Category) {
-		return nil, errInvalid
+	defer tx.Rollback(context.Background())
+	if err = setMemberContext(ctx, tx, memberID); err != nil {
+		return nil, err
 	}
-	if len([]rune(filters.Search)) > 120 {
-		return nil, errInvalid
-	}
-
-	rows, err := s.Pool.Query(ctx, `SELECT
+	rows, err := tx.Query(ctx, `SELECT
 		l.id::text,l.member_id::text,m.display_name,l.sport,l.category,l.title,l.description,
 		l.price_krw,l.condition,l.status,l.details,l.location_text,l.published_at,l.created_at,l.updated_at
 		FROM summergear_app.listings l
 		JOIN summergear_app.members m ON m.id=l.member_id
-		WHERE l.status='active'
-		  AND ($1='' OR l.sport=$1)
-		  AND ($2='' OR l.category=$2)
-		  AND ($3='' OR l.title ILIKE '%'||$3||'%' OR l.description ILIKE '%'||$3||'%')
-		ORDER BY l.created_at DESC
-		LIMIT 24`, filters.Sport, filters.Category, filters.Search)
+		WHERE l.member_id=$1 ORDER BY l.created_at DESC,l.id DESC`, memberID)
 	if err != nil {
 		return nil, errDB
 	}
-	defer rows.Close()
-
-	items := make([]Listing, 0, 24)
+	items := []Listing{}
 	for rows.Next() {
-		item, err := scanListing(rows)
-		if err != nil {
+		item, scanErr := scanListing(rows)
+		if scanErr != nil {
+			rows.Close()
 			return nil, errDB
 		}
 		items = append(items, item)
 	}
-	if rows.Err() != nil {
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, errDB
+	}
+	if err = tx.Commit(ctx); err != nil {
 		return nil, errDB
 	}
 	return items, nil

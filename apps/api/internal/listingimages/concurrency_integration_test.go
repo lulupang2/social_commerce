@@ -37,7 +37,7 @@ func TestImageDatabaseConcurrencyCapacityAndRecovery(t *testing.T) {
 	imageMust(t, err)
 	status, err := migrate.Run(ctx, pools[platform.Migration], files, true, platform.NewLogger(io.Discard, "error"))
 	imageMust(t, err)
-	if !status.Ready || status.AppVersion != migrate.ListingImagesVersion {
+	if !status.Ready || status.AppVersion != migrate.PushReceiptsVersion {
 		t.Fatal("image migration is not current")
 	}
 

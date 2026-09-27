@@ -40,6 +40,8 @@ Go 기반 실행은 [API·River 실행 안내](../ops/nhn-rocky/FOUNDATION.md), 
 - [ADR 004 · 이전 환경 결정](adr/004-nhn-rocky-docker-postgres.md): Docker 운영 DB 계획은 ADR 005로 대체.
 - [ADR 005 · 최종 DB·큐·PG 결정](adr/005-supabase-river-toss-test.md): Supabase 유지, River, 토스페이먼츠 테스트.
 - [테스트 결제 준비](payment-test-setup.md): 사용자 준비와 구현 요청에 필요한 정보.
+- [거래·PG 작업 계획](commerce-payment-work-plan.md): 첫 구현 범위, 작업 순서와 인수 조건.
+- [거래·PG 구현 프롬프트](prompts/commerce-payment-implementation.md): 구현 요청과 테스트 배포 요청용 문안.
 
 ## 계획과 결정
 
@@ -47,5 +49,11 @@ Go 기반 실행은 [API·River 실행 안내](../ops/nhn-rocky/FOUNDATION.md), 
 - [ADR 001 · 기술 스택](adr/001-stack.md): Next.js와 Expo WebView를 선택한 배경.
 - [ADR 002 · 보안과 도메인 경계](adr/002-mobile-mvp-safety-boundaries.md): 접근 제어와 제품 표기 원칙.
 - [문서 작성 규칙](writing.md): 문서의 역할, 구성, 변경 시 확인할 사항.
+
+## 테스트 프로젝트 개선
+
+- [실제 서비스 기준 아키텍처·흐름 비교](service-architecture-flow-review.md): 현재 구조, 사용자·판매자·운영자 흐름과 우선 보완할 차이.
+- [개선 작업 지시서](test-project-improvement-work-plan.md): SNS 로그인을 제외한 6단계 구현 범위, 완료 조건과 검증 기준.
+- [Orca 전달 프롬프트](prompts/test-project-improvement.md): 1단계 실행, 다음 단계 계속하기, 전체 단계 실행용 문안.
 
 처음 합류했다면 **개발 가이드 → 제품 기준 → 아키텍처** 순서로 읽습니다.

@@ -69,6 +69,24 @@ func TestConfigurationAndReturnPathGuards(t *testing.T) {
 		t.Fatal("default path rejected")
 	}
 }
+func TestFixtureRolesNeverAppearInPublicPreview(t *testing.T) {
+	values := configValues()
+	get := func(key string) string { return values[key] }
+	fixture, err := ParseConfig(get, platform.Config{Target: "fixture", TargetID: platform.FixtureID})
+	if err != nil || !fixture.FixtureRoles {
+		t.Fatal("isolated test roles unavailable")
+	}
+	preview, err := ParseConfig(get, platform.Config{Target: "supabase-test"})
+	if err != nil || preview.FixtureRoles {
+		t.Fatal("shared preview exposed fixture roles")
+	}
+	values["AUTH_DEV_LOGIN_ENABLED"] = "false"
+	disabled, err := ParseConfig(get, platform.Config{Target: "fixture", TargetID: platform.FixtureID})
+	if err != nil || disabled.FixtureRoles {
+		t.Fatal("disabled dev login exposed fixture roles")
+	}
+}
+
 func TestRandomTokensAndAmbiguousJSON(t *testing.T) {
 	a, err := randomToken()
 	if err != nil {

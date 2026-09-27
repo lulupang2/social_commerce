@@ -24,7 +24,7 @@ type Status struct {
 // Up preserves the original 0007-only fixture entry point. New deployments use
 // Run with the complete ordered manifest, never a single newer SQL file.
 func Up(ctx context.Context, pool *pgxpool.Pool, sql []byte, logger *slog.Logger) (Status, error) {
- return Run(ctx,pool,[]File{{Version:AppVersion,SQL:sql}},true,logger)
+	return Run(ctx, pool, []File{{Version: AppVersion, SQL: sql}}, true, logger)
 }
 
 func Inspect(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) (Status, error) {

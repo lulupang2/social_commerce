@@ -1,311 +1,155 @@
 'use client';
 
-import {
-  chatMessageSchema,
-  createChatMessageSchema,
-  uuidSchema,
-  type ChatMessage,
-} from '@icegear/domain';
+import { chatMessageSchema, conversationPageSchema, conversationSummarySchema, createChatMessageSchema, uuidSchema, type ChatMessage } from '@icegear/domain';
+import { z } from 'zod';
+import { getGoSession } from '@/lib/go-auth/client';
 
-import { createBrowserSupabaseClient, type BrowserSupabaseClient } from '../supabase/browser';
-import type { Database } from '../supabase/database.types';
-
-export interface RealtimeConversationModel {
-  id: string;
-  currentUserId: string;
-  otherUserName: string;
-  listing: {
-    id: string;
-    title: string;
-    price: number;
-  } | null;
-  messages: ChatMessage[];
-}
-
+const summariesSchema = z.object({ items: z.array(conversationSummarySchema) }).strict();
+type ConversationModel = z.infer<typeof conversationPageSchema>;
 export interface RealtimeConversationSession {
-  model: RealtimeConversationModel;
-  markRead(): Promise<void>;
+  model: ConversationModel;
+  markRead(throughMessageId: string): Promise<void>;
+  loadOlder(): Promise<{ messages: ChatMessage[]; hasMore: boolean }>;
   send(body: string): Promise<ChatMessage>;
-  subscribe(onMessage: (message: ChatMessage) => void): () => void;
+  subscribe(onMessage: (message: ChatMessage) => void, onError?: (message: string) => void, onIdentityChange?: () => void): () => void;
 }
-
+export type RealtimeConversationSummary = Omit<z.infer<typeof conversationSummarySchema>, 'lastMessageTime'> & { lastMessageTime: string };
 export type RealtimeConversationResult =
   | { ok: true; session: RealtimeConversationSession }
-  | {
-      ok: false;
-      reason: 'invalid_id' | 'unconfigured' | 'unauthenticated' | 'not_found' | 'request_failed';
-      message: string;
-    };
+  | { ok: false; reason: 'invalid_id' | 'unauthenticated' | 'not_found' | 'request_failed'; message: string };
 
-type MessageRow = Database['public']['Tables']['messages']['Row'];
-
-function parseMessage(row: MessageRow): ChatMessage | null {
-  const parsed = chatMessageSchema.safeParse({
-    id: row.id,
-    conversationId: row.conversation_id,
-    senderId: row.sender_id,
-    body: row.body,
-    readAt: row.read_at,
-    createdAt: row.created_at,
-  });
-  return parsed.success ? parsed.data : null;
+type Result<T> = { ok: true; data: T } | { ok: false; status: number; message: string };
+async function request<T>(path: string, schema: z.ZodType<T>, method = 'GET', body?: unknown, memberId?: string): Promise<Result<T>> {
+  try {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (method !== 'GET') {
+      const session = await getGoSession();
+      if (!session.ok) return { ok: false, status: session.status ?? 0, message: session.message };
+      if (memberId && session.session.member.id !== memberId) return { ok: false, status: 409, message: '로그인 계정이 변경됐어요. 채팅 목록에서 다시 열어 주세요.' };
+      headers['X-CSRF-Token'] = session.session.csrfToken;
+      if (body !== undefined) headers['Content-Type'] = 'application/json';
+    }
+    const response = await fetch(path, { method, credentials: 'same-origin', cache: 'no-store', headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    if (response.status === 204) return { ok: true, data: undefined as T };
+    const value: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const parsed = z.object({ message: z.string().optional() }).safeParse(value);
+      return { ok: false, status: response.status, message: parsed.success && parsed.data.message ? parsed.data.message : '채팅 서버 요청에 실패했어요.' };
+    }
+    const parsed = schema.safeParse(value);
+    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, status: response.status, message: '채팅 서버 응답을 확인할 수 없어요.' };
+  } catch { return { ok: false, status: 0, message: '채팅 서버에 연결하지 못했어요.' }; }
 }
+const endpoint = (id: string) => `/api/v1/conversations/${encodeURIComponent(id)}`;
 
-function buildSession(
-  client: BrowserSupabaseClient,
-  model: RealtimeConversationModel,
-): RealtimeConversationSession {
-  return {
+export async function connectRealtimeConversation(id: string): Promise<RealtimeConversationResult> {
+  if (!uuidSchema.safeParse(id).success) return { ok: false, reason: 'invalid_id', message: '대화방 ID가 올바르지 않아요.' };
+  const result = await request(endpoint(id), conversationPageSchema);
+  if (!result.ok) return { ok: false, reason: result.status === 401 ? 'unauthenticated' : result.status === 404 ? 'not_found' : 'request_failed', message: result.message };
+  const model = result.data;
+  let beforeCursor = model.beforeCursor;
+  let afterCursor = model.afterCursor;
+  let hasOlder = model.hasMore;
+  const seen = new Set(model.messages.map((message) => message.id));
+  let pending: { body: string; nonce: string } | null = null;
+  return { ok: true, session: {
     model,
-    async markRead() {
-      await client.rpc('mark_conversation_read', { p_conversation_id: model.id });
+    async markRead(throughMessageId) {
+      const response = await request(endpoint(id) + '/read', z.unknown(), 'POST', { throughMessageId }, model.currentUserId);
+      if (!response.ok) throw new Error(response.message);
+    },
+    async loadOlder() {
+      if (!hasOlder || !beforeCursor) return { messages: [], hasMore: false };
+      const response = await request(endpoint(id) + `?before=${encodeURIComponent(beforeCursor)}&limit=30`, conversationPageSchema);
+      if (!response.ok) throw new Error(response.message);
+      if (response.data.currentUserId !== model.currentUserId) throw new Error('로그인 계정이 변경됐어요.');
+      beforeCursor = response.data.beforeCursor;
+      hasOlder = response.data.hasMore;
+      const messages = response.data.messages.filter((message) => !seen.has(message.id));
+      for (const message of messages) seen.add(message.id);
+      return { messages, hasMore: hasOlder };
     },
     async send(body) {
-      const input = createChatMessageSchema.parse({ conversationId: model.id, body });
-      const { data, error } = await client
-        .from('messages')
-        .insert({
-          conversation_id: input.conversationId,
-          sender_id: model.currentUserId,
-          body: input.body,
-        })
-        .select('*')
-        .single();
-      if (error || !data) throw new Error('message_send_failed');
-      const message = parseMessage(data);
-      if (!message) throw new Error('message_contract_failed');
-      return message;
+      const input = createChatMessageSchema.safeParse({ conversationId: id, body });
+      if (!input.success || Array.from(body.trim()).length > 5000) throw new Error('메시지는 1~5,000자로 입력해 주세요.');
+      if (!pending || pending.body !== input.data.body) pending = { body: input.data.body, nonce: crypto.randomUUID() };
+      const response = await request(endpoint(id) + '/messages', chatMessageSchema, 'POST', { body: pending.body, clientNonce: pending.nonce }, model.currentUserId);
+      if (!response.ok) throw new Error(response.message);
+      pending = null;
+      seen.add(response.data.id);
+      return response.data;
     },
-    subscribe(onMessage) {
-      const channel = client
-        .channel(`conversation:${model.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `conversation_id=eq.${model.id}`,
-          },
-          (payload) => {
-            const message = parseMessage(payload.new as MessageRow);
-            if (message) onMessage(message);
-          },
-        )
-        .subscribe();
-
-      return () => {
-        void client.removeChannel(channel);
+    subscribe(onMessage, onError, onIdentityChange) {
+      let active = true;
+      let working = false;
+      const poll = async () => {
+        if (!active || working || document.hidden) return;
+        working = true;
+        try {
+          let more = true;
+          while (active && more) {
+            const query = afterCursor ? `?after=${encodeURIComponent(afterCursor)}&limit=100` : '?limit=100';
+            const response = await request(endpoint(id) + query, conversationPageSchema);
+            if (!active) return;
+            if (!response.ok) {
+              if (response.status === 401 || response.status === 404) onIdentityChange?.();
+              else onError?.(response.message);
+              return;
+            }
+            if (response.data.currentUserId !== model.currentUserId) { onIdentityChange?.(); return; }
+            onError?.('');
+            if (!afterCursor && response.data.hasMore && response.data.beforeCursor) {
+              // A room opened empty can accumulate over one page while away.
+              const pages = [...response.data.messages];
+              let before = response.data.beforeCursor;
+              let older = true;
+              while (older && active) {
+                const page = await request(endpoint(id) + `?before=${encodeURIComponent(before)}&limit=100`, conversationPageSchema);
+                if (!page.ok || page.data.currentUserId !== model.currentUserId) {
+                  onError?.(page.ok ? '로그인 계정이 변경됐어요.' : page.message);
+                  return;
+                }
+                pages.unshift(...page.data.messages);
+                older = page.data.hasMore;
+                if (page.data.beforeCursor) before = page.data.beforeCursor;
+              }
+              for (const message of pages) if (!seen.has(message.id)) { seen.add(message.id); onMessage(message); }
+            } else {
+              for (const message of response.data.messages) {
+                if (seen.has(message.id)) continue;
+                seen.add(message.id);
+                onMessage(message);
+              }
+            }
+            if (response.data.afterCursor) afterCursor = response.data.afterCursor;
+            more = response.data.hasMore && response.data.messages.length > 0 && Boolean(afterCursor);
+          }
+        } finally { working = false; }
       };
+      const timer = window.setInterval(() => { void poll(); }, 3000);
+      const visible = () => { if (!document.hidden) void poll(); };
+      document.addEventListener('visibilitychange', visible);
+      return () => { active = false; window.clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
     },
-  };
-}
-
-export async function connectRealtimeConversation(
-  conversationId: string,
-): Promise<RealtimeConversationResult> {
-  if (!uuidSchema.safeParse(conversationId).success) {
-    return { ok: false, reason: 'invalid_id', message: '실시간 대화방 ID가 올바르지 않아요.' };
-  }
-
-  const client = createBrowserSupabaseClient();
-  if (!client) {
-    return { ok: false, reason: 'unconfigured', message: 'Supabase 연결 정보가 없어요.' };
-  }
-
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) {
-    return {
-      ok: false,
-      reason: userError ? 'request_failed' : 'unauthenticated',
-      message: userError ? '채팅 서버에 연결하지 못했어요.' : '실시간 채팅은 로그인이 필요해요.',
-    };
-  }
-
-  const { data: conversation, error: conversationError } = await client
-    .from('conversations')
-    .select('*')
-    .eq('id', conversationId)
-    .maybeSingle();
-  if (conversationError) {
-    return { ok: false, reason: 'request_failed', message: '대화방을 불러오지 못했어요.' };
-  }
-  if (!conversation) {
-    return { ok: false, reason: 'not_found', message: '대화방이 없거나 접근할 수 없어요.' };
-  }
-
-  const [{ data: rows, error: messageError }, listingResult] = await Promise.all([
-    client
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true }),
-    conversation.listing_id
-      ? client
-          .from('listings')
-          .select('id,title,price')
-          .eq('id', conversation.listing_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-  ]);
-  if (messageError) {
-    return { ok: false, reason: 'request_failed', message: '메시지를 불러오지 못했어요.' };
-  }
-
-  const messages = (rows ?? []).flatMap((row) => {
-    const message = parseMessage(row);
-    return message ? [message] : [];
-  });
-  const listing = listingResult.data
-    ? {
-        id: listingResult.data.id,
-        title: listingResult.data.title,
-        price: Number(listingResult.data.price),
-      }
-    : null;
-
-  const session = buildSession(client, {
-    id: conversation.id,
-    currentUserId: userData.user.id,
-    otherUserName: '거래 상대',
-    listing,
-    messages,
-  });
-  return { ok: true, session };
-}
-
-export interface RealtimeConversationSummary {
-  id: string;
-  listingId: string | null;
-  listingTitle: string;
-  listingPrice: number | null;
-  otherUserName: string;
-  lastMessage: string;
-  lastMessageTime: string;
-  unreadCount: number;
+  } };
 }
 
 export async function listRealtimeConversations(): Promise<
   { ok: true; conversations: RealtimeConversationSummary[] } | { ok: false; message: string }
 > {
-  const client = createBrowserSupabaseClient();
-  if (!client) return { ok: false, message: 'Supabase 연결 정보가 없어요.' };
-
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) {
-    return { ok: false, message: '실시간 채팅 목록은 로그인이 필요해요.' };
-  }
-
-  const { data: conversations, error } = await client
-    .from('conversations')
-    .select('*')
-    .order('updated_at', { ascending: false })
-    .limit(50);
-  if (error) return { ok: false, message: '채팅 목록을 불러오지 못했어요.' };
-  if (!conversations || conversations.length === 0) return { ok: true, conversations: [] };
-
-  const { data: unreadRows } = await client.rpc('get_my_conversation_unread_counts', {});
-  const unreadByConversation = new Map(
-    (unreadRows ?? []).map((row) => [row.conversation_id, Number(row.unread_count)]),
-  );
-
-  const summaries = await Promise.all(
-    conversations.map(async (conversation) => {
-      const [messageResult, listingResult] = await Promise.all([
-        client
-          .from('messages')
-          .select('body,created_at')
-          .eq('conversation_id', conversation.id)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        conversation.listing_id
-          ? client
-              .from('listings')
-              .select('id,title,price')
-              .eq('id', conversation.listing_id)
-              .maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
-      ]);
-      const lastMessage = messageResult.data;
-      const listing = listingResult.data;
-
-      return {
-        id: conversation.id,
-        listingId: listing?.id ?? conversation.listing_id,
-        listingTitle: listing?.title ?? '종료된 거래',
-        listingPrice: listing ? Number(listing.price) : null,
-        otherUserName: '거래 상대',
-        lastMessage: lastMessage?.body ?? '대화를 시작해 보세요.',
-        lastMessageTime: lastMessage ? displayConversationTime(lastMessage.created_at) : '',
-        unreadCount: unreadByConversation.get(conversation.id) ?? 0,
-      };
-    }),
-  );
-  return { ok: true, conversations: summaries };
+  const result = await request('/api/v1/conversations', summariesSchema);
+  if (!result.ok) return { ok: false, message: result.message };
+  return { ok: true, conversations: result.data.items.map((item) => ({ ...item,
+    lastMessageTime: item.lastMessageTime ? new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(item.lastMessageTime)) : '',
+  })) };
 }
 
-function displayConversationTime(timestamp: string): string {
-  const value = new Date(timestamp);
-  if (!Number.isFinite(value.getTime())) return '';
-  return new Intl.DateTimeFormat('ko-KR', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(value);
-}
-
-export async function startListingConversation(
-  listingId: string,
-  sellerId: string,
-): Promise<
-  | { ok: true; conversationId: string }
-  | { ok: false; reason: 'unauthenticated' | 'own_listing' | 'request_failed'; message: string }
+export async function startListingConversation(listingId: string): Promise<
+  { ok: true; conversationId: string } | { ok: false; reason: 'unauthenticated' | 'own_listing' | 'request_failed'; message: string }
 > {
-  const client = createBrowserSupabaseClient();
-  if (!client) {
-    return { ok: false, reason: 'request_failed', message: '채팅 서버 연결 정보가 없어요.' };
-  }
-
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) {
-    return { ok: false, reason: 'unauthenticated', message: '채팅을 시작하려면 로그인해 주세요.' };
-  }
-  if (userData.user.id === sellerId) {
-    return { ok: false, reason: 'own_listing', message: '내 판매글에는 채팅을 시작할 수 없어요.' };
-  }
-
-  const existing = await client
-    .from('conversations')
-    .select('id')
-    .eq('listing_id', listingId)
-    .eq('buyer_id', userData.user.id)
-    .eq('seller_id', sellerId)
-    .maybeSingle();
-  if (existing.data) return { ok: true, conversationId: existing.data.id };
-
-  const created = await client
-    .from('conversations')
-    .insert({
-      listing_id: listingId,
-      buyer_id: userData.user.id,
-      seller_id: sellerId,
-    })
-    .select('id')
-    .single();
-  if (created.data) return { ok: true, conversationId: created.data.id };
-
-  const raced = await client
-    .from('conversations')
-    .select('id')
-    .eq('listing_id', listingId)
-    .eq('buyer_id', userData.user.id)
-    .eq('seller_id', sellerId)
-    .maybeSingle();
-  return raced.data
-    ? { ok: true, conversationId: raced.data.id }
-    : { ok: false, reason: 'request_failed', message: '대화방을 만들지 못했어요.' };
+  if (!uuidSchema.safeParse(listingId).success) return { ok: false, reason: 'request_failed', message: '서버 매물 ID가 올바르지 않아요.' };
+  const result = await request('/api/v1/conversations', z.object({ conversationId: uuidSchema }).strict(), 'POST', { listingId });
+  if (!result.ok) return { ok: false, reason: result.status === 401 ? 'unauthenticated' : result.status === 409 ? 'own_listing' : 'request_failed', message: result.message };
+  return { ok: true, conversationId: result.data.conversationId };
 }

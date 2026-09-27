@@ -143,7 +143,10 @@ export async function listGoListingImages(
       cache: 'no-store',
     });
     if (!response.ok) {
-      return responseFailure(response, '매물 사진을 불러오지 못했어요.');
+      const failure = await responseFailure(response, '매물 사진을 불러오지 못했어요.');
+      return !failure.ok && response.status === 503
+        ? { ...failure, message: '매물 사진을 불러오지 못했어요. 잠시 후 사진을 갱신해 주세요.' }
+        : failure;
     }
     const parsed = imageListSchema.safeParse(await response.json());
     if (!parsed.success || parsed.data.listingId !== listingId) {

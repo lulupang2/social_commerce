@@ -70,9 +70,13 @@ type UpdateInput struct {
 }
 
 type Filters struct {
-	Sport    string
-	Category string
-	Search   string
+	Sport    string `json:"sport"`
+	Category string `json:"category"`
+	Search   string `json:"search"`
+	Location string `json:"location"`
+	MinPrice *int64 `json:"minPrice"`
+	MaxPrice *int64 `json:"maxPrice"`
+	Sort     string `json:"sort"`
 }
 
 func normalizeCreate(input CreateInput) CreateInput {

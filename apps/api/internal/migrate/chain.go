@@ -19,8 +19,22 @@ import (
 const AuthVersion = "0008_go_auth"
 const ListingsVersion = "0009_go_listings"
 const ListingImagesVersion = "0010_go_listing_images"
+const SellersVersion = "0011_sellers"
+const OrdersVersion = "0012_orders"
+const PaymentsVersion = "0013_payments"
+const CommerceRuntimeVersion = "0014_commerce_runtime"
+const CommerceVersion = "0015_toss_test"
+const MemberDataVersion = "0016_member_personal_data"
+const ReviewVersion = "0017_listing_reviews"
+const SocialVersion = "0018_social_go"
+const RecommendationsVersion = "0019_member_recommendations"
+const SellerFlowVersion = "0020_service_sellers"
+const FulfillmentVersion = "0021_order_fulfillment"
+const PushVersion = "0022_push_notifications"
+const RecoveryVersion = "0023_payment_recovery"
+const PushReceiptsVersion = "0024_push_receipts"
 
-var manifest = []string{AppVersion, AuthVersion, ListingsVersion, ListingImagesVersion}
+var manifest = []string{AppVersion, AuthVersion, ListingsVersion, ListingImagesVersion, SellersVersion, OrdersVersion, PaymentsVersion, CommerceRuntimeVersion, CommerceVersion, MemberDataVersion, ReviewVersion, SocialVersion, RecommendationsVersion, SellerFlowVersion, FulfillmentVersion, PushVersion, RecoveryVersion, PushReceiptsVersion}
 
 type File struct {
 	Version string

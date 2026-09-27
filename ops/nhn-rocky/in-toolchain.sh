@@ -3,8 +3,6 @@ set -euo pipefail
 cd /workspace/apps/api
 case ${1:-prepare} in
   prepare)
-    gofmt -w cmd internal
-    go mod tidy
     go mod verify
     go build -p=1 ./...
     ;;
@@ -28,7 +26,19 @@ case ${1:-prepare} in
     go test -race -p=1 -tags=integration,authfixture -count=1 -timeout=180s -v ./internal/auth
     ;;
   listings-integration)
-    go test -race -p=1 -tags=integration -count=1 -timeout=180s -v ./internal/listings ./internal/listingimages
+    # The fixture must be migrated before package discovery: jobs can sort first.
+    go run ./cmd/migrate --apply --app-migrations-dir /workspace/supabase/migrations
+    # Include newly added DB test packages automatically. The foundation and
+    # auth suites run separately with their own build tags and must not repeat.
+    packages=()
+    for package in ./internal/*; do
+      [[ -d "$package" && "$package" != ./internal/auth && "$package" != ./internal/integration ]] || continue
+      tests=( "$package"/*integration_test.go )
+      [[ -f "${tests[0]}" ]] && packages+=( "$package" )
+    done
+    ((${#packages[@]} > 0)) || { echo 'No application DB integration packages found' >&2; exit 1; }
+    printf 'Running fixture DB integration packages: %s\n' "${packages[*]}"
+    go test -race -p=1 -tags=integration -count=1 -timeout=240s -v "${packages[@]}"
     ;;
   integration)
     go test -race -p=1 -tags=integration -count=1 -timeout=240s -v ./internal/integration

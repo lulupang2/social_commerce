@@ -20,6 +20,7 @@ import {
   uploadGoListingImage,
   type GoListingImage,
 } from '@/lib/go-listings/images';
+import { invalidateListingFeed } from '@/lib/listings/use-listings';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
 
 const CATEGORY_LABELS: Record<ListingCategory, string> = {
@@ -425,6 +426,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
         return;
       }
 
+      invalidateListingFeed();
       setListing(refreshed);
       setForm(initialForm(refreshed));
       setServerImages(refreshedImages.data);

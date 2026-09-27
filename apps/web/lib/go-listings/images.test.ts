@@ -5,6 +5,19 @@ import { uploadGoListingImage, listGoListingImages, isSignedImageExpired } from 
 
 const file = new File([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64')], 'photo.png', { type: 'image/png' });
 
+test('image lookup preserves service failures with read-specific recovery guidance', async (t) => {
+  for (const code of ['IMAGE_DATABASE_UNAVAILABLE', 'IMAGE_STORAGE_UNAVAILABLE']) {
+    t.mock.method(globalThis, 'fetch', async () => Response.json({ code, message: 'Unavailable' }, { status: 503 }));
+    const result = await listGoListingImages('11111111-1111-4111-8111-111111111111');
+    assert.ok(!result.ok);
+    assert.equal(result.status, 503);
+    assert.equal(result.code, code);
+    assert.match(result.message, /매물 사진을 불러오지 못했어요/);
+    assert.doesNotMatch(result.message, /입력|저장|로그인/);
+    t.mock.restoreAll();
+  }
+});
+
 test('slot, PUT and complete publish a signed image in its requested hole', async (t) => {
   const api = new FakeListingApi(); api.seed([0, 2]); t.mock.method(globalThis, 'fetch', api.fetch);
   const result = await uploadGoListingImage(api.listing.id, file, { sortOrder: 1 });
