@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { CircleUserRound, PackageSearch } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { WebListingCard } from '@/components/listings/WebListingCard';
 import { MobileShell } from '@/components/layout/MobileShell';
+import { StatePanel } from '@/components/ui/StatePanel';
 import { AUTH_SESSION_EVENT, getGoSession } from '@/lib/go-auth/client';
 import { toMarketListing, type GoListing } from '@/lib/go-listings/client';
 import { listPersonalListings } from '@/lib/go-listings/personal';
@@ -45,13 +47,30 @@ export function PersonalListings({ kind }: { kind: 'listings' | 'favorites' }) {
   const title = kind === 'listings' ? '내 판매 내역' : '찜한 장비';
   return (
     <MobileShell title={title} showBack>
-      <div style={{ padding: 16 }}>
-        <Link href="/profile">← 마이페이지</Link>
-        <h1 style={{ fontSize: '1.2rem', margin: '16px 0' }}>{title}</h1>
-        {kind === 'listings' ? <p><Link href="/seller/apply">판매자 신청·상태 확인</Link></p> : null}
-        {loading ? <p role="status">내 매물을 불러오고 있어요.</p> : error ? (
-          <div role="alert"><p>{error}</p><button className="btn-outline" type="button" onClick={() => setRefresh((value) => value + 1)}>다시 시도</button><Link href="/auth">로그인하기</Link></div>
-        ) : items.length === 0 ? <p>아직 {kind === 'listings' ? '등록한 매물' : '찜한 공개 매물'}이 없어요.</p> : (
+      <div className="account-page">
+        <h1 className="account-page-title">{title}</h1>
+        <nav className="account-page-links" aria-label="내 매물 탐색">
+          <Link href="/profile">← 마이페이지</Link>
+          {kind === 'listings' ? <Link href="/seller/apply">판매자 신청·상태 확인</Link> : null}
+        </nav>
+        {loading ? <StatePanel role="status" description="내 매물을 불러오고 있어요." /> : error ? (
+          <StatePanel
+            role="alert"
+            icon={<CircleUserRound size={28} />}
+            description={error}
+            actions={<>
+              <Link className="btn-primary" href="/auth">로그인하기</Link>
+              <button className="btn-outline" type="button" onClick={() => setRefresh((value) => value + 1)}>다시 시도</button>
+            </>}
+          />
+        ) : items.length === 0 ? (
+          <StatePanel
+            icon={<PackageSearch size={28} />}
+            title={`아직 ${kind === 'listings' ? '등록한 매물' : '찜한 공개 매물'}이 없어요.`}
+            description={kind === 'listings' ? '사용하지 않는 장비를 새로운 주인에게 연결해 보세요.' : '마음에 드는 장비를 찜하고 여기서 모아보세요.'}
+            actions={<Link className="btn-primary" href={kind === 'listings' ? '/sell' : '/market'}>{kind === 'listings' ? '장비 판매하기' : '마켓으로 가기'}</Link>}
+          />
+        ) : (
           <div className="product-grid">
             {items.map((item) => {
               const marketListing = toMarketListing(item);

@@ -1496,6 +1496,38 @@ textarea {
   line-height: 1.45;
 }
 
+.account-page {
+  padding: 24px 20px 32px;
+}
+
+.account-page-title {
+  margin-bottom: 12px;
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+
+.account-page-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-bottom: 24px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.account-page-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.account-page a:focus-visible,
+.account-page button:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
+}
+
 .completion-state,
 .empty-state {
   min-height: calc(100vh - 56px);

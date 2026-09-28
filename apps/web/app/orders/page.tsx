@@ -1,7 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { ShoppingBag, CircleUserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { MobileShell } from '@/components/layout/MobileShell';
+import { StatePanel } from '@/components/ui/StatePanel';
 
 import { listOrders, type Order } from '@/lib/go-listings/orders';
 import { getGoSession } from '@/lib/go-auth/client';
@@ -46,33 +49,39 @@ export default function OrdersPage() {
   }, []);
 
   return (
-    <div className="container" style={{ padding: '16px', maxWidth: '720px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '20px', marginBottom: '16px' }}>내 주문 내역</h1>
-      <nav aria-label="주문 탐색" style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-        <Link href="/profile">← 마이페이지</Link>
-        <Link href="/market">마켓으로 가기</Link>
-      </nav>
+    <MobileShell title="내 주문 내역" showBack>
+      <div className="account-page">
+        <h1 className="account-page-title">내 주문 내역</h1>
+        <nav aria-label="주문 탐색" className="account-page-links">
+          <Link href="/profile">← 마이페이지</Link>
+          <Link href="/market">마켓으로 가기</Link>
+        </nav>
 
-      {loading ? (
-        <p>로딩 중...</p>
-      ) : error ? (
-        <div style={{ color: 'var(--danger)', padding: '16px', background: '#fff5f5', borderRadius: 8 }}>
-          <p>{error}</p>
-          <Link href="/auth" className="btn-primary">로그인하기</Link>
-        </div>
-      ) : orders.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '32px 0' }}>
-          <p style={{ color: '#666' }}>아직 주문 내역이 없습니다.</p>
-          <Link href="/market" className="btn-primary">마켓으로 가기</Link>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {orders.map((order) => (
-            <OrderCard key={order.id} order={order} />
-          ))}
-        </div>
-      )}
-    </div>
+        {loading ? (
+          <StatePanel role="status" description="주문 내역을 불러오고 있어요." />
+        ) : error ? (
+          <StatePanel
+            role="alert"
+            icon={<CircleUserRound size={28} />}
+            description={error}
+            actions={<Link href="/auth" className="btn-primary">로그인하기</Link>}
+          />
+        ) : orders.length === 0 ? (
+          <StatePanel
+            icon={<ShoppingBag size={28} />}
+            title="아직 주문 내역이 없습니다."
+            description="마켓에서 나에게 맞는 장비를 찾아보세요."
+            actions={<Link href="/market" className="btn-primary">마켓으로 가기</Link>}
+          />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {orders.map((order) => (
+              <OrderCard key={order.id} order={order} />
+            ))}
+          </div>
+        )}
+      </div>
+    </MobileShell>
   );
 }
 

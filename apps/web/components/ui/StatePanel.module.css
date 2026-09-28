@@ -1,0 +1,58 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  padding: 36px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 24px;
+  border-radius: 50%;
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.title {
+  margin-bottom: 10px;
+  color: var(--text-main);
+  font-size: 1.05rem;
+  line-height: 1.5;
+  word-break: keep-all;
+}
+
+.description {
+  max-width: 300px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.7;
+  word-break: keep-all;
+}
+
+.actions {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 28px;
+}
+
+.actions > * {
+  min-height: 48px;
+}
+
+.actions a:focus-visible,
+.actions button:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
+}
