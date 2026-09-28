@@ -1,169 +1,269 @@
 'use client';
 
 import Link from 'next/link';
-import { use, useCallback, useEffect, useState } from 'react';
-
-import { cancelOrder, getOrder, receiveOrder, type Order } from '@/lib/go-listings/orders';
-import { getGoSession } from '@/lib/go-auth/client';
-import { orderStatusLabel } from '@/lib/go-listings/order-display';
-import { MobileShell } from '@/components/layout/MobileShell';
+import { CircleAlert } from 'lucide-react';
+import { use, useEffect, useRef, useState } from 'react';
 import { StatePanel } from '@/components/ui/StatePanel';
-import { OrderPaymentBadge, OrderFulfillmentStatus } from '@/components/orders/OrderStatus';
-import { formatKrw, formatRelativeTime } from '@/lib/display-format';
+import { OrderShell, OrderBadge, OrderProduct } from '@/components/orders/OrderPresentation';
+import styles from '@/components/orders/orders.module.css';
+import { cancelOrder, getOrder, receiveOrder, type Order } from '@/lib/go-listings/orders';
+import { formatWon } from '@/lib/display-format';
+import { getGoSession } from '@/lib/go-auth/client';
+import {
+  formatOrderDate,
+  orderActions,
+  orderDeliveryLabel,
+  orderStatusLabel,
+} from '@/lib/go-listings/order-display';
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  return <OrderDetail key={id} id={id} />;
+}
+
+function OrderDetail({ id }: { id: string }) {
   const [order, setOrder] = useState<Order | null>(null);
+  const [viewerId, setViewerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [errorStatus, setErrorStatus] = useState(0);
-  const [generation, setGeneration] = useState(0);
-  const [canceling, setCanceling] = useState(false);
-  const [cancelConfirm, setCancelConfirm] = useState(false);
-  const [viewerId, setViewerId] = useState<string | null>(null);
-  const [receiving, setReceiving] = useState(false);
+  const [loginRequired, setLoginRequired] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [confirmation, setConfirmation] = useState<'cancel' | 'receive' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const mutationLock = useRef(false);
+  const [actionError, setActionError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [needsRefresh, setNeedsRefresh] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void getGoSession().then((result) => { if (active && result.ok) setViewerId(result.session.member.id); });
-    void getOrder(id).then((result) => {
+    void (async () => {
+      const [session, result] = await Promise.all([getGoSession(), getOrder(id)]);
       if (!active) return;
-      if (result.ok) {
-        setOrder(result.data);
-        setError('');
+      if (!session.ok) {
+        setError(session.status === 401 ? '로그인 후 주문 정보를 확인할 수 있어요.' : session.message);
+        setLoginRequired(session.status === 401);
+      } else if (!result.ok) {
+        setError(result.status === 401 ? '로그인 후 주문 정보를 확인할 수 있어요.' : result.status === 404 ? '주문을 찾을 수 없어요.' : result.message);
+        setLoginRequired(result.status === 401);
       } else {
-        setError(result.message ?? '주문 정보를 불러올 수 없습니다.');
-        setErrorStatus(result.status);
+        setViewerId(session.session.member.id);
+        setOrder(result.data);
+        setNeedsRefresh(false);
       }
       setLoading(false);
-    });
-    return () => { active = false; };
-  }, [id, generation]);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [id, attempt]);
 
-  const handleCancel = useCallback(async () => {
-    if (!order || canceling) return;
-    setCanceling(true);
-    const result = await cancelOrder(order.id);
-    setCanceling(false);
+  const retry = () => {
+    setLoading(true);
+    setError('');
+    setActionError('');
+    setLoginRequired(false);
+    setConfirmation(null);
+    setAttempt((value) => value + 1);
+  };
+  const actions = order ? orderActions(order, viewerId) : null;
+  const submit = async () => {
+    if (!order || !confirmation || mutationLock.current || needsRefresh) return;
+    if (confirmation === 'cancel' ? !actions?.pay : !actions?.receive) return;
+    mutationLock.current = true;
+    setBusy(true);
+    setActionError('');
+    const result = await (confirmation === 'cancel'
+      ? cancelOrder(order.id)
+      : receiveOrder(order.id));
     if (result.ok) {
       setOrder(result.data);
-      setCancelConfirm(false);
+      setNotice(confirmation === 'cancel' ? '주문이 취소되었어요.' : '수령 확인이 완료되었어요.');
     } else {
-      alert(result.message ?? '취소에 실패했습니다.');
+      setActionError(`${result.message} 최신 주문 상태를 확인한 뒤 다시 진행해 주세요.`);
+      setNeedsRefresh(true);
     }
-  }, [order, canceling]);
-
-  const handleReceive = async () => {
-    if (!order || receiving) return;
-    setReceiving(true);
-    const result = await receiveOrder(order.id);
-    if (result.ok) setOrder(result.data);
-    else alert(result.message);
-    setReceiving(false);
+    setConfirmation(null);
+    setBusy(false);
+    mutationLock.current = false;
   };
 
-  if (loading) {
-    return <MobileShell title="주문 상세" showBack hideNav><StatePanel role="status" description="주문 정보를 불러오고 있어요." /></MobileShell>;
-  }
-
-  if (error || !order) {
-    return (
-      <MobileShell title="주문 상세" showBack hideNav>
-        <StatePanel role="alert" description={error || '주문을 찾을 수 없습니다.'} actions={<>
-          {errorStatus === 401 ? <Link href="/auth" className="btn-primary">로그인하기</Link> :
-            errorStatus !== 403 && errorStatus !== 404 ? <button type="button" className="btn-outline" onClick={() => { setLoading(true); setGeneration((value) => value + 1); }}>다시 시도</button> : null}
-          <Link href="/orders" className="btn-primary">주문 목록으로</Link>
-        </>} />
-      </MobileShell>
-    );
-  }
-
-  const canCancel = order.status === 'pending' && order.paymentStatus === 'unpaid' && order.buyerId === viewerId;
-
   return (
-    <MobileShell title="주문 상세" showBack hideNav>
-      <div className="container" style={{ padding: '16px', maxWidth: '720px', margin: '0 auto' }}>
-        <nav aria-label="주문 탐색" style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-          <Link href="/orders">← 주문 목록</Link>
-          <Link href="/market">마켓으로 가기</Link>
-          {order.buyerId !== viewerId ? <Link href="/seller/orders">판매 주문 목록</Link> : null}
-        </nav>
-
-        <h1 style={{ fontSize: '20px', marginBottom: '16px' }}>주문 상세</h1>
-
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '20px' }}>
-          {/* Status badge */}
-          <div style={{ marginBottom: '16px' }}>
-            <OrderPaymentBadge order={order} />
-            <OrderFulfillmentStatus order={order} />
-          </div>
-
-          {/* Order items */}
-          <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '15px', marginBottom: '8px' }}>{order.itemName}</h3>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-              <span>단가: {formatKrw(order.unitPriceKrw)}</span>
-              <span>수량: {order.quantity}</span>
-            </div>
-          </div>
-
-          {/* Totals */}
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-              <span>배송비</span><span>{formatKrw(order.shippingFeeKrw)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-              <span>수수료</span><span>{formatKrw(order.serviceFeeKrw)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: 700 }}>
-              <span>총 결제 금액</span><span>{formatKrw(order.totalAmountKrw)}</span>
-            </div>
-          </div>
-
-          {/* Metadata */}
-          <div style={{ marginTop: '16px', fontSize: '13px', color: 'var(--text-muted)' }}>
-            <p>주문일: {formatRelativeTime(order.createdAt)}</p>
-            <p>상태: {orderStatusLabel(order)}</p>
-          </div>
-
-          {canCancel && <p><Link className="btn-primary" href={`/order/confirm/${order.id}`}>테스트 결제 계속하기</Link></p>}
-          {order.buyerId === viewerId && (order.paymentStatus === 'pending_cancel' || (order.paymentStatus === 'approved' && (order.fulfillmentStatus === 'awaiting_acceptance' || order.fulfillmentStatus === 'accepted'))) && <p><Link href={`/order/confirm/${order.id}`}>결제 상태 확인 · 전체 취소</Link></p>}
-          {order.buyerId === viewerId && order.status === 'confirmed' && order.paymentStatus === 'approved' && order.fulfillmentStatus === 'handed_over' ?
-            <button className="btn-primary" type="button" disabled={receiving} onClick={() => void handleReceive()}>물품 수령 확인 · 거래 완료</button> : null}
-          {/* Cancel button */}
-          {canCancel && !cancelConfirm && (
-            <button className="btn-outline" onClick={() => setCancelConfirm(true)} style={{ width: '100%', marginTop: '16px' }}>
-              주문 취소하기
-            </button>
-          )}
-
-          {canCancel && cancelConfirm && (
-            <div style={{ marginTop: '16px', padding: '12px', background: 'var(--surface-subtle)', borderRadius: 8 }}>
-              <p style={{ fontSize: '14px', marginBottom: '8px' }}>정말로 이 주문을 취소하시겠습니까?</p>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn-primary" disabled={canceling} onClick={handleCancel} style={{ flex: 1 }}>
-                  {canceling ? '취소 처리 중...' : '확인'}
+    <OrderShell detail>
+      {loading ? (
+        <StatePanel role="status" description="주문 정보를 불러오고 있어요." />
+      ) : error || !order ? (
+        <StatePanel
+          role="alert"
+          icon={<CircleAlert size={28} />}
+          title={loginRequired ? '로그인이 필요해요' : '주문을 확인하지 못했어요'}
+          description={error || '주문을 찾을 수 없어요.'}
+          actions={
+            <>
+              {loginRequired ? (
+                <Link href="/auth" className="btn-primary">
+                  로그인하기
+                </Link>
+              ) : (
+                <button type="button" className="btn-primary" onClick={retry}>
+                  다시 시도
                 </button>
-                <button className="btn-outline" onClick={() => setCancelConfirm(false)} style={{ flex: 1 }}>
-                  취소
+              )}
+              <Link href="/orders" className="btn-outline">
+                주문 목록으로
+              </Link>
+            </>
+          }
+        />
+      ) : (
+        <div className={styles.stack}>
+          <section className={styles.card} aria-label="주문 상품과 상태">
+            <div className={styles.cardTop}>
+              <time dateTime={order.createdAt}>{formatOrderDate(order.createdAt)} 주문</time>
+              <OrderBadge order={order} />
+            </div>
+            <OrderProduct order={order} />
+            <p className={styles.delivery}>
+              <strong>전달 상태</strong>
+              {orderDeliveryLabel(order)}
+            </p>
+          </section>
+          <section className={styles.card} aria-labelledby="payment-heading">
+            <h2 id="payment-heading" className={styles.sectionTitle}>
+              결제 정보
+            </h2>
+            <dl className={styles.facts}>
+              <div>
+                <dt>상품 금액</dt>
+                <dd>{formatWon(order.unitPriceKrw * order.quantity)}</dd>
+              </div>
+              <div>
+                <dt>배송비</dt>
+                <dd>{formatWon(order.shippingFeeKrw)}</dd>
+              </div>
+              <div>
+                <dt>수수료</dt>
+                <dd>{formatWon(order.serviceFeeKrw)}</dd>
+              </div>
+              <div className={styles.total}>
+                <dt>총 주문 금액</dt>
+                <dd>{formatWon(order.totalAmountKrw)}</dd>
+              </div>
+              <div>
+                <dt>결제 상태</dt>
+                <dd>{orderStatusLabel(order)}</dd>
+              </div>
+            </dl>
+          </section>
+          <section id="order-actions" className={styles.card} aria-labelledby="action-heading">
+            <h2 id="action-heading" className={styles.sectionTitle}>
+              주문 확인
+            </h2>
+            <p className={styles.muted}>
+              현재 테스트 결제만 지원해요. 실제 결제·배송은 진행되지 않아요.
+            </p>
+            {notice ? (
+              <p role="status" className={styles.delivery}>
+                {notice}
+              </p>
+            ) : null}
+            {actionError ? (
+              <p role="alert" className={styles.error}>
+                {actionError}
+              </p>
+            ) : null}
+            {needsRefresh ? (
+              <div className={styles.actions}>
+                <button className="btn-primary" onClick={retry}>
+                  최신 상태 확인
                 </button>
               </div>
-            </div>
-          )}
-
-          {!canCancel && order.status !== 'confirmed' && (
-            <p style={{ marginTop: '16px', fontSize: '13px', color: 'var(--text-muted)' }}>
-              현재 상태에서는 주문을 취소할 수 없습니다.
-            </p>
-          )}
-
-          {order.paymentStatus === 'approved' && (
-            <div style={{ marginTop: '16px', padding: '12px', background: 'var(--surface-subtle)', borderRadius: 8 }}>
-              <p style={{ fontSize: '14px', color: 'var(--text-main)' }}>테스트 결제 승인이 확인되었습니다. 실제 결제·배송은 진행되지 않습니다.</p>
-            </div>
-          )}
+            ) : confirmation ? (
+              <div className={styles.confirmation} role="group" aria-labelledby="confirm-heading">
+                <h3 id="confirm-heading">
+                  {confirmation === 'cancel' ? '이 주문을 취소할까요?' : '물품을 받으셨나요?'}
+                </h3>
+                <p>
+                  {confirmation === 'cancel'
+                    ? '주문을 취소하면 예약한 재고가 해제돼요.'
+                    : '물품의 상태를 확인한 뒤 진행해 주세요. 수령을 확인하면 거래가 완료돼요.'}
+                </p>
+                <div className={styles.actions}>
+                  <button
+                    autoFocus
+                    className="btn-outline"
+                    disabled={busy}
+                    onClick={() => setConfirmation(null)}
+                  >
+                    돌아가기
+                  </button>
+                  <button className="btn-primary" disabled={busy} onClick={() => void submit()}>
+                    {busy
+                      ? '처리 중…'
+                      : confirmation === 'cancel'
+                        ? '주문 취소 확정'
+                        : '수령 확인 확정'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className={styles.actions}>
+                {actions?.pay ? (
+                  <>
+                    <Link className="btn-primary" href={`/order/confirm/${order.id}`}>
+                      결제 계속하기
+                    </Link>
+                    <button className="btn-outline" onClick={() => setConfirmation('cancel')}>
+                      주문 취소하기
+                    </button>
+                  </>
+                ) : null}
+                {actions?.payment ? (
+                  <Link className="btn-outline" href={`/order/confirm/${order.id}`}>
+                    결제 상태·취소 확인
+                  </Link>
+                ) : null}
+                {actions?.receive ? (
+                  <button className="btn-primary" onClick={() => setConfirmation('receive')}>
+                    수령 확인하기
+                  </button>
+                ) : null}
+                <button className="btn-outline" onClick={retry}>
+                  최신 상태 확인
+                </button>
+              </div>
+            )}
+          </section>
+          <section className={styles.card} aria-labelledby="order-heading">
+            <h2 id="order-heading" className={styles.sectionTitle}>
+              주문 정보
+            </h2>
+            <dl className={styles.facts}>
+              <div>
+                <dt>주문 번호</dt>
+                <dd>{order.id}</dd>
+              </div>
+              <div>
+                <dt>주문일</dt>
+                <dd>{formatOrderDate(order.createdAt)} (한국시간)</dd>
+              </div>
+              {order.receivedAt ? (
+                <div>
+                  <dt>수령 확인일</dt>
+                  <dd>{formatOrderDate(order.receivedAt)}</dd>
+                </div>
+              ) : null}
+            </dl>
+            {viewerId !== order.buyerId ? (
+              <div className={styles.actions}>
+                <Link className="btn-outline" href="/seller/orders">
+                  판매 주문 목록
+                </Link>
+              </div>
+            ) : null}
+          </section>
         </div>
-      </div>
-    </MobileShell>
+      )}
+    </OrderShell>
   );
 }

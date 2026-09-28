@@ -1,110 +1,135 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
-import { ShoppingBag, CircleUserRound } from 'lucide-react';
+import { ShoppingBag, CircleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { MobileShell } from '@/components/layout/MobileShell';
 import { StatePanel } from '@/components/ui/StatePanel';
-
+import { OrderShell, OrderBadge, OrderProduct } from '@/components/orders/OrderPresentation';
+import styles from '@/components/orders/orders.module.css';
 import { listOrders, type Order } from '@/lib/go-listings/orders';
 import { getGoSession } from '@/lib/go-auth/client';
-
-import { OrderPaymentBadge } from '@/components/orders/OrderStatus';
-import { formatKrw, formatRelativeTime } from '@/lib/display-format';
+import { formatOrderDate, orderActions, orderDeliveryLabel } from '@/lib/go-listings/order-display';
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [viewerId, setViewerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [errorStatus, setErrorStatus] = useState(0);
-  const [generation, setGeneration] = useState(0);
+  const [loginRequired, setLoginRequired] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
-    void getGoSession().then((sessionResult) => {
+    void (async () => {
+      const session = await getGoSession();
       if (!active) return;
-      if (!sessionResult.ok) {
-        setError(sessionResult.status === 401 ? '로그인이 필요합니다.' : sessionResult.message);
-        setErrorStatus(sessionResult.status ?? 0);
+      if (!session.ok) {
+        setLoginRequired(session.status === 401);
+        setError(
+          session.status === 401 ? '로그인 후 내 주문 내역을 확인할 수 있어요.' : session.message,
+        );
         setLoading(false);
         return;
       }
-      void listOrders().then((result) => {
-        if (!active) return;
-        if (result.ok) {
-          setOrders(result.data.orders);
-          setError('');
-        } else {
-          setError(result.message ?? '주문 목록을 불러올 수 없습니다.');
-          setErrorStatus(result.status);
-        }
-        setLoading(false);
-      });
-    });
-    return () => { active = false; };
-  }, [generation]);
+      setViewerId(session.session.member.id);
+      const result = await listOrders();
+      if (!active) return;
+      if (result.ok) setOrders(result.data.orders);
+      else {
+        setError(result.message);
+        setLoginRequired(result.status === 401);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+
+  const retry = () => {
+    setLoading(true);
+    setError('');
+    setLoginRequired(false);
+    setAttempt((value) => value + 1);
+  };
 
   return (
-    <MobileShell title="내 주문 내역" showBack>
-      <div className="account-page">
-        <h1 className="account-page-title">내 주문 내역</h1>
-        <nav aria-label="주문 탐색" className="account-page-links">
-          <Link href="/profile">← 마이페이지</Link>
-          <Link href="/market">마켓으로 가기</Link>
-        </nav>
-
-        {loading ? (
-          <StatePanel role="status" description="주문 내역을 불러오고 있어요." />
-        ) : error ? (
-          <StatePanel
-            role="alert"
-            icon={<CircleUserRound size={28} />}
-            description={error}
-            actions={errorStatus === 401 ? <Link href="/auth" className="btn-primary">로그인하기</Link> :
-              errorStatus === 403 ? <Link href="/profile">마이페이지로</Link> :
-              <button type="button" className="btn-outline" onClick={() => { setLoading(true); setGeneration((value) => value + 1); }}>다시 시도</button>}
-          />
-        ) : orders.length === 0 ? (
-          <StatePanel
-            icon={<ShoppingBag size={28} />}
-            title="아직 주문 내역이 없습니다."
-            description="마켓에서 나에게 맞는 장비를 찾아보세요."
-            actions={<Link href="/market" className="btn-primary">마켓으로 가기</Link>}
-          />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {orders.map((order) => (
-              <OrderCard key={order.id} order={order} />
-            ))}
+    <OrderShell>
+      {loading ? (
+        <StatePanel role="status" description="주문 내역을 불러오고 있어요." />
+      ) : error ? (
+        <StatePanel
+          role="alert"
+          icon={<CircleAlert size={28} />}
+          title={loginRequired ? '로그인이 필요해요' : '주문 내역을 불러오지 못했어요'}
+          description={error}
+          actions={
+            loginRequired ? (
+              <Link href="/auth" className="btn-primary">
+                로그인하기
+              </Link>
+            ) : (
+              <button type="button" className="btn-primary" onClick={retry}>
+                다시 시도
+              </button>
+            )
+          }
+        />
+      ) : orders.length === 0 ? (
+        <StatePanel
+          icon={<ShoppingBag size={28} />}
+          title="아직 주문 내역이 없어요"
+          description="마켓에서 나에게 맞는 장비를 찾아보세요."
+          actions={
+            <Link href="/market" className="btn-primary">
+              마켓 둘러보기
+            </Link>
+          }
+        />
+      ) : (
+        <>
+          <div className={styles.intro}>
+            <h2>최근 주문</h2>
+            <p>최근 주문 최대 50건을 최신순으로 보여드려요.</p>
           </div>
-        )}
-      </div>
-    </MobileShell>
-  );
-}
-
-function OrderCard({ order }: { order: Order }) {
-  return (
-    <Link href={`/order/${order.id}`} style={{ textDecoration: 'none' }}>
-      <div style={{
-        background: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: 12,
-        padding: '16px',
-        transition: 'box-shadow 0.2s',
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)')}
-      onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'none')}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <strong>{order.itemName}</strong>
-          <OrderPaymentBadge order={order} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)' }}>
-          <span>{formatKrw(order.totalAmountKrw)}</span>
-          <span>{formatRelativeTime(order.createdAt)}</span>
-        </div>
-      </div>
-    </Link>
+          <ul className={styles.list}>
+            {orders.map((order) => {
+              const actions = orderActions(order, viewerId);
+              return (
+                <li key={order.id}>
+                  <article className={styles.card} aria-label={`${order.itemName} 주문`}>
+                    <div className={styles.cardTop}>
+                      <time dateTime={order.createdAt}>
+                        {formatOrderDate(order.createdAt)} 주문
+                      </time>
+                      <OrderBadge order={order} />
+                    </div>
+                    <OrderProduct order={order} />
+                    <p className={styles.delivery}>
+                      <strong>전달 상태</strong>
+                      {orderDeliveryLabel(order)}
+                    </p>
+                    <div className={styles.actions}>
+                      <Link className="btn-outline" href={`/order/${order.id}`}>
+                        주문 상세
+                      </Link>
+                      {actions.pay ? (
+                        <Link className="btn-primary" href={`/order/confirm/${order.id}`}>
+                          결제 계속하기
+                        </Link>
+                      ) : actions.receive ? (
+                        <Link className="btn-primary" href={`/order/${order.id}#order-actions`}>
+                          수령 확인하기
+                        </Link>
+                      ) : null}
+                    </div>
+                  </article>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </OrderShell>
   );
 }
