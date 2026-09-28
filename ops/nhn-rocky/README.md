@@ -39,3 +39,15 @@ Node.js는 루트 `engines` 조건을 충족해야 하며 pnpm은 `packageManage
 Git은 공개 저장소 HTTPS로 연결합니다. 비공개 상태에서 잠시 생성했던 저장소 전용 배포 키는 공개 전환 후 GitHub와 서버 양쪽에서 제거했습니다. 서버에 GitHub 개인 토큰을 저장하지 않았습니다.
 
 위 준비 기록 당시에는 Go 소스·River 구현이 없었습니다. 이후 추가한 기반·인증 세션·`0009_go_listings.sql`과 격리 테스트는 [별도 검증 기록](../../docs/foundation-verification.md)을 따릅니다. `bash ops/nhn-rocky/test-listings-database.sh`로 매물 소유권/RLS 회귀를 별도로 확인할 수 있습니다. 토스페이먼츠와 운영 DB migration·서비스 배포는 수행하지 않았습니다.
+
+## 격리 거래 브라우저 E2E
+
+저장소 루트에서 `pnpm install --frozen-lockfile`로 의존성을 준비하고 Docker 데몬과 로컬 Chrome을 실행할 수 있는 환경에서 다음을 실행합니다. Windows에서는 Git Bash(`C:/Program Files/Git/bin/bash.exe`)로 같은 스크립트를 호출합니다.
+
+```sh
+bash ops/nhn-rocky/run-commerce-e2e.sh
+```
+
+스크립트는 Go API와 migration 바이너리를 고정된 Linux 이미지에서 빌드하고, 실행마다 고유한 Compose 프로젝트·PostgreSQL 볼륨을 만들고 migration을 적용합니다. fixture 운영자와 사전 승인된 다른 판매자만 준비하며 나머지 판매자 신청·매물·재고·주문은 분리된 실제 브라우저 세션이 만듭니다. Next.js는 loopback에서 실제 Go API로 프록시하고, 로그인은 `APP_ENV=test`와 `AUTH_DEV_LOGIN_ENABLED=true` 및 fixture 전용 계정만 사용합니다. 결제/취소는 테스트 PG만 호출하며 실제 OAuth·PG 키나 운영 DB에 접근하지 않습니다.
+
+테스트는 `apps/web/e2e/commerce.spec.ts`에 있습니다. 선택적 Playwright 인수는 스크립트 뒤에 그대로 전달할 수 있습니다(예: `--grep "real isolated buyer/seller/operator"`). 실패 시 로그는 `.foundation-cache/results/<project>.*.log`, 스크린샷은 `.foundation-cache/playwright-results/`에 남습니다. 성공·실패 모두 이 실행에서 만든 웹 프로세스·Compose 프로젝트·DB 볼륨·일시 바이너리만 정리하며 기존 Docker 프로젝트나 작업 트리는 건드리지 않습니다. 최신 실행 결과와 미검증 범위는 [격리 거래 E2E 검증 기록](../../docs/commerce-e2e-verification-20260928.md)을 참조합니다.

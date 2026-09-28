@@ -1,0 +1,23 @@
+services:
+  postgres:
+    ports: []
+  migrate:
+    volumes:
+      - ${E2E_BIN_DIR:?E2E_BIN_DIR is required}:/foundation/bin:ro
+  api:
+    volumes:
+      - ${E2E_BIN_DIR:?E2E_BIN_DIR is required}:/foundation/bin:ro
+    ports:
+      - "127.0.0.1:${E2E_API_PORT:-18081}:8080"
+    environment:
+      API_ADDR: 0.0.0.0:8080
+      AUTH_FIXTURE_HTTP: "true"
+      AUTH_FIXTURE_OAUTH_BASE_URL: http://oauthfixture:19000
+      PUBLIC_WEB_URL: ${E2E_BASE_URL:-http://127.0.0.1:3210}
+      AUTH_DEV_LOGIN_ENABLED: "true"
+
+# Docker Desktop cannot forward a loopback API port from an internal-only bridge.
+# This unique test network has no published database port or external credentials.
+networks:
+  default:
+    internal: false
