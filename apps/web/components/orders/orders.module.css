@@ -28,7 +28,8 @@
 .intro { display: grid; gap: 5px; margin-bottom: 20px; }
 .intro h2 { font-size: 1.1rem; }
 .muted, .intro p { color: var(--text-muted); font-size: 0.82rem; line-height: 1.65; }
-.list { display: grid; gap: 16px; list-style: none; }
+.list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; list-style: none; }
+.list > li { min-width: 0; }
 .card { padding: 18px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
 .cardTop { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; }
 .cardTop time { color: var(--text-muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
@@ -42,10 +43,23 @@
 .placeholder span { font-size: 0.61rem; }
 .productText { min-width: 0; }
 .productText h2 { font-size: 0.95rem; line-height: 1.55; overflow-wrap: anywhere; }
+.list .productText h2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
 .productText p { margin: 5px 0 7px; color: var(--text-muted); font-size: 0.78rem; }
 .productText strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .delivery { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 0.82rem; line-height: 1.65; color: var(--text-muted); }
 .delivery strong { display: block; margin-bottom: 3px; color: var(--text-main); font-size: 0.8rem; }
+.list .delivery {
+  margin-top: 14px;
+  padding-top: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .actions > * { flex: 1 1 120px; }
 .shell :global(.btn-primary), .shell :global(.btn-outline) { min-height: 44px; padding: 11px 12px; font-size: 0.85rem; text-align: center; line-height: 1.5; }

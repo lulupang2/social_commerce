@@ -106,7 +106,6 @@ export default function OrdersPage() {
                     </div>
                     <OrderProduct order={order} />
                     <p className={styles.delivery}>
-                      <strong>전달 상태</strong>
                       {orderDeliveryLabel(order)}
                     </p>
                     <div className={styles.actions}>
