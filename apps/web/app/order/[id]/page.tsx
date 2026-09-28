@@ -31,6 +31,7 @@ function OrderDetail({ id }: { id: string }) {
   const [confirmation, setConfirmation] = useState<'cancel' | 'receive' | null>(null);
   const [busy, setBusy] = useState(false);
   const mutationLock = useRef(false);
+  const actionsAnchorHandled = useRef(false);
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
   const [needsRefresh, setNeedsRefresh] = useState(false);
@@ -57,6 +58,15 @@ function OrderDetail({ id }: { id: string }) {
       active = false;
     };
   }, [id, attempt]);
+
+  useEffect(() => {
+    if (actionsAnchorHandled.current || loading || error || !order || window.location.hash !== '#order-actions') return;
+    const target = document.getElementById('order-actions');
+    if (!target) return;
+    actionsAnchorHandled.current = true;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: 'start' });
+  }, [loading, error, order]);
 
   const retry = () => {
     setLoading(true);
@@ -155,7 +165,7 @@ function OrderDetail({ id }: { id: string }) {
               </div>
             </dl>
           </section>
-          <section id="order-actions" className={styles.card} aria-labelledby="action-heading">
+          <section id="order-actions" className={`${styles.card} ${styles.actionAnchor}`} aria-labelledby="action-heading" tabIndex={-1}>
             <h2 id="action-heading" className={styles.sectionTitle}>
               주문 확인
             </h2>
