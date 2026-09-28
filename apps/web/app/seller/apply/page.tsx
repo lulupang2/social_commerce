@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
+import { StatePanel } from '@/components/ui/StatePanel';
 import { MobileShell } from '@/components/layout/MobileShell';
 import { applyForSeller, getSellerStatus } from '@/lib/go-listings/seller';
 import type { SellerStatus } from '@icegear/domain';
@@ -12,12 +13,13 @@ export default function SellerApplyPage() {
   const [type, setType] = useState<'individual' | 'business'>('individual');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
+  const [errorStatus, setErrorStatus] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const reload = useCallback(async () => {
     const result = await getSellerStatus();
     if (result.ok) { setStatus(result.data); setError(''); }
-    else setError(result.message);
+    else { setError(result.message); setErrorStatus(result.status); }
     setLoading(false);
   }, []);
   useEffect(() => { queueMicrotask(() => { void reload(); }); }, [reload]);
@@ -25,13 +27,13 @@ export default function SellerApplyPage() {
     event.preventDefault(); setBusy(true);
     const result = await applyForSeller(type, displayName.trim());
     if (result.ok) await reload();
-    else setError(result.message);
+    else { setError(result.message); setErrorStatus(result.status); }
     setBusy(false);
   };
   return <MobileShell title="판매자 신청">
-    <main className="container" style={{ padding: 16 }}>
-      {loading ? <p role="status">판매자 상태를 확인하고 있어요.</p> : null}
-      {error ? <p role="alert">{error}</p> : null}
+    <div className="container" style={{ padding: 16 }}>
+      {loading ? <StatePanel role="status" description="판매자 상태를 확인하고 있어요." /> : null}
+      {!loading && error ? <StatePanel role="alert" description={error} actions={errorStatus === 401 ? <Link className="btn-primary" href="/auth">로그인하기</Link> : errorStatus === 403 || errorStatus === 404 ? <Link href="/profile">마이페이지로</Link> : <button type="button" className="btn-outline" disabled={busy} onClick={() => { setLoading(true); void reload(); }}>다시 시도</button>} /> : null}
       {status?.seller ? <section><h2>판매자 승인 완료</h2><p>{status.seller.displayName}</p>
         <Link href="/my/listings">내 매물과 재고 관리</Link> · <Link href="/seller/orders">판매 주문 처리</Link></section> : null}
       {!status?.seller && status?.application?.status === 'pending' ?
@@ -46,6 +48,6 @@ export default function SellerApplyPage() {
         <label>표시 이름 <input required maxLength={120} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
         <button type="submit" className="btn-primary" disabled={busy || !displayName.trim()}>{busy ? '신청 중…' : '승인 신청'}</button>
       </form> : null}
-    </main>
+    </div>
   </MobileShell>;
 }

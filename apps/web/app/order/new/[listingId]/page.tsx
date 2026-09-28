@@ -2,6 +2,7 @@
 
 import { ArrowLeft, Clock3, ReceiptText } from 'lucide-react';
 import Link from 'next/link';
+import { formatWon } from '@/lib/display-format';
 import { useRouter } from 'next/navigation';
 import { use, useEffect, useRef, useState } from 'react';
 import { getEditableGoListing, type GoListing } from '@/lib/go-listings/client';
@@ -68,7 +69,7 @@ export default function NewOrderPage({ params }: { params: Promise<{ listingId: 
 
             <div className="order-price-row">
               <span>상품 금액</span>
-              <strong>{listing.priceKrw.toLocaleString()}원</strong>
+              <strong>{formatWon(listing.priceKrw)}</strong>
             </div>
 
             <div className="order-quantity-field">
@@ -83,7 +84,7 @@ export default function NewOrderPage({ params }: { params: Promise<{ listingId: 
 
             <div className="checkout-total order-form-total">
               <span>총 결제 금액</span>
-              <strong>{listing.priceKrw.toLocaleString()}원</strong>
+              <strong>{formatWon(listing.priceKrw)}</strong>
             </div>
 
             <div className="order-reservation-note">

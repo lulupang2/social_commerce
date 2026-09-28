@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { formatWon } from '@/lib/display-format';
 import Script from 'next/script';
 import { use, useEffect, useRef, useState } from 'react';
 import { confirmPayment, getOrder, getPaymentConfig, refundOrder, type Order } from '@/lib/go-listings/orders';
@@ -110,7 +111,7 @@ export default function ConfirmOrderPage({ params }: { params: Promise<{ orderId
           <h2>{order.itemName}</h2>
           <p>수량 1개</p>
         </div>
-        <div className="checkout-total"><span>총 결제 금액</span><strong>{order.totalAmountKrw.toLocaleString()}원</strong></div>
+        <div className="checkout-total"><span>총 결제 금액</span><strong>{formatWon(order.totalAmountKrw)}</strong></div>
         {order.paymentStatus==='approved' && <div className="checkout-state checkout-state-success"><strong>테스트 결제 승인을 확인했습니다.</strong><span>{config?.provider==='toss_test' ? '토스 테스트 결제 내역과 서버 주문이 일치합니다.' : config?.provider==='fake_toss' ? '격리 fixture 결제 승인입니다. 실제 토스 결제가 아닙니다.' : '서버에서 승인된 테스트 주문입니다.'}</span></div>}
         {order.paymentStatus==='pending_approval' && <p className="checkout-state" role="status">결제 결과를 확인하고 있습니다. 승인 전까지 완료로 표시하지 않습니다.</p>}
         {order.paymentStatus==='pending_cancel' && <p className="checkout-state" role="status">전체 취소 결과를 확인하고 있습니다. 완료 전까지 재고를 복원하지 않습니다.</p>}
@@ -119,7 +120,7 @@ export default function ConfirmOrderPage({ params }: { params: Promise<{ orderId
         {order.paymentStatus==='approved' && (order.fulfillmentStatus==='awaiting_acceptance'||order.fulfillmentStatus==='accepted') && <button className="checkout-button checkout-button-danger" disabled={busy} onClick={()=>void refund()}>테스트 결제 전체 취소</button>}
         {canPay && config?.provider==='toss_test' && !widgetReady && <button className="checkout-button checkout-button-primary" disabled={busy||!sdkReady} onClick={()=>void prepare()}>토스 테스트 결제 준비</button>}
         <div className="checkout-widget" hidden={!canPay}><div id="payment-methods"/><div id="payment-agreement"/></div>
-        {canPay && (widgetReady||config?.provider==='fake_toss') && <button className="checkout-button checkout-button-primary" disabled={busy} onClick={()=>void pay()}>{busy?'처리 중…':config?.provider==='fake_toss'?'가짜 PG 승인':`${order.totalAmountKrw.toLocaleString()}원 테스트 결제`}</button>}
+        {canPay && (widgetReady||config?.provider==='fake_toss') && <button className="checkout-button checkout-button-primary" disabled={busy} onClick={()=>void pay()}>{busy?'처리 중…':config?.provider==='fake_toss'?'가짜 PG 승인':`${formatWon(order.totalAmountKrw)} 테스트 결제`}</button>}
       </section>}
       <nav className="checkout-links" aria-label="주문 탐색"><Link href={`/order/${orderId}`}>주문 상세</Link><span>·</span><Link href="/orders">내 주문 내역</Link></nav>
       <nav className="checkout-links" aria-label="마켓 복귀"><Link href="/market">마켓으로 가기</Link></nav>

@@ -6,8 +6,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import React, { use, useEffect, useRef, useState } from 'react';
 
+import { StatePanel } from '@/components/ui/StatePanel';
 import { MobileShell } from '@/components/layout/MobileShell';
-import { connectRealtimeConversation, type RealtimeConversationSession } from '@/lib/chat/realtime';
+import { connectRealtimeConversation, type RealtimeConversationResult, type RealtimeConversationSession } from '@/lib/chat/realtime';
 import { SUMMER_CHAT_ROOMS } from '@/lib/data/summer-mock-data';
 import { showNativeLocalNotification, triggerNativeHaptic } from '@/lib/native-bridge';
 
@@ -47,6 +48,8 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
   const [isConnecting, setIsConnecting] = useState(!demoChat);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
+  const [connectionFailure, setConnectionFailure] = useState<Extract<RealtimeConversationResult, { ok: false }>['reason'] | null>(null);
+  const [connectionGeneration, setConnectionGeneration] = useState(0);
   const [hasOlder, setHasOlder] = useState(false);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [visibleGeneration, setVisibleGeneration] = useState(0);
@@ -69,9 +72,12 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
       setIsConnecting(false);
       if (!result.ok) {
         setError(result.message);
+        setConnectionFailure(result.reason);
         return;
       }
 
+      setError('');
+      setConnectionFailure(null);
       setSession(result.session);
       setHasOlder(result.session.model.hasMore);
       acknowledged.current = null;
@@ -99,6 +105,7 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
         if (!active) return;
         setMessages([]);
         setSession(null);
+        setConnectionFailure(null);
         setError('로그인 계정이 변경됐어요. 채팅 목록에서 다시 열어 주세요.');
       });
     });
@@ -107,7 +114,7 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
       active = false;
       unsubscribe?.();
     };
-  }, [demoChat, id]);
+  }, [demoChat, id, connectionGeneration]);
 
   useEffect(() => {
     const latest = messages.at(-1)?.id ?? null;
@@ -196,10 +203,7 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
   if (isConnecting) {
     return (
       <MobileShell title="채팅 연결 중" showBack hideNav>
-        <div className="empty-state">
-          <LoaderCircle className="spin" size={28} />
-          <p>대화를 불러오고 있어요.</p>
-        </div>
+        <StatePanel role="status" icon={<LoaderCircle className="spin" size={28} />} description="대화를 불러오고 있어요." />
       </MobileShell>
     );
   }
@@ -207,12 +211,13 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
   if (!demoChat && !session) {
     return (
       <MobileShell title="채팅을 열 수 없어요" showBack hideNav>
-        <div className="empty-state">
-          <p>{error || '대화방이 없거나 접근할 수 없어요.'}</p>
+        <StatePanel role="alert" description={error || '대화방이 없거나 접근할 수 없어요.'} actions={<>
+          {connectionFailure === 'unauthenticated' ? <Link className="btn-primary" href="/auth">로그인하기</Link> :
+            connectionFailure === 'request_failed' ? <button type="button" className="btn-outline" onClick={() => { setIsConnecting(true); setConnectionGeneration((value) => value + 1); }}>다시 시도</button> : null}
           <Link className="btn-primary" href="/chats">
             채팅 목록으로 돌아가기
           </Link>
-        </div>
+        </>} />
       </MobileShell>
     );
   }

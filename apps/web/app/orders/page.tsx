@@ -9,29 +9,23 @@ import { StatePanel } from '@/components/ui/StatePanel';
 import { listOrders, type Order } from '@/lib/go-listings/orders';
 import { getGoSession } from '@/lib/go-auth/client';
 
-import { orderStatusLabel } from '@/lib/go-listings/order-display';
-function formatRelative(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return '방금 전';
-  if (mins < 60) return `${mins}분 전`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}시간 전`;
-  const days = Math.floor(hrs / 24);
-  return `${days}일 전`;
-}
+import { OrderPaymentBadge } from '@/components/orders/OrderStatus';
+import { formatKrw, formatRelativeTime } from '@/lib/display-format';
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [errorStatus, setErrorStatus] = useState(0);
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     let active = true;
     void getGoSession().then((sessionResult) => {
       if (!active) return;
       if (!sessionResult.ok) {
-        setError('로그인이 필요합니다.');
+        setError(sessionResult.status === 401 ? '로그인이 필요합니다.' : sessionResult.message);
+        setErrorStatus(sessionResult.status ?? 0);
         setLoading(false);
         return;
       }
@@ -39,14 +33,16 @@ export default function OrdersPage() {
         if (!active) return;
         if (result.ok) {
           setOrders(result.data.orders);
+          setError('');
         } else {
           setError(result.message ?? '주문 목록을 불러올 수 없습니다.');
+          setErrorStatus(result.status);
         }
         setLoading(false);
       });
     });
     return () => { active = false; };
-  }, []);
+  }, [generation]);
 
   return (
     <MobileShell title="내 주문 내역" showBack>
@@ -64,7 +60,9 @@ export default function OrdersPage() {
             role="alert"
             icon={<CircleUserRound size={28} />}
             description={error}
-            actions={<Link href="/auth" className="btn-primary">로그인하기</Link>}
+            actions={errorStatus === 401 ? <Link href="/auth" className="btn-primary">로그인하기</Link> :
+              errorStatus === 403 ? <Link href="/profile">마이페이지로</Link> :
+              <button type="button" className="btn-outline" onClick={() => { setLoading(true); setGeneration((value) => value + 1); }}>다시 시도</button>}
           />
         ) : orders.length === 0 ? (
           <StatePanel
@@ -86,17 +84,11 @@ export default function OrdersPage() {
 }
 
 function OrderCard({ order }: { order: Order }) {
-  const statusLabel = orderStatusLabel(order);
-  const statusColor = order.paymentStatus === 'approved' ? 'green'
-    : order.paymentStatus === 'cancelled' || order.status === 'cancelled' ? '#999'
-    : order.paymentStatus === 'pending_approval' || order.paymentStatus === 'pending_cancel' ? '#f59e0b'
-    : '#3b82f6';
-
   return (
     <Link href={`/order/${order.id}`} style={{ textDecoration: 'none' }}>
       <div style={{
-        background: '#fff',
-        border: '1px solid #e5e7eb',
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
         borderRadius: 12,
         padding: '16px',
         transition: 'box-shadow 0.2s',
@@ -106,18 +98,11 @@ function OrderCard({ order }: { order: Order }) {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <strong>{order.itemName}</strong>
-          <span style={{
-            color: statusColor,
-            fontSize: '13px',
-            fontWeight: 600,
-            padding: '2px 8px',
-            background: statusColor + '18',
-            borderRadius: 12,
-          }}>{statusLabel}</span>
+          <OrderPaymentBadge order={order} />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#666' }}>
-          <span>KRW {order.totalAmountKrw.toLocaleString()}</span>
-          <span>{formatRelative(order.createdAt)}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)' }}>
+          <span>{formatKrw(order.totalAmountKrw)}</span>
+          <span>{formatRelativeTime(order.createdAt)}</span>
         </div>
       </div>
     </Link>

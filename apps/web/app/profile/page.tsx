@@ -4,6 +4,7 @@ import type { SkillLevel } from '@icegear/domain';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { StatePanel } from '@/components/ui/StatePanel';
 import { MobileShell } from '@/components/layout/MobileShell';
 import {
   Bell,
@@ -138,8 +139,8 @@ export default function ProfilePage() {
     triggerNativeHaptic('success');
   };
 
-  if (isLoading) return <MobileShell title="마이페이지"><p role="status">회원 정보를 불러오고 있어요.</p></MobileShell>;
-  if (profileError) return <MobileShell title="마이페이지"><div role="alert"><p>{profileError}</p><button className="btn-outline" type="button" onClick={() => window.dispatchEvent(new Event(AUTH_SESSION_EVENT))}>다시 시도</button></div></MobileShell>;
+  if (isLoading) return <MobileShell title="마이페이지"><StatePanel role="status" description="회원 정보를 불러오고 있어요." /></MobileShell>;
+  if (profileError) return <MobileShell title="마이페이지"><StatePanel role="alert" description={profileError} actions={<button className="btn-outline" type="button" onClick={() => window.dispatchEvent(new Event(AUTH_SESSION_EVENT))}>다시 시도</button>} /></MobileShell>;
   return (
     <MobileShell title="마이페이지">
       <div style={{ paddingBottom: 30 }}>

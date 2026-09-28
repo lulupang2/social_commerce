@@ -22,6 +22,7 @@ export function PersonalListings({ kind }: { kind: 'listings' | 'favorites' }) {
   const [items, setItems] = useState<GoListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [errorStatus, setErrorStatus] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const { favorites, updateFavorite, error: favoriteError } = useFavorites();
   useEffect(() => {
@@ -35,11 +36,11 @@ export function PersonalListings({ kind }: { kind: 'listings' | 'favorites' }) {
     void (async () => {
       const session = await getGoSession();
       if (!active) return;
-      if (!session.ok) { setError(session.status === 401 ? '로그인이 필요합니다.' : session.message); setLoading(false); return; }
+      if (!session.ok) { setError(session.status === 401 ? '로그인이 필요합니다.' : session.message); setErrorStatus(session.status ?? 0); setLoading(false); return; }
       const result = await listPersonalListings(kind);
       if (!active) return;
-      if (result.ok) setItems(result.data);
-      else setError(result.message);
+      if (result.ok) { setItems(result.data); setError(''); }
+      else { setError(result.message); setErrorStatus(result.status); }
       setLoading(false);
     })();
     return () => { active = false; };
@@ -58,10 +59,7 @@ export function PersonalListings({ kind }: { kind: 'listings' | 'favorites' }) {
             role="alert"
             icon={<CircleUserRound size={28} />}
             description={error}
-            actions={<>
-              <Link className="btn-primary" href="/auth">로그인하기</Link>
-              <button className="btn-outline" type="button" onClick={() => setRefresh((value) => value + 1)}>다시 시도</button>
-            </>}
+            actions={errorStatus === 401 ? <Link className="btn-primary" href="/auth">로그인하기</Link> : errorStatus === 403 ? <Link href="/profile">마이페이지로</Link> : <button className="btn-outline" type="button" onClick={() => { setLoading(true); setRefresh((value) => value + 1); }}>다시 시도</button>}
           />
         ) : items.length === 0 ? (
           <StatePanel

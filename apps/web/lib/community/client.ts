@@ -2,7 +2,7 @@
 
 import { uuidSchema } from '@icegear/domain';
 import { z } from 'zod';
-import { getGoSession } from '@/lib/go-auth/client';
+import { requestJson } from '../api/json-request';
 
 const date = z.string().datetime({ offset: true });
 export const postSchema = z.object({
@@ -21,25 +21,17 @@ const likeSchema = z.object({ likes: z.number().int().nonnegative(), liked: z.bo
 type Result<T> = { ok: true; data: T } | { ok: false; message: string; status: number };
 
 export async function communityRequest<T>(path: string, schema: z.ZodType<T>, method = 'GET', body?: unknown): Promise<Result<T>> {
-  try {
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (method !== 'GET') {
-      const session = await getGoSession();
-      if (!session.ok) return { ok: false, status: session.status ?? 0, message: session.message };
-      headers['X-CSRF-Token'] = session.session.csrfToken;
-      if (body !== undefined) headers['Content-Type'] = 'application/json';
-    }
-    const response = await fetch(path, { method, credentials: 'same-origin', cache: 'no-store', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    if (response.status === 204) return { ok: true, data: undefined as T };
-    const value: unknown = await response.json().catch(() => null);
-    if (!response.ok) {
-      const failure = z.object({ message: z.string().optional() }).safeParse(value);
-      return { ok: false, status: response.status, message: failure.success && failure.data.message ? failure.data.message : '커뮤니티 서버 요청에 실패했어요.' };
-    }
-    const parsed = schema.safeParse(value);
-    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, status: response.status, message: '커뮤니티 서버 응답을 확인할 수 없어요.' };
-  } catch { return { ok: false, status: 0, message: '커뮤니티 서버에 연결하지 못했어요.' }; }
+  const result = await requestJson(path, schema, {
+    method, body, allowNoContent: true,
+    messages: {
+      http: '커뮤니티 서버 요청에 실패했어요.',
+      invalid: '커뮤니티 서버 응답을 확인할 수 없어요.',
+      network: '커뮤니티 서버에 연결하지 못했어요.',
+    },
+  });
+  return result.ok ? { ok: true, data: result.data } : result;
 }
+
 export const communityPath = (id: string) => `/api/v1/community/posts/${encodeURIComponent(id)}`;
 export const listPosts = () => communityRequest('/api/v1/community/posts', postsSchema);
 export const listMyPosts = () => communityRequest('/api/v1/me/posts', postsSchema);

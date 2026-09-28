@@ -504,7 +504,7 @@ textarea {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
@@ -566,7 +566,7 @@ textarea {
   width: 100%;
   max-width: 480px;
   height: 64px;
-  background: rgba(255, 255, 255, 0.96);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-top: 1px solid var(--border);

@@ -2,34 +2,23 @@
 
 import { createOrderInputSchema, orderSchema, orderListResponseSchema, type Order, type CreateOrderInput } from '@icegear/domain';
 import { z } from 'zod';
-import { getGoSession } from '../go-auth/client';
+import { requestJson, type JsonResult } from '../api/json-request';
 
 export type { Order, CreateOrderInput };
 export { createOrderInputSchema, orderSchema };
-export type ApiResponse<T> = { ok: true; status: number; data: T } | { ok: false; status: number; message: string };
+export type ApiResponse<T> = JsonResult<T>;
 
 async function apiFetch<T>(url: string, schema: z.ZodType<T>, body?: unknown): Promise<ApiResponse<T>> {
-  try {
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (body !== undefined) {
-      const session = await getGoSession();
-      if (!session.ok) return { ok: false, status: session.status ?? 0, message: session.message };
-      headers['X-CSRF-Token'] = session.session.csrfToken;
-      headers['Content-Type'] = 'application/json';
-    }
-    const res = await fetch(url, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    const response: unknown = await res.json().catch(() => null);
-    if (!res.ok) {
-      const error = z.object({ message: z.string().optional() }).safeParse(response);
-      return { ok: false, status: res.status, message: error.success && error.data.message ? error.data.message : '주문 요청을 처리하지 못했어요.' };
-    }
-    const parsed = schema.safeParse(response);
-    if (!parsed.success) return { ok: false, status: res.status, message: '서버의 주문 응답을 확인할 수 없어요. 주문 내역을 다시 확인해 주세요.' };
-    return { ok: true, status: res.status, data: parsed.data };
-  } catch {
-    return { ok: false, status: 0, message: '요청 결과를 확인하지 못했어요. 주문 내역을 확인한 뒤 다시 시도해 주세요.' };
-  }
+  return requestJson(url, schema, {
+    method: body === undefined ? 'GET' : 'POST', body,
+    messages: {
+      http: '주문 요청을 처리하지 못했어요.',
+      invalid: '서버의 주문 응답을 확인할 수 없어요. 주문 내역을 다시 확인해 주세요.',
+      network: '요청 결과를 확인하지 못했어요. 주문 내역을 확인한 뒤 다시 시도해 주세요.',
+    },
+  });
 }
+
 export function listOrders() { return apiFetch('/api/v1/orders', orderListResponseSchema); }
 export function getOrder(orderId: string) { return apiFetch(`/api/v1/orders/${encodeURIComponent(orderId)}`, orderSchema); }
 export function createOrder(input: CreateOrderInput): Promise<ApiResponse<Order>> {

@@ -2,7 +2,9 @@
 
 import { Flame, Heart, MessageSquare, Plus } from 'lucide-react';
 import Link from 'next/link';
+import { formatDateTime } from '@/lib/display-format';
 import { useState } from 'react';
+import { StatePanel } from '@/components/ui/StatePanel';
 import { MobileShell } from '@/components/layout/MobileShell';
 import { changeLike } from '@/lib/community/client';
 import { useCommunityPosts } from '@/lib/data/use-community-posts';
@@ -27,14 +29,14 @@ export default function CommunityPage() {
     </div>
     <Link className="community-create-fab" href="/community/create"><Plus size={18} />글쓰기</Link>
     <Link href="/my/posts" className="btn-outline" style={{ margin: 16 }}>내 게시글 / 검토 상태</Link>
-    {loading ? <p role="status">게시글을 불러오는 중이에요.</p> : null}
-    {error ? <div role="alert"><p>{error}</p><button type="button" onClick={retry}>다시 시도</button></div> : null}
+    {loading ? <StatePanel role="status" description="게시글을 불러오는 중이에요." /> : null}
+    {error ? <StatePanel role="alert" description={error} actions={<button className="btn-outline" type="button" onClick={retry}>다시 시도</button>} /> : null}
     {actionError ? <p role="alert" className="form-error">{actionError}</p> : null}
-    {!loading && !error && posts.length === 0 ? <p className="empty-state">공개된 게시글이 없어요.</p> : null}
+    {!loading && !error && posts.length === 0 ? <StatePanel description="공개된 게시글이 없어요." /> : null}
     <div className="community-feed">{!error && posts.filter((post) => sport === 'all' || post.sport === sport).map((post) => {
       const like = likes[post.id] ?? { count: post.likes, liked: post.liked };
       return <article className="community-card" key={post.id}>
-        <header><div className="chat-avatar">{post.authorName.slice(0, 1)}</div><div><strong>{post.authorName}</strong><span>{new Date(post.publishedAt ?? post.createdAt).toLocaleString('ko-KR')} · {labels[post.type]}</span></div></header>
+        <header><div className="chat-avatar">{post.authorName.slice(0, 1)}</div><div><strong>{post.authorName}</strong><span>{formatDateTime(post.publishedAt ?? post.createdAt)} · {labels[post.type]}</span></div></header>
         <Link className="community-card-link" href={`/community/${post.id}`}><h2>{post.title}</h2><p>{post.body}</p></Link>
         <footer><button type="button" disabled={busy === post.id} aria-pressed={like.liked} className={like.liked ? 'liked' : ''} onClick={() => void toggle(post.id, like.liked)}><Heart size={16} fill={like.liked ? 'currentColor' : 'none'} />{like.count}</button><Link href={`/community/${post.id}`}><MessageSquare size={16} />{post.comments}</Link></footer>
       </article>;

@@ -2,7 +2,7 @@
 
 import { chatMessageSchema, conversationPageSchema, conversationSummarySchema, createChatMessageSchema, uuidSchema, type ChatMessage } from '@icegear/domain';
 import { z } from 'zod';
-import { getGoSession } from '@/lib/go-auth/client';
+import { requestJson } from '../api/json-request';
 
 const summariesSchema = z.object({ items: z.array(conversationSummarySchema) }).strict();
 type ConversationModel = z.infer<typeof conversationPageSchema>;
@@ -20,27 +20,18 @@ export type RealtimeConversationResult =
 
 type Result<T> = { ok: true; data: T } | { ok: false; status: number; message: string };
 async function request<T>(path: string, schema: z.ZodType<T>, method = 'GET', body?: unknown, memberId?: string): Promise<Result<T>> {
-  try {
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (method !== 'GET') {
-      const session = await getGoSession();
-      if (!session.ok) return { ok: false, status: session.status ?? 0, message: session.message };
-      if (memberId && session.session.member.id !== memberId) return { ok: false, status: 409, message: '로그인 계정이 변경됐어요. 채팅 목록에서 다시 열어 주세요.' };
-      headers['X-CSRF-Token'] = session.session.csrfToken;
-      if (body !== undefined) headers['Content-Type'] = 'application/json';
-    }
-    const response = await fetch(path, { method, credentials: 'same-origin', cache: 'no-store', headers,
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    if (response.status === 204) return { ok: true, data: undefined as T };
-    const value: unknown = await response.json().catch(() => null);
-    if (!response.ok) {
-      const parsed = z.object({ message: z.string().optional() }).safeParse(value);
-      return { ok: false, status: response.status, message: parsed.success && parsed.data.message ? parsed.data.message : '채팅 서버 요청에 실패했어요.' };
-    }
-    const parsed = schema.safeParse(value);
-    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, status: response.status, message: '채팅 서버 응답을 확인할 수 없어요.' };
-  } catch { return { ok: false, status: 0, message: '채팅 서버에 연결하지 못했어요.' }; }
+  const result = await requestJson(path, schema, {
+    method, body, allowNoContent: true,
+    identity: memberId ? { memberId, changedMessage: '로그인 계정이 변경됐어요. 채팅 목록에서 다시 열어 주세요.' } : undefined,
+    messages: {
+      http: '채팅 서버 요청에 실패했어요.',
+      invalid: '채팅 서버 응답을 확인할 수 없어요.',
+      network: '채팅 서버에 연결하지 못했어요.',
+    },
+  });
+  return result.ok ? { ok: true, data: result.data } : result;
 }
+
 const endpoint = (id: string) => `/api/v1/conversations/${encodeURIComponent(id)}`;
 
 export async function connectRealtimeConversation(id: string): Promise<RealtimeConversationResult> {
