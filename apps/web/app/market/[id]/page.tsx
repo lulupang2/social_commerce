@@ -118,7 +118,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
 
   if (!listing && isLoading) {
     return (
-      <MobileShell title="장비 불러오는 중" showBack hideNav>
+      <MobileShell storefront title="장비 불러오는 중" showBack hideNav>
         <div className="empty-state">
           <LoaderCircle className="spin" size={28} />
           <p>매물 정보를 확인하고 있어요.</p>
@@ -129,7 +129,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
 
   if (!listing) {
     return (
-      <MobileShell title="장비를 찾을 수 없어요" showBack hideNav>
+      <MobileShell storefront title="장비를 찾을 수 없어요" showBack hideNav>
         <div className="empty-state">
           <p>{feedError && source !== 'demo' && source !== 'local' ? feedError : '판매가 종료됐거나 존재하지 않는 매물이에요.'}</p>
           {feedError ? <button className="btn-outline" type="button" onClick={retry}>다시 시도</button> : null}
@@ -193,7 +193,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
   };
 
   return (
-    <MobileShell hideNav showBack>
+    <MobileShell storefront hideNav showBack>
       <div className="detail-container">
         <div className="detail-gallery">
             <ListingImage
@@ -243,7 +243,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
         ) : null}
 
         <div className="detail-body">
-          <p className="demo-mode-banner">{listing.dataSource === 'go' ? 'Go 서버 매물 · 구매 가능 여부는 주문 생성 시 서버 재고로 확인합니다.' : listing.dataSource === 'supabase' ? '기존 서버 매물 · Go 주문 대상이 아닙니다.' : '데모 매물 · 서버 재고나 구매 가능한 상품이 아닙니다.'}</p>
+          <p className="demo-mode-banner">{listing.dataSource === 'go' ? '실제 등록 상품 · 구매 가능 여부는 주문 단계에서 확인합니다.' : listing.dataSource === 'supabase' ? '기존 등록 상품 · 현재 구매 흐름과 연결되지 않은 상품입니다.' : '시연용 상품 · 실제 구매 가능한 재고가 아닙니다.'}</p>
           {listing.recommendationReason ? (
             <div className="rec-reason-badge detail-recommendation">
               <Sparkles size={13} />
@@ -271,13 +271,13 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
             <div>
               <strong>{listing.seller.name}</strong>
               <span>
-                <Star fill="#f59e0b" size={12} />
-                {listing.seller.rating} · 거래 {listing.seller.transactionCount}회
+                {!listing.dataSource ? null : <Star fill="#f59e0b" size={12} />}
+                {!listing.dataSource ? '시연용 판매자 정보' : listing.seller.rating + ' · 거래 ' + listing.seller.transactionCount + '회'}
               </span>
             </div>
             <p>
-              <ShieldCheck size={16} />
-              본인인증
+              {!listing.dataSource ? null : <ShieldCheck size={16} />}
+              {!listing.dataSource ? '판매자 정보' : '본인인증'}
             </p>
           </section>
 

@@ -1,10 +1,9 @@
 'use client';
 
 import { Heart, MapPin } from 'lucide-react';
-import { ListingImage } from '@/components/media/ListingImage';
 import Link from 'next/link';
-import React from 'react';
 
+import { ListingImage } from '@/components/media/ListingImage';
 import type { MockListing } from '@/lib/data/summer-mock-data';
 import { listingHref } from '@/lib/listings/use-listings';
 
@@ -15,15 +14,18 @@ interface WebListingCardProps {
 }
 
 export function WebListingCard({ listing, favorite, onFavorite }: WebListingCardProps) {
+  const favoriteId = listing.dataSource === 'go' ? 'go:' + listing.id : listing.id;
+  const isSample = !listing.dataSource;
+
   return (
     <article className="product-card">
       <div className="product-card-img-wrapper">
-        <Link aria-label={`${listing.title} 상세 보기`} href={listingHref(listing)}>
+        <Link aria-label={listing.title + ' 상세 보기'} href={listingHref(listing)}>
           <ListingImage
             alt={listing.title}
             className="product-card-img"
             fill
-            sizes="(max-width: 480px) 50vw, 240px"
+            sizes="(max-width: 639px) 50vw, (max-width: 1199px) 33vw, 300px"
             src={listing.images[0]}
             unoptimized
           />
@@ -32,29 +34,30 @@ export function WebListingCard({ listing, favorite, onFavorite }: WebListingCard
           aria-label={favorite ? '찜 해제' : '찜하기'}
           aria-pressed={favorite}
           className="favorite-btn"
-          onClick={() => onFavorite(listing.dataSource === 'go' ? `go:${listing.id}` : listing.id, !favorite)}
+          onClick={() => onFavorite(favoriteId, !favorite)}
           type="button"
         >
           <Heart
-            color={favorite ? 'var(--danger)' : 'var(--text-muted)'}
-            fill={favorite ? 'var(--danger)' : 'none'}
-            size={17}
+            fill={favorite ? 'currentColor' : 'none'}
+            size={18}
           />
         </button>
       </div>
 
       <div className="product-card-info">
         <div className="product-sport-tag">
-          {listing.dataSource === 'go' ? 'Go 서버' : listing.dataSource === 'supabase' ? '기존 서버' : '데모'} · {listing.sportLabel} · {listing.conditionLabel}
+          <span>{listing.sportLabel}</span>
+          <span>{listing.conditionLabel}</span>
+          {isSample ? <span>시연용</span> : null}
         </div>
         <h3 className="product-title">
           <Link href={listingHref(listing)}>{listing.title}</Link>
         </h3>
+        <div className="product-price">{listing.price.toLocaleString('ko-KR')}원</div>
         <div className="product-spec-row">
-          <MapPin size={12} />
+          <MapPin aria-hidden="true" size={13} />
           <span>{listing.location}</span>
         </div>
-        <div className="product-price">{listing.price.toLocaleString()}원</div>
       </div>
     </article>
   );

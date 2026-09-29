@@ -1,19 +1,37 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { ArrowUpRight, ChevronRight, Search } from 'lucide-react';
 import Link from 'next/link';
-import { ListingImage } from '@/components/media/ListingImage';
-import { WebListingCard } from '@/components/listings/WebListingCard';
+import { useEffect, useMemo, useState } from 'react';
+
 import { MobileShell } from '@/components/layout/MobileShell';
-import { getRecommendations, type RecommendationResult } from '@/lib/go-listings/recommendations';
+import { WebListingCard } from '@/components/listings/WebListingCard';
+import { ListingImage } from '@/components/media/ListingImage';
 import { AUTH_SESSION_EVENT } from '@/lib/go-auth/client';
 import { toMarketListing } from '@/lib/go-listings/client';
+import {
+  getRecommendations,
+  type RecommendationResult,
+} from '@/lib/go-listings/recommendations';
 import { useFavorites } from '@/lib/listings/use-favorites';
 import { listingHref, toMockListing, useListings } from '@/lib/listings/use-listings';
-import { Search, Sparkles, ChevronRight, Waves, Flame } from 'lucide-react';
+
+import styles from './HomeStorefront.module.css';
+
+const SURF_HERO =
+  'https://images.unsplash.com/photo-1646054346984-3268571524ae?auto=format&fit=crop&w=1500&q=86';
+const TENNIS_HERO =
+  'https://images.unsplash.com/photo-1651319087172-d27177766eab?auto=format&fit=crop&w=1000&q=84';
 
 export default function HomePage() {
-  const { listings: allListings, source, setMode, isLoading, error, retry } = useListings();
+  const {
+    listings: allListings,
+    source,
+    setMode,
+    isLoading,
+    error,
+    retry,
+  } = useListings();
   const [selectedSport, setSelectedSport] = useState<'all' | 'surf' | 'tennis'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const { favorites, updateFavorite, error: favoriteError } = useFavorites();
@@ -21,200 +39,305 @@ export default function HomePage() {
   const [recommendationError, setRecommendationError] = useState('');
   const [recommendationLoading, setRecommendationLoading] = useState(true);
   const [recommendationRevision, setRecommendationRevision] = useState(0);
+
   useEffect(() => {
     if (source !== 'server') return;
     let active = true;
     void getRecommendations().then((result) => {
       if (!active) return;
-      if (result.ok) { setRecommendations(result.items); setRecommendationError(''); }
-      else { setRecommendations([]); setRecommendationError(result.message); }
+      if (result.ok) {
+        setRecommendations(result.items);
+        setRecommendationError('');
+      } else {
+        setRecommendations([]);
+        setRecommendationError(result.message);
+      }
       setRecommendationLoading(false);
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [source, recommendationRevision]);
-  const recommendedListings = useMemo(() => recommendations.flatMap((entry) => {
-    const market = toMarketListing(entry.listing);
-    const item = market ? toMockListing(market, 'go') : null;
-    return item ? [{ item, reason: entry.reason }] : [];
-  }), [recommendations]);
+
+  const recommendedListings = useMemo(
+    () =>
+      recommendations.flatMap((entry) => {
+        const market = toMarketListing(entry.listing);
+        const item = market ? toMockListing(market, 'go') : null;
+        return item ? [{ item, reason: entry.reason }] : [];
+      }),
+    [recommendations],
+  );
+
   const isPersonalized = recommendations.some((item) => item.score > 0);
+
   useEffect(() => {
-    const refresh = () => { setRecommendations([]); setRecommendationLoading(true); setRecommendationRevision((n) => n + 1); };
+    const refresh = () => {
+      setRecommendations([]);
+      setRecommendationLoading(true);
+      setRecommendationRevision((revision) => revision + 1);
+    };
     window.addEventListener(AUTH_SESSION_EVENT, refresh);
     window.addEventListener('focus', refresh);
-    return () => { window.removeEventListener(AUTH_SESSION_EVENT, refresh); window.removeEventListener('focus', refresh); };
+    return () => {
+      window.removeEventListener(AUTH_SESSION_EVENT, refresh);
+      window.removeEventListener('focus', refresh);
+    };
   }, []);
 
   const filteredListings = allListings.filter((item) => {
     const matchesSport = selectedSport === 'all' || item.sport === selectedSport;
+    const normalized = searchQuery.trim().toLocaleLowerCase('ko-KR');
     const matchesSearch =
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.sportLabel.toLowerCase().includes(searchQuery.toLowerCase());
+      normalized.length === 0 ||
+      [item.title, item.location, item.sportLabel]
+        .join(' ')
+        .toLocaleLowerCase('ko-KR')
+        .includes(normalized);
     return matchesSport && matchesSearch;
   });
 
+  const selectSport = (sport: 'surf' | 'tennis') => {
+    setSelectedSport((current) => (current === sport ? 'all' : sport));
+  };
+
   return (
-    <MobileShell>
-      {/* Editorial Hero Header */}
-      <section className="editorial-hero">
-        <div className="hero-badge">
-          <Waves size={14} />
-          <span>Summer 2026 Season</span>
-        </div>
-        <h1 className="hero-title">
-          뜨거운 여름,
-          <br />
-          최고의 장비와 함께
-        </h1>
-        <p className="hero-subtitle">
-          서핑보드부터 테니스 라켓까지, 검증된 중고 장비를 만나보세요.
-        </p>
-      </section>
-      <div className="demo-mode-banner">
-        <span>{source === 'demo' ? 'DEMO' : 'SERVER'}</span>{' '}
-        {source === 'demo' ? '체험용 장비 · 서버 재고가 아닙니다.' : '현재 불러온 서버 매물만 표시합니다.'}
-        <button className="btn-outline" type="button" onClick={() => { setRecommendations([]); setRecommendationLoading(true); setMode(source === 'demo' ? 'server' : 'demo'); }}>
-          {source === 'demo' ? '서버 매물 보기' : '데모 체험하기'}
-        </button>
-      </div>
-      {source === 'server' && isLoading ? <p role="status">매물을 불러오고 있어요.</p> : null}
-      {source === 'server' && !isLoading && error ? (
-        <div role="alert"><p>{error}</p><button className="btn-outline" type="button" onClick={retry}>다시 시도</button></div>
-      ) : null}
-      {favoriteError ? <p className="form-error" role="alert">{favoriteError}</p> : null}
-
-      {/* Search Bar */}
-      <div className="search-container">
-        <div className="search-input-wrapper">
-          <Search size={18} className="search-icon" />
-          <input
-            type="text"
-            className="search-input"
-            placeholder="장비명, 브랜드, 스펙, 거래 지역 검색..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Sport Category Tabs */}
-      <div className="sport-tabs">
-        <button
-          className={`sport-tab ${selectedSport === 'all' ? 'active' : ''}`}
-          onClick={() => setSelectedSport('all')}
-        >
-          <Flame size={16} />
-          <span>전체 스포츠</span>
-        </button>
-        <button
-          className={`sport-tab ${selectedSport === 'surf' ? 'active' : ''}`}
-          onClick={() => setSelectedSport('surf')}
-        >
-          <span>🏄‍♂️ 서핑 (Surf)</span>
-        </button>
-        <button
-          className={`sport-tab ${selectedSport === 'tennis' ? 'active' : ''}`}
-          onClick={() => setSelectedSport('tennis')}
-        >
-          <span>🎾 테니스 (Tennis)</span>
-        </button>
-      </div>
-
-      {/* Recommendation Rail */}
-      {source === 'server' && searchQuery === '' && selectedSport === 'all' && (
-        <section style={{ marginBottom: 12 }}>
-          <div className="section-header">
-            <h2 className="section-title">
-              <Sparkles size={18} color="var(--accent)" />
-              <span>{isPersonalized ? '맞춤 장비 추천' : '최근 구매 가능 장비'}</span>
-            </h2>
-            <Link
-              href="/market"
-              style={{
-                fontSize: '0.82rem',
-                color: 'var(--text-muted)',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              더보기 <ChevronRight size={14} />
-            </Link>
+    <MobileShell storefront>
+      <div className={styles.home}>
+        <section className={styles.hero}>
+          <div className={styles.heroCopy}>
+            <p className={styles.kicker}>Surf and tennis edit</p>
+            <h1>
+              파도와 코트 사이,
+              <br />
+              다음 장비를 고르는 시간
+            </h1>
+            <p className={styles.heroDescription}>
+              서핑과 테니스를 즐기는 사람을 위한 스포츠 라이프스타일 마켓입니다.
+              상태와 지역을 비교하고 나에게 맞는 다음 장비를 찾아보세요.
+            </p>
+            <div className={styles.heroActions}>
+              <a className={styles.primaryAction} href="#gear">
+                장비 둘러보기
+                <ArrowUpRight aria-hidden="true" size={17} />
+              </a>
+              <Link className={styles.secondaryAction} href="/market">
+                마켓 전체 보기
+              </Link>
+            </div>
           </div>
 
-          {recommendationLoading ? <p role="status">구매 가능한 장비를 찾고 있어요.</p> : null}
-          {recommendationError ? <div role="alert"><p>{recommendationError}</p><button className="btn-outline" type="button" onClick={() => { setRecommendationLoading(true); setRecommendationRevision((n) => n + 1); }}>다시 시도</button></div> : null}
-          {!recommendationLoading && !recommendationError && recommendedListings.length === 0 ? <p>현재 구매 가능한 장비가 없어요.</p> : null}
-          <div className="recommendation-rail">
-            {!recommendationError && recommendedListings.map(({ item, reason }) => (
-              <Link href={listingHref(item)} key={`${item.dataSource ?? 'demo'}:${item.id}`} className="rec-card">
-                <ListingImage
-                  alt={item.title}
-                  className="rec-card-image"
-                  height={130}
-                  src={item.images[0]}
-                  unoptimized
-                  width={220}
-                />
-                <div className="rec-card-content">
-                  {reason ? <div className="rec-reason-badge">
-                    <Sparkles size={11} />
-                    <span>{reason}</span>
-                  </div> : null}
-                  <h3
-                    style={{
-                      fontSize: '0.86rem',
-                      fontWeight: 700,
-                      lineHeight: 1.3,
-                      marginBottom: 4,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {item.title}
-                  </h3>
-                  <div style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                    {item.price.toLocaleString()}원
-                  </div>
-                </div>
-              </Link>
-            ))}
+          <div className={styles.heroGallery}>
+            <div className={styles.heroMain}>
+              <ListingImage
+                alt="해변에서 서핑을 즐기는 라이프스타일 이미지"
+                fill
+                priority
+                sizes="(max-width: 899px) 100vw, 700px"
+                src={SURF_HERO}
+                unoptimized
+              />
+            </div>
+            <div className={styles.heroSecondary}>
+              <ListingImage
+                alt="테니스 라켓이 놓인 라이프스타일 이미지"
+                fill
+                sizes="(max-width: 899px) 38vw, 260px"
+                src={TENNIS_HERO}
+                unoptimized
+              />
+            </div>
           </div>
         </section>
-      )}
 
-      {/* 2-Column Product Grid */}
-      <section>
-        <div className="section-header">
-          <h2 className="section-title">
-            <span>방금 등록된 장비</span>
-            <span style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 600 }}>
-              {isLoading ? '…' : `현재 표시 ${filteredListings.length}개`}
-            </span>
-          </h2>
+        <section aria-label="스포츠별 장비 보기" className={styles.categorySplit}>
+          <button
+            aria-pressed={selectedSport === 'surf'}
+            onClick={() => selectSport('surf')}
+            type="button"
+          >
+            <span>Surf</span>
+            <strong>바다에서 필요한 장비</strong>
+            <small>보드와 액세서리, 이동 장비를 둘러보세요.</small>
+          </button>
+          <button
+            aria-pressed={selectedSport === 'tennis'}
+            onClick={() => selectSport('tennis')}
+            type="button"
+          >
+            <span>Tennis</span>
+            <strong>코트에서 필요한 장비</strong>
+            <small>라켓과 가방, 코트 장비를 둘러보세요.</small>
+          </button>
+        </section>
+
+        <div className={styles.toolbar}>
+          <label className={styles.search}>
+            <Search aria-hidden="true" size={19} />
+            <span className="visually-hidden">장비 검색</span>
+            <input
+              autoComplete="off"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="장비명, 종목, 거래 지역 검색"
+              type="search"
+              value={searchQuery}
+            />
+          </label>
+          {selectedSport !== 'all' ? (
+            <button
+              className="btn-outline"
+              onClick={() => setSelectedSport('all')}
+              type="button"
+            >
+              전체 장비 보기
+            </button>
+          ) : null}
         </div>
 
-        {isLoading ? null : filteredListings.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)' }}>
-            <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 6 }}>
-              검색 결과가 없습니다
-            </p>
-            <p style={{ fontSize: '0.85rem' }}>다른 키워드나 스포츠를 선택해보세요.</p>
+        <div className={styles.sourcePanel}>
+          <div>
+            <strong>{source === 'demo' ? '시연용 상품을 보고 있어요.' : '실제 등록 상품을 보고 있어요.'}</strong>
+            <br />
+            {source === 'demo'
+              ? '화면 체험을 위한 샘플이며 실제 구매 가능한 재고가 아닙니다.'
+              : '서버에서 불러온 상품만 표시하며 연결 오류를 샘플 상품으로 대체하지 않습니다.'}
           </div>
-        ) : (
-          <div className="product-grid">
-            {filteredListings.map((item) => (
-              <WebListingCard
-                favorite={favorites[item.dataSource === 'go' ? `go:${item.id}` : item.id] ?? false}
-                key={`${item.dataSource ?? 'demo'}:${item.id}`}
-                listing={item}
-                onFavorite={updateFavorite}
-              />
-            ))}
+          <button
+            onClick={() => {
+              setRecommendations([]);
+              setRecommendationLoading(true);
+              setMode(source === 'demo' ? 'server' : 'demo');
+            }}
+            type="button"
+          >
+            {source === 'demo' ? '실제 등록 상품 보기' : '시연 화면 보기'}
+          </button>
+        </div>
+
+        {source === 'server' && isLoading ? (
+          <div className={styles.feedback} role="status">
+            등록된 장비를 불러오고 있어요.
           </div>
-        )}
-      </section>
+        ) : null}
+
+        {source === 'server' && !isLoading && error ? (
+          <div className={styles.feedback} role="alert">
+            {error}
+            <button className="btn-outline" onClick={retry} type="button">
+              다시 시도
+            </button>
+          </div>
+        ) : null}
+
+        {favoriteError ? (
+          <div className={styles.feedback} role="alert">
+            {favoriteError}
+          </div>
+        ) : null}
+
+        {source === 'server' && searchQuery === '' && selectedSport === 'all' ? (
+          <section className={styles.recommendations}>
+            <div className={styles.sectionHeading}>
+              <div>
+                <p className={styles.kicker}>Selected gear</p>
+                <h2>{isPersonalized ? '나를 위한 장비 추천' : '지금 둘러볼 장비'}</h2>
+              </div>
+              <Link href="/market">
+                더보기
+                <ChevronRight aria-hidden="true" size={15} />
+              </Link>
+            </div>
+
+            {recommendationLoading ? (
+              <div className={styles.feedback} role="status">
+                구매 가능한 장비를 찾고 있어요.
+              </div>
+            ) : null}
+
+            {recommendationError ? (
+              <div className={styles.feedback} role="alert">
+                {recommendationError}
+                <button
+                  className="btn-outline"
+                  onClick={() => {
+                    setRecommendationLoading(true);
+                    setRecommendationRevision((revision) => revision + 1);
+                  }}
+                  type="button"
+                >
+                  다시 시도
+                </button>
+              </div>
+            ) : null}
+
+            {!recommendationLoading &&
+            !recommendationError &&
+            recommendedListings.length === 0 ? (
+              <div className={styles.empty}>현재 추천할 수 있는 장비가 없어요.</div>
+            ) : null}
+
+            {!recommendationError && recommendedListings.length > 0 ? (
+              <div className={styles.recommendationRail}>
+                {recommendedListings.map(({ item, reason }) => (
+                  <Link
+                    className={styles.recommendationCard}
+                    href={listingHref(item)}
+                    key={(item.dataSource ?? 'demo') + ':' + item.id}
+                  >
+                    <div className={styles.recommendationImage}>
+                      <ListingImage
+                        alt={item.title}
+                        fill
+                        sizes="(max-width: 639px) 72vw, 280px"
+                        src={item.images[0]}
+                        unoptimized
+                      />
+                    </div>
+                    {reason ? <span className={styles.reason}>{reason}</span> : null}
+                    <h3>{item.title}</h3>
+                    <strong>{item.price.toLocaleString('ko-KR')}원</strong>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section className={styles.gear} id="gear">
+          <div className={styles.sectionHeading}>
+            <div>
+              <p className={styles.kicker}>Curated gear</p>
+              <h2>
+                {selectedSport === 'all'
+                  ? '새로 올라온 장비'
+                  : selectedSport === 'surf'
+                    ? '서핑 장비'
+                    : '테니스 장비'}
+              </h2>
+            </div>
+            <span>{isLoading ? '불러오는 중' : filteredListings.length + '개'}</span>
+          </div>
+
+          {!isLoading && filteredListings.length === 0 ? (
+            <div className={styles.empty}>
+              조건에 맞는 장비가 없습니다. 검색어를 지우거나 다른 종목을 선택해 보세요.
+            </div>
+          ) : (
+            <div className="product-grid">
+              {filteredListings.map((item) => (
+                <WebListingCard
+                  favorite={
+                    favorites[item.dataSource === 'go' ? 'go:' + item.id : item.id] ?? false
+                  }
+                  key={(item.dataSource ?? 'demo') + ':' + item.id}
+                  listing={item}
+                  onFavorite={updateFavorite}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </MobileShell>
   );
 }

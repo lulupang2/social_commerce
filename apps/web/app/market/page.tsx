@@ -63,7 +63,7 @@ export default function MarketPage() {
   const resetFilters = () => updateFilters(emptyCatalogFilters);
 
   return (
-    <MobileShell title="썸머 마켓">
+    <MobileShell storefront title="마켓">
       <div className="vertical-mode-tabs" role="tablist" aria-label="마켓 보기">
         <button
           aria-selected={mode === 'gear'}
@@ -103,10 +103,10 @@ export default function MarketPage() {
       {mode === 'gear' ? (
         <>
           <div className="demo-mode-banner">
-            <span>{source === 'demo' ? 'DEMO' : 'SERVER'}</span>{' '}
-            {source === 'demo' ? '체험용 장비입니다. 서버 상품이나 구매 가능 재고가 아닙니다.' : '서버 매물만 표시합니다. 표시된 수는 현재 불러온 항목 기준입니다.'}
+            <strong>{source === 'demo' ? '시연용 상품' : '실제 등록 상품'}</strong>{' '}
+            {source === 'demo' ? '화면 체험용 샘플이며 실제 구매 가능한 재고가 아닙니다.' : '서버에서 불러온 상품만 표시하며 연결 오류를 샘플로 대체하지 않습니다.'}
             <button className="btn-outline" type="button" onClick={() => setSource(source === 'demo' ? 'server' : 'demo')}>
-              {source === 'demo' ? '서버 매물 보기' : '데모 체험하기'}
+              {source === 'demo' ? '실제 등록 상품 보기' : '시연 화면 보기'}
             </button>
           </div>
 
@@ -142,7 +142,7 @@ export default function MarketPage() {
               onClick={() => updateFilters({ sport: 'surf' })}
               type="button"
             >
-              🏄‍♂️ 서핑
+              서핑
             </button>
             <button
               aria-pressed={filters.sport === 'tennis'}
@@ -150,13 +150,13 @@ export default function MarketPage() {
               onClick={() => updateFilters({ sport: 'tennis' })}
               type="button"
             >
-              🎾 테니스
+              테니스
             </button>
           </div>
 
           <div className="market-filter-bar">
             <p>
-              {source === 'demo' ? '데모 · ' : '현재 불러온 장비 · '}
+              {source === 'demo' ? '시연 상품 · ' : '현재 불러온 장비 · '}
               {isLoading ? '불러오는 중' : error && filteredListings.length === 0 ? '조회 실패' : <><strong>{filteredListings.length}</strong>개</>}
             </p>
             <label className="visually-hidden" htmlFor="category-filter">
