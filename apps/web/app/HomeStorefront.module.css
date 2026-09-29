@@ -1,20 +1,20 @@
 .home {
   --home-accent: #0369a1;
+  container-type: inline-size;
   width: 100%;
-  padding: 34px 0 72px;
+  padding: 18px 12px 52px;
 }
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: clamp(42px, 6vw, 84px);
-  min-height: 430px;
+  gap: 24px;
 }
 
 .heroCopy {
   display: grid;
-  gap: 20px;
+  gap: 12px;
 }
 
 .kicker {
@@ -27,8 +27,8 @@
 
 .hero h1 {
   max-width: 640px;
-  font-size: clamp(2.8rem, 5vw, 4.8rem);
-  line-height: 0.99;
+  font-size: clamp(2.12rem, 11.8cqi, 3rem);
+  line-height: 1.02;
   letter-spacing: -0.065em;
   text-wrap: balance;
 }
@@ -36,8 +36,8 @@
 .heroDescription {
   max-width: 52ch;
   color: var(--text-muted);
-  font-size: 1rem;
-  line-height: 1.7;
+  font-size: 0.87rem;
+  line-height: 1.6;
   word-break: keep-all;
 }
 
@@ -49,7 +49,7 @@
 
 .primaryAction,
 .secondaryAction {
-  min-height: 48px;
+  min-height: 46px;
   padding: 0 18px;
   display: inline-flex;
   align-items: center;
@@ -75,7 +75,7 @@
 .heroGallery {
   position: relative;
   min-width: 0;
-  height: 410px;
+  height: 176px;
 }
 
 .heroMain,
@@ -86,7 +86,7 @@
 }
 
 .heroMain {
-  width: calc(100% - 86px);
+  width: calc(100% - 36px);
   height: 100%;
   margin-left: auto;
   border-radius: 18px;
@@ -95,10 +95,10 @@
 .heroSecondary {
   position: absolute;
   left: 0;
-  bottom: 28px;
-  width: 38%;
+  bottom: 12px;
+  width: min(36%, 120px);
   aspect-ratio: 4 / 5;
-  border: 7px solid var(--background);
+  border: 5px solid var(--background);
   border-radius: 22px;
 }
 
@@ -108,7 +108,7 @@
 }
 
 .categorySplit {
-  margin-top: 34px;
+  margin-top: 14px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--border);
@@ -117,8 +117,8 @@
 
 .categorySplit button {
   min-width: 0;
-  min-height: 112px;
-  padding: 20px 24px;
+  min-height: 78px;
+  padding: 10px;
   display: grid;
   align-content: center;
   gap: 5px;
@@ -144,22 +144,23 @@
 }
 
 .categorySplit strong {
-  font-size: 1.08rem;
+  font-size: 0.88rem;
   letter-spacing: -0.03em;
 }
 
 .categorySplit small {
+  display: none;
   color: var(--text-muted);
   font-size: 0.78rem;
   line-height: 1.45;
 }
 
 .toolbar {
-  margin-top: 32px;
+  margin-top: 18px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .search {
@@ -187,7 +188,8 @@
   margin-top: 14px;
   padding: 11px 14px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-direction: column;
   justify-content: space-between;
   gap: 14px;
   border: 1px solid var(--border);
@@ -203,6 +205,7 @@
 }
 
 .sourcePanel button {
+  width: 100%;
   min-height: 40px;
   flex: 0 0 auto;
   padding: 0 13px;
@@ -231,11 +234,11 @@
 
 .recommendations,
 .gear {
-  margin-top: 44px;
+  margin-top: 28px;
 }
 
 .sectionHeading {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
   display: flex;
   align-items: end;
   justify-content: space-between;
@@ -248,7 +251,7 @@
 }
 
 .sectionHeading h2 {
-  font-size: clamp(1.55rem, 3vw, 2.12rem);
+  font-size: 1.45rem;
   line-height: 1.08;
   letter-spacing: -0.05em;
 }
@@ -270,7 +273,7 @@
 
 .recommendationRail {
   display: grid;
-  grid-auto-columns: minmax(210px, 280px);
+  grid-auto-columns: minmax(180px, 72%);
   grid-auto-flow: column;
   gap: 14px;
   overflow-x: auto;
@@ -321,153 +324,6 @@
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
   text-align: center;
-}
-
-@media (min-width: 900px) {
-  .home {
-    padding-top: 24px;
-  }
-
-  .hero {
-    min-height: 360px;
-  }
-
-  .heroCopy {
-    gap: 17px;
-  }
-
-  .heroGallery {
-    height: 350px;
-  }
-
-  .categorySplit {
-    margin-top: 24px;
-  }
-
-  .categorySplit button {
-    min-height: 94px;
-  }
-
-  .toolbar {
-    margin-top: 24px;
-  }
-
-  .sourcePanel {
-    margin-top: 10px;
-  }
-
-  .gear {
-    margin-top: 32px;
-  }
-}
-
-@media (max-width: 899px) {
-  .home {
-    padding-top: 24px;
-  }
-
-  .hero {
-    grid-template-columns: 1fr;
-    gap: 24px;
-    min-height: 0;
-  }
-
-  .heroGallery {
-    height: min(56vw, 440px);
-    min-height: 300px;
-  }
-
-  .toolbar {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 639px) {
-  .home {
-    padding: 18px 12px 52px;
-  }
-
-  .heroCopy {
-    gap: 12px;
-  }
-
-  .hero h1 {
-    font-size: clamp(2.12rem, 11.8vw, 3rem);
-    line-height: 1.02;
-  }
-
-  .heroDescription {
-    font-size: 0.87rem;
-    line-height: 1.6;
-  }
-
-  .primaryAction,
-  .secondaryAction {
-    min-height: 46px;
-  }
-
-  .heroGallery {
-    height: 176px;
-    min-height: 0;
-  }
-
-  .heroMain {
-    width: calc(100% - 36px);
-  }
-
-  .heroSecondary {
-    bottom: 12px;
-    width: 36%;
-    border-width: 5px;
-  }
-
-  .categorySplit {
-    margin-top: 14px;
-  }
-
-  .categorySplit button {
-    min-height: 78px;
-    padding: 10px;
-  }
-
-  .categorySplit strong {
-    font-size: 0.88rem;
-  }
-
-  .categorySplit small {
-    display: none;
-  }
-
-  .toolbar {
-    margin-top: 18px;
-    gap: 10px;
-  }
-
-  .sourcePanel {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .sourcePanel button {
-    width: 100%;
-  }
-
-  .recommendations,
-  .gear {
-    margin-top: 28px;
-  }
-
-  .sectionHeading {
-    margin-bottom: 14px;
-  }
-
-  .sectionHeading h2 {
-    font-size: 1.45rem;
-  }
-
-  .recommendationRail {
-    grid-auto-columns: minmax(180px, 72vw);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

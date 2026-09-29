@@ -3051,23 +3051,24 @@ textarea {
 }
 
 
-/* Selected portfolio direction: A, photo-first sports storefront. */
+/* Keep the storefront in the mobile frame at every viewport width. */
 .storefront-viewport {
   width: 100%;
-  max-width: none;
+  max-width: 480px;
   min-height: 100dvh;
+  margin: 0 auto;
   background: var(--background);
-  box-shadow: none;
+  box-shadow: 0 0 30px rgb(0 0 0 / 0.28);
 }
 
 .storefront-viewport .main-content {
-  width: min(1200px, calc(100% - 40px));
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
 }
 
 .storefront-top-nav {
-  height: 70px;
-  padding-inline: max(20px, calc((100vw - 1200px) / 2));
+  height: 60px;
+  padding-inline: 14px;
 }
 
 .top-nav-leading {
@@ -3095,32 +3096,12 @@ textarea {
 }
 
 .storefront-desktop-nav {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 28px;
-}
-
-.storefront-desktop-nav a {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  color: var(--text-muted);
-  font-size: 0.86rem;
-  font-weight: 720;
-  white-space: nowrap;
-}
-
-.storefront-desktop-nav a:hover,
-.storefront-desktop-nav a[aria-current='page'] {
-  color: var(--text-main);
+  display: none;
 }
 
 .storefront-viewport .product-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 32px 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 10px;
   padding: 0;
 }
 
@@ -3140,7 +3121,7 @@ textarea {
 .storefront-viewport .product-card-img-wrapper {
   aspect-ratio: 4 / 5;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: 13px;
   background: var(--surface-subtle);
 }
 
@@ -3154,12 +3135,12 @@ textarea {
 
 .storefront-viewport .favorite-btn {
   top: auto;
-  right: 10px;
-  bottom: 10px;
-  width: 42px;
-  height: 42px;
+  right: 7px;
+  bottom: 7px;
+  width: 38px;
+  height: 38px;
   border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
-  border-radius: 10px;
+  border-radius: 9px;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: var(--text-main);
   box-shadow: none;
@@ -3171,8 +3152,8 @@ textarea {
 }
 
 .storefront-viewport .product-card-info {
-  padding: 12px 2px 0;
-  gap: 6px;
+  padding: 9px 2px 0;
+  gap: 5px;
 }
 
 .storefront-viewport .product-sport-tag {
@@ -3180,12 +3161,12 @@ textarea {
   padding: 0;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   font-weight: 700;
 }
 
@@ -3193,7 +3174,7 @@ textarea {
   content: '';
   width: 2px;
   height: 2px;
-  margin-right: 7px;
+  margin-right: 5px;
   display: inline-block;
   border-radius: 50%;
   background: currentColor;
@@ -3203,8 +3184,8 @@ textarea {
 .storefront-viewport .product-title {
   min-height: 0;
   margin: 0;
-  font-size: 0.94rem;
-  line-height: 1.4;
+  font-size: 0.82rem;
+  line-height: 1.38;
   letter-spacing: -0.025em;
 }
 
@@ -3218,7 +3199,7 @@ textarea {
 .storefront-viewport .product-price {
   order: 3;
   margin-top: 0;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 850;
   letter-spacing: -0.03em;
 }
@@ -3227,7 +3208,7 @@ textarea {
   order: 4;
   min-width: 0;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.67rem;
 }
 
 .storefront-viewport .product-spec-row span {
@@ -3254,179 +3235,6 @@ textarea {
 
 .storefront-viewport .detail-container {
   width: 100%;
-}
-
-@media (min-width: 900px) {
-  .storefront-viewport > .bottom-nav {
-    display: none;
-  }
-
-  .storefront-viewport .main-content {
-    padding-bottom: 72px;
-  }
-
-  .storefront-viewport .detail-container {
-    padding: 32px 0 110px;
-    display: grid;
-    grid-template-columns: minmax(0, 1.12fr) minmax(360px, 0.88fr);
-    gap: 16px clamp(44px, 6vw, 78px);
-    align-items: start;
-  }
-
-  .storefront-viewport .detail-gallery {
-    grid-column: 1;
-    width: 100%;
-    height: auto;
-    aspect-ratio: 5 / 4;
-    overflow: hidden;
-    border-radius: 18px;
-    background: var(--surface-subtle);
-  }
-
-  .storefront-viewport .thumbnail-strip,
-  .storefront-viewport .image-load-error {
-    grid-column: 1;
-    margin: 0;
-  }
-
-  .storefront-viewport .thumbnail-strip {
-    padding: 4px 0 0;
-    background: transparent;
-  }
-
-  .storefront-viewport .detail-body {
-    grid-column: 2;
-    grid-row: 1 / span 4;
-    padding: 4px 0 120px;
-  }
-
-  .storefront-viewport .detail-body > h1 {
-    max-width: 19ch;
-    margin-bottom: 14px;
-    font-size: clamp(2rem, 3.6vw, 3.1rem);
-    line-height: 1.06;
-    letter-spacing: -0.055em;
-    word-break: keep-all;
-  }
-
-  .storefront-viewport .detail-price {
-    margin-bottom: 22px;
-    font-size: 1.65rem;
-    letter-spacing: -0.04em;
-  }
-
-  .storefront-viewport .detail-seller-card {
-    padding: 15px 0;
-    border: 0;
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  .storefront-viewport .sticky-bottom-action {
-    right: max(20px, calc((100vw - 1200px) / 2));
-    bottom: 20px;
-    left: auto;
-    width: min(500px, calc((100vw - 40px) * 0.39));
-    max-width: 500px;
-    transform: none;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--surface) 94%, transparent);
-    box-shadow: 0 12px 34px rgb(15 23 42 / 0.12);
-    backdrop-filter: blur(14px);
-  }
-
-  .storefront-viewport .vertical-mode-tabs {
-    margin-top: 24px;
-    border-radius: 12px;
-  }
-
-  .storefront-viewport .search-container {
-    padding-inline: 0;
-  }
-
-  .storefront-viewport .sport-tabs,
-  .storefront-viewport .market-filter-bar,
-  .storefront-viewport .market-filter-fields {
-    margin-inline: 0;
-  }
-}
-
-@media (min-width: 640px) and (max-width: 899px) {
-  .storefront-viewport .product-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 899px) {
-  .storefront-desktop-nav {
-    display: none;
-  }
-
-  .storefront-viewport {
-    max-width: 480px;
-    margin: 0 auto;
-    box-shadow: 0 0 30px rgb(0 0 0 / 0.28);
-  }
-
-  .storefront-viewport .main-content {
-    width: 100%;
-    margin: 0;
-  }
-
-  .storefront-top-nav {
-    height: 60px;
-    padding-inline: 14px;
-  }
-}
-
-@media (max-width: 639px) {
-  .storefront-viewport .product-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 24px 10px;
-  }
-
-  .storefront-viewport .product-card-img-wrapper {
-    border-radius: 13px;
-  }
-
-  .storefront-viewport .favorite-btn {
-    right: 7px;
-    bottom: 7px;
-    width: 38px;
-    height: 38px;
-    border-radius: 9px;
-  }
-
-  .storefront-viewport .product-card-info {
-    padding-top: 9px;
-    gap: 5px;
-  }
-
-  .storefront-viewport .product-sport-tag {
-    gap: 5px;
-    font-size: 0.64rem;
-  }
-
-  .storefront-viewport .product-sport-tag span + span::before {
-    margin-right: 5px;
-  }
-
-  .storefront-viewport .product-title {
-    font-size: 0.82rem;
-    line-height: 1.38;
-  }
-
-  .storefront-viewport .product-price {
-    font-size: 0.9rem;
-  }
-
-  .storefront-viewport .product-spec-row {
-    font-size: 0.67rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
