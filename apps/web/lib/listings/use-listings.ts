@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getLocalListings, LOCAL_STORE_EVENT } from '../data/local-store';
+import { storefrontListingImages } from '../data/storefront-fixture-images';
 import { SUMMER_LISTINGS, type MockListing } from '../data/summer-mock-data';
 import { listGoListings } from '../go-listings/client';
 import { createBrowserSupabaseClient } from '../supabase/browser';
@@ -135,7 +136,7 @@ export function toMockListing(listing: MarketListing, dataSource: 'go' | 'supaba
       rating: 4.8,
       transactionCount: 0,
     },
-    images: listing.images.map((image) => image.url),
+    images: storefrontListingImages({ ...listing, dataSource }, listing.images.map((image) => image.url)),
     specs,
     description: listing.description ?? '',
     favoriteCount: 0,

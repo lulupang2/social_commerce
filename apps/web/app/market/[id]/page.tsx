@@ -19,6 +19,7 @@ import React, { use, useEffect, useState } from 'react';
 import { MobileShell } from '@/components/layout/MobileShell';
 import { ListingImage } from '@/components/media/ListingImage';
 import { startListingConversation } from '@/lib/chat/realtime';
+import { storefrontFixtureImage, storefrontListingImages } from '@/lib/data/storefront-fixture-images';
 import { SUMMER_CHAT_ROOMS } from '@/lib/data/summer-mock-data';
 import { getGoSession } from '@/lib/go-auth/client';
 import { getEditableGoListing, toMarketListing } from '@/lib/go-listings/client';
@@ -46,8 +47,8 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
   const usesGoImages = baseListing?.dataSource === 'go';
   const [imageLookup, setImageLookup] = useState<{ id: string; images: string[] } | null>(null);
   const listing =
-    baseListing && imageLookup?.id === id
-      ? { ...baseListing, images: imageLookup.images }
+    baseListing && usesGoImages && imageLookup?.id === id
+      ? { ...baseListing, images: storefrontListingImages(baseListing, imageLookup.images) }
       : baseListing;
   const isLoading = isFeedLoading || (!feedListing && (source === 'go' || !source) && goLookup?.id !== id);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -142,6 +143,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
   const favoriteId = listing.dataSource === 'go' ? `go:${listing.id}` : listing.id;
   const isFavorite = favorites[favoriteId] ?? false;
   const activeImage = listing.images[activeImageIndex] ?? listing.images[0];
+  const isFixtureImage = Boolean(activeImage && activeImage === storefrontFixtureImage(listing));
 
   const shareListing = async () => {
     const shareData = {
@@ -195,7 +197,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
   return (
     <MobileShell storefront hideNav showBack>
       <div className="detail-container">
-        <div className="detail-gallery">
+        <div className="detail-gallery" style={isFixtureImage ? { background: 'var(--surface-subtle)' } : undefined}>
             <ListingImage
               key={`${activeImage}-${imageRefresh}`}
               alt={listing.title}
@@ -203,6 +205,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
               priority
               sizes="(max-width: 480px) 100vw, 480px"
               src={activeImage}
+              style={isFixtureImage ? { objectFit: 'contain' } : undefined}
               onError={() => {
                 if (usesGoImages) {
                   setImageError('사진 링크가 만료되었거나 불러올 수 없어요. 사진을 갱신해 주세요.');
@@ -243,7 +246,11 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
         ) : null}
 
         <div className="detail-body">
-          <p className="demo-mode-banner">{listing.dataSource === 'go' ? '실제 등록 상품 · 구매 가능 여부는 주문 단계에서 확인합니다.' : listing.dataSource === 'supabase' ? '기존 등록 상품 · 현재 구매 흐름과 연결되지 않은 상품입니다.' : '시연용 상품 · 실제 구매 가능한 재고가 아닙니다.'}</p>
+          {isFixtureImage ? (
+            <p className="demo-mode-banner">상품 이해를 위한 예시 사진입니다.</p>
+          ) : (
+            <p className="demo-mode-banner">{listing.dataSource === 'go' ? '실제 등록 상품 · 구매 가능 여부는 주문 단계에서 확인합니다.' : listing.dataSource === 'supabase' ? '기존 등록 상품 · 현재 구매 흐름과 연결되지 않은 상품입니다.' : '시연용 상품 · 실제 구매 가능한 재고가 아닙니다.'}</p>
+          )}
           {listing.recommendationReason ? (
             <div className="rec-reason-badge detail-recommendation">
               <Sparkles size={13} />
