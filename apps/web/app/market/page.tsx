@@ -10,7 +10,6 @@ import { WaveBriefing } from '@/components/vertical/WaveBriefing';
 import { emptyCatalogFilters, useCatalog, type CatalogFilters } from '@/lib/go-listings/use-catalog';
 import { toMockListing } from '@/lib/listings/use-listings';
 import { useFavorites } from '@/lib/listings/use-favorites';
-import { useListings } from '@/lib/listings/use-listings';
 
 type MarketMode = 'gear' | 'waves' | 'courts';
 
@@ -21,9 +20,7 @@ function readFilters(): CatalogFilters {
 }
 
 export default function MarketPage() {
-  const { listings: demoListings } = useListings('demo');
   const { favorites, updateFavorite, error: favoriteError } = useFavorites();
-  const [source, setSource] = useState<'demo' | 'server'>('server');
   const [mode, setMode] = useState<MarketMode>('gear');
   const [filters, setFilters] = useState<CatalogFilters>(emptyCatalogFilters);
   const [committed, setCommitted] = useState<CatalogFilters>(emptyCatalogFilters);
@@ -40,18 +37,11 @@ export default function MarketPage() {
     return () => clearTimeout(timer);
   }, [filters, ready]);
   const filtersPending = JSON.stringify(filters) !== JSON.stringify(committed);
-  const catalog = useCatalog(committed, ready && source === 'server' && !filtersPending);
+  const catalog = useCatalog(committed, ready && !filtersPending);
   const isLoading = !ready || filtersPending || catalog.loading;
   const error = catalog.error;
   const retry = catalog.retry;
-  const allListings = source === 'server'
-    ? filtersPending ? [] : catalog.items.flatMap((item) => { const mapped = toMockListing(item, 'go'); return mapped ? [mapped] : []; })
-    : demoListings;
-  const filteredListings = source === 'server' ? allListings : allListings.filter((item) =>
-    (!filters.sport || item.sport === filters.sport) &&
-    (!filters.category || item.category === filters.category) &&
-    (!filters.search || item.title.toLowerCase().includes(filters.search.trim().toLowerCase()))
-  );
+  const allListings = filtersPending ? [] : catalog.items.flatMap((item) => { const mapped = toMockListing(item, 'go'); return mapped ? [mapped] : []; });
   const updateFilters = (changes: Partial<CatalogFilters>, replace = false) => {
     const next = { ...filters, ...changes };
     const params = new URLSearchParams();
@@ -102,14 +92,6 @@ export default function MarketPage() {
 
       {mode === 'gear' ? (
         <>
-          <div className="demo-mode-banner">
-            <strong>{source === 'demo' ? '시연용 상품' : '실제 등록 상품'}</strong>{' '}
-            {source === 'demo' ? '화면 체험용 샘플이며 실제 구매 가능한 재고가 아닙니다.' : '서버에서 불러온 상품만 표시하며 연결 오류를 샘플로 대체하지 않습니다.'}
-            <button className="btn-outline" type="button" onClick={() => setSource(source === 'demo' ? 'server' : 'demo')}>
-              {source === 'demo' ? '실제 등록 상품 보기' : '시연 화면 보기'}
-            </button>
-          </div>
-
           <div className="search-container">
             <div className="search-input-wrapper">
               <Search className="search-icon" size={18} />
@@ -156,8 +138,8 @@ export default function MarketPage() {
 
           <div className="market-filter-bar">
             <p>
-              {source === 'demo' ? '시연 상품 · ' : '현재 불러온 장비 · '}
-              {isLoading ? '불러오는 중' : error && filteredListings.length === 0 ? '조회 실패' : <><strong>{filteredListings.length}</strong>개</>}
+              현재 불러온 장비 · {' '}
+              {isLoading ? '불러오는 중' : error && allListings.length === 0 ? '조회 실패' : <><strong>{allListings.length}</strong>개</>}
             </p>
             <label className="visually-hidden" htmlFor="category-filter">
               카테고리
@@ -186,24 +168,24 @@ export default function MarketPage() {
           </div>
           {favoriteError ? <p className="form-error" role="alert">{favoriteError}</p> : null}
 
-          {source === 'server' && isLoading && allListings.length === 0 ? (
+          {isLoading && allListings.length === 0 ? (
             <div className="empty-state compact" role="status">매물을 불러오고 있어요.</div>
           ) : (
             <>
-              {source === 'server' && error ? (
+              {error ? (
                 <div className="empty-state compact" role="alert">
                   <p>{error}</p>
                   <button className="btn-outline" onClick={retry} type="button">다시 시도</button>
                 </div>
               ) : null}
-              {filteredListings.length === 0 && !error && !isLoading ? (
+              {allListings.length === 0 && !error && !isLoading ? (
                 <div className="empty-state compact">
                   <p>{allListings.length === 0 ? '현재 공개된 장비가 없어요.' : '조건에 맞는 장비가 없어요. 검색어나 필터를 바꿔 보세요.'}</p>
                   {allListings.length > 0 ? <button className="btn-outline" onClick={resetFilters} type="button">필터 초기화</button> : null}
                 </div>
               ) : (
                 <div className="product-grid">
-                  {filteredListings.map((listing) => (
+                  {allListings.map((listing) => (
                     <WebListingCard
                       favorite={favorites[listing.dataSource === 'go' ? `go:${listing.id}` : listing.id] ?? false}
                       key={`${listing.dataSource ?? 'demo'}:${listing.id}`}
@@ -213,7 +195,7 @@ export default function MarketPage() {
                   ))}
                 </div>
               )}
-              {source === 'server' && catalog.nextCursor ? <button className="btn-outline" type="button" disabled={isLoading} onClick={() => void catalog.loadMore()}>{isLoading ? '다음 상품 불러오는 중' : '상품 더 보기'}</button> : null}
+              {catalog.nextCursor ? <button className="btn-outline" type="button" disabled={isLoading} onClick={() => void catalog.loadMore()}>{isLoading ? '다음 상품 불러오는 중' : '상품 더 보기'}</button> : null}
             </>
           )}
         </>
