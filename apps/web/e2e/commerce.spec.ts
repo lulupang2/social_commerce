@@ -141,7 +141,7 @@ test('real isolated buyer/seller/operator transaction, inventory and ownership',
       const applicationResponse = seller.waitForResponse((response) => response.url().endsWith('/api/v1/me/seller-application') && response.request().method() === 'POST');
       await seller.getByRole('button', { name: '승인 신청' }).click();
       const application = (await (await applicationResponse).json()) as { id: string };
-      await expect(seller.getByText(/신청을 검토 중입니다/)).toBeVisible();
+      await expect(seller.getByRole('heading', { name: '판매자 신청 검토 중', exact: true })).toBeVisible();
       await buyer.goto('/operator/sellers');
       await expect(buyer.getByText('운영자 권한이 필요합니다.')).toBeVisible();
       expect((await buyer.request.get('/api/v1/seller-applications')).status()).toBe(403);
