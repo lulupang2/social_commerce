@@ -176,11 +176,11 @@ export default function MarketPage() {
               <option value="other">기타</option>
             </select>
           </div>
-          <div className="market-filter-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <label>지역 <input aria-label="지역" value={filters.location} maxLength={160} onChange={(event) => updateFilters({ location: event.target.value }, true)} /></label>
-            <label>최저 가격 <input aria-label="최저 가격" inputMode="numeric" value={filters.minPrice} onChange={(event) => updateFilters({ minPrice: event.target.value }, true)} /></label>
-            <label>최고 가격 <input aria-label="최고 가격" inputMode="numeric" value={filters.maxPrice} onChange={(event) => updateFilters({ maxPrice: event.target.value }, true)} /></label>
-            <label>정렬 <select aria-label="정렬" value={filters.sort} onChange={(event) => updateFilters({ sort: event.target.value })}>
+          <div className="market-filter-bar market-filter-fields">
+            <label>지역 <input className="form-input" aria-label="지역" value={filters.location} maxLength={160} onChange={(event) => updateFilters({ location: event.target.value }, true)} /></label>
+            <label>최저 가격 <input className="form-input" aria-label="최저 가격" inputMode="numeric" value={filters.minPrice} onChange={(event) => updateFilters({ minPrice: event.target.value }, true)} /></label>
+            <label>최고 가격 <input className="form-input" aria-label="최고 가격" inputMode="numeric" value={filters.maxPrice} onChange={(event) => updateFilters({ maxPrice: event.target.value }, true)} /></label>
+            <label>정렬 <select className="form-select" aria-label="정렬" value={filters.sort} onChange={(event) => updateFilters({ sort: event.target.value })}>
               <option value="recent">최신순</option><option value="price_asc">낮은 가격순</option><option value="price_desc">높은 가격순</option>
             </select></label>
           </div>

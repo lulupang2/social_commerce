@@ -496,7 +496,12 @@ textarea {
 
 .main-content {
   flex: 1;
-  padding-bottom: 76px; /* space for bottom nav */
+  min-width: 0;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+}
+
+.main-content-no-nav {
+  padding-bottom: 0;
 }
 
 /* Top Navigation Bar */
@@ -565,7 +570,7 @@ textarea {
   transform: translateX(-50%);
   width: 100%;
   max-width: 480px;
-  height: 64px;
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -1030,6 +1035,8 @@ textarea {
 .form-select,
 .form-textarea {
   width: 100%;
+  min-width: 0;
+  min-height: 44px;
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -2228,7 +2235,7 @@ textarea {
   height: calc(100dvh - 56px);
   display: flex;
   flex-direction: column;
-  background: #f8fafc;
+  background: var(--background);
 }
 
 .chat-listing-bar {
@@ -2889,4 +2896,156 @@ textarea {
 .empty-state h1 {
   margin-bottom: 6px;
   font-size: 1rem;
+}
+
+/* Shared shell uses the palette established by the order screens. */
+.app-viewport {
+  overflow-wrap: anywhere;
+}
+.top-nav > div:first-child {
+  min-width: 0;
+}
+.top-nav-title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.top-nav-actions,
+.top-nav button,
+.top-nav a {
+  flex-shrink: 0;
+}
+.top-nav button,
+.top-nav-actions a {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}
+.app-viewport .btn-primary,
+.app-viewport .btn-outline {
+  min-width: 0;
+  min-height: 44px;
+  text-align: center;
+  line-height: 1.5;
+}
+.app-viewport :is(a, button, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+.app-viewport :is(input, select, textarea):disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.chat-list-copy strong,
+.chat-list-copy small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.chat-list-copy strong { min-width: 0; }
+.chat-list-copy time { flex-shrink: 0; }
+.chat-bubble-me,
+.chat-bubble-other {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.chat-safety,
+.chat-composer,
+.chat-listing-bar { flex-shrink: 0; }
+
+@media (prefers-color-scheme: dark) {
+  .app-viewport {
+    color-scheme: dark;
+    --background: #101827;
+    --surface: #192436;
+    --surface-subtle: #243247;
+    --border: #334155;
+    --border-strong: #52637b;
+    --text-main: #f1f5f9;
+    --text-muted: #b2c0d3;
+    --text-subtle: #94a3b8;
+    --primary: #7dd3fc;
+    --primary-hover: #7dd3fc;
+    --primary-light: #163b53;
+    --accent-light: #482c1a;
+    --accent-hover: #fdba74;
+    --danger: #fca5a5;
+    --success: #6ee7b7;
+    color: var(--text-main);
+  }
+  .app-viewport .btn-primary,
+  .app-viewport .chat-bubble-me,
+  .app-viewport .chat-avatar b,
+  .app-viewport .chat-nav-unread {
+    background: #0369a1;
+    color: #fff;
+  }
+  .app-viewport .sport-tab.active {
+    color: var(--surface);
+  }
+  .app-viewport .nav-item-sell-btn,
+  .app-viewport .chat-avatar b {
+    border-color: var(--surface);
+  }
+  .app-viewport .chat-safety,
+  .app-viewport .server-mode-banner,
+  .app-viewport .wave-card-heading strong {
+    color: var(--primary);
+  }
+  .app-viewport .form-submit-error,
+  .app-viewport .image-load-error,
+  .app-viewport .chat-error {
+    background: #432329;
+    color: var(--danger);
+    border-color: #7f3944;
+  }
+  .app-viewport .wave-card {
+    background: var(--surface);
+    border-color: var(--border);
+  }
+  .app-viewport .wave-value { fill: var(--primary); }
+  .app-viewport .wave-time { fill: var(--text-muted); }
+}
+
+.market-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.market-filter-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.market-filter-fields .form-input,
+.market-filter-fields .form-select { color: var(--text-main); }
+.preferences-dialog {
+  position: fixed;
+  inset: auto 0 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 85dvh;
+  margin: 0 auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--surface);
+  color: var(--text-main);
+  overflow-y: auto;
+}
+.preferences-dialog::backdrop { background: rgb(0 0 0 / 0.6); }
+.preferences-dialog-content { padding: 16px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+.preferences-close { margin-left: auto; margin-bottom: 12px; }
+@media (prefers-color-scheme: dark) {
+  .app-viewport .vertical-mode-tabs { background: var(--background); }
+  .app-viewport .vertical-mode-tabs button.active { color: var(--surface); }
+  .app-viewport .demo-mode-banner { background: var(--primary-light); color: var(--primary); border-color: var(--border); }
+  .app-viewport .favorite-btn { background: var(--surface); }
+  .app-viewport .community-create-fab { background: #0369a1; }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import type { SkillLevel } from '@icegear/domain';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { StatePanel } from '@/components/ui/StatePanel';
@@ -58,6 +58,16 @@ export default function ProfilePage() {
   const [notificationMessage, setNotificationMessage] = useState(
     '거래 메시지와 검토 결과를 놓치지 않도록 알려드려요.',
   );
+  const preferencesDialog = useRef<HTMLDialogElement>(null);
+  const preferencesTrigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (showOnboardingModal && !isLoading && !profileError) preferencesDialog.current?.showModal();
+  }, [showOnboardingModal, isLoading, profileError]);
+  const closePreferences = () => {
+    preferencesDialog.current?.close();
+    setShowOnboardingModal(false);
+    preferencesTrigger.current?.focus();
+  };
   const [isReviewer, setIsReviewer] = useState(false);
   useEffect(() => {
     if (source !== 'go' || !memberId) return;
@@ -135,7 +145,7 @@ export default function ProfilePage() {
       triggerNativeHaptic('error');
       return;
     }
-    setShowOnboardingModal(false);
+    closePreferences();
     triggerNativeHaptic('success');
   };
 
@@ -249,6 +259,7 @@ export default function ProfilePage() {
               <h3 style={{ fontSize: '0.98rem', fontWeight: 800 }}>내 스포츠 & 장비 맞춤 설정</h3>
             </div>
             <button
+              ref={preferencesTrigger}
               onClick={openPreferences}
               style={{
                 fontSize: '0.8rem',
@@ -498,30 +509,10 @@ export default function ProfilePage() {
 
       {/* Onboarding / Preference Edit Modal */}
       {showOnboardingModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.6)',
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              width: '100%',
-              maxWidth: 480,
-              background: 'var(--surface)',
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              padding: '20px 16px 30px',
-              maxHeight: '85vh',
-              overflowY: 'auto',
-            }}
-          >
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, marginBottom: 4 }}>
+        <dialog ref={preferencesDialog} className="preferences-dialog" aria-labelledby="preferences-title" onCancel={(event) => { event.preventDefault(); closePreferences(); }}>
+          <div className="preferences-dialog-content">
+            <button type="button" className="btn-outline preferences-close" onClick={closePreferences}>닫기</button>
+            <h3 id="preferences-title" style={{ fontSize: '1.15rem', fontWeight: 800, marginBottom: 4 }}>
               맞춤 추천 장비 설정
             </h3>
             <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginBottom: 16 }}>
@@ -535,9 +526,10 @@ export default function ProfilePage() {
               </div>
             ) : null}
             <div className="form-group">
-              <label className="form-label">서핑 실력 레벨</label>
+              <label className="form-label" htmlFor="profile-surf-skill">서핑 실력 레벨</label>
               <select
                 className="form-select"
+                id="profile-surf-skill"
                 value={draftSurfSkill}
                 onChange={(e) => setDraftSurfSkill(e.target.value as SkillLevel)}
               >
@@ -550,9 +542,10 @@ export default function ProfilePage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">테니스 구력 / NTRP</label>
+              <label className="form-label" htmlFor="profile-tennis-skill">테니스 구력 / NTRP</label>
               <select
                 className="form-select"
+                id="profile-tennis-skill"
                 value={draftTennisSkill}
                 onChange={(e) => setDraftTennisSkill(e.target.value as SkillLevel)}
               >
@@ -593,10 +586,10 @@ export default function ProfilePage() {
               type="button"
             >
               {isSavingPreferences ? <LoaderCircle className="spin" size={17} /> : null}
-              {isSavingPreferences ? '저장 중' : '저장 완료'}
+              {isSavingPreferences ? '저장 중' : '설정 저장'}
             </button>
           </div>
-        </div>
+        </dialog>
       )}
     </MobileShell>
   );

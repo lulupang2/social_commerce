@@ -1,0 +1,50 @@
+.content {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  padding: 24px 16px;
+  overflow-wrap: anywhere;
+}
+
+.intro { display: grid; gap: 8px; }
+.intro p, .muted { color: var(--text-muted); font-size: 0.82rem; line-height: 1.65; }
+.list { display: grid; gap: 16px; }
+.card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.card h2 { margin: 12px 0; font-size: 1rem; line-height: 1.5; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.meta time { color: var(--text-muted); font-size: 0.75rem; }
+.badge { padding: 5px 9px; border-radius: var(--radius-sm); background: var(--surface-subtle); color: var(--text-main); font-size: 0.76rem; font-weight: 700; }
+.notice { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-subtle); font-size: 0.84rem; line-height: 1.65; }
+.notice strong { display: block; margin-bottom: 4px; }
+.body { white-space: pre-wrap; font-size: 0.86rem; line-height: 1.7; }
+.preview { margin-top: 12px; color: var(--text-muted); }
+.preview summary { display: list-item; width: fit-content; padding: 12px 0; cursor: pointer; font-size: 0.82rem; font-weight: 600; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.actions > * { flex: 1 1 125px; min-width: 0; }
+.content :global(.btn-primary), .content :global(.btn-outline) { min-height: 44px; padding: 11px 12px; font-size: 0.85rem; text-align: center; }
+.content a:focus-visible, .content button:focus-visible, .content summary:focus-visible,
+.feed a:focus-visible, .feed button:focus-visible, .detail a:focus-visible, .detail button:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+.editor { display: grid; gap: 20px; }
+.editor :global(.form-group) { margin: 0; }
+.editor :global(.form-input), .editor :global(.form-textarea) { color: var(--text-main); }
+.editor :global(.form-textarea) { resize: vertical; }
+.editor :disabled { opacity: 0.6; cursor: not-allowed; }
+.feed { padding-bottom: 72px; overflow-wrap: anywhere; }
+.feed :global(.community-card) { min-width: 0; }
+.feed :global(.community-card) footer button, .feed :global(.community-card) footer a,
+.detail :global(.community-action-row) button { min-width: 44px; min-height: 44px; padding: 8px; }
+.feed button:disabled, .detail button:disabled { opacity: 0.55; cursor: not-allowed; }
+.detail { min-width: 0; overflow-wrap: anywhere; }
+.detail :global(.comment-list) header { flex-wrap: wrap; }
+.detail :global(.comment-list) p { white-space: pre-wrap; }
+.feed :global(.community-card) > header > :global(.chat-avatar),
+.detail :global(.chat-avatar) { flex-shrink: 0; }

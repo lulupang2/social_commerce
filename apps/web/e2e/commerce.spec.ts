@@ -41,6 +41,12 @@ async function expectStock(seller: Page, listingId: string, availableQuantity: n
   await expect.poll(() => getStock(seller, listingId)).toMatchObject({ availableQuantity, reservedQuantity });
 }
 
+async function expectInventorySummary(page: Page, available: number, reserved: number) {
+  const rows = page.locator('dl > div');
+  await expect(rows.filter({ has: page.getByText('판매 가능', { exact: true }) }).locator('dd')).toHaveText(`${available}개`);
+  await expect(rows.filter({ has: page.getByText('예약 중', { exact: true }) }).locator('dd')).toHaveText(`${reserved}개`);
+}
+
 async function createListing(seller: Page, title: string): Promise<string> {
   await seller.goto('/sell');
   await seller.getByRole('button', { name: '다음 단계' }).click();
@@ -71,9 +77,9 @@ async function prepareListing(seller: Page, reviewer: Page, title: string): Prom
   const id = await createListing(seller, title);
   await approveListing(reviewer, title);
   await seller.goto(`/seller/inventory/${id}`);
-  await expect(seller.getByText('현재 판매 가능: 0개 · 예약 중: 0개')).toBeVisible();
+  await expectInventorySummary(seller, 0, 0);
   await seller.getByRole('button', { name: '재고 1개 판매 시작' }).click();
-  await expect(seller.getByText('현재 판매 가능: 1개 · 예약 중: 0개')).toBeVisible();
+  await expectInventorySummary(seller, 1, 0);
   await expectStock(seller, id, 1, 0);
   return id;
 }
@@ -163,7 +169,7 @@ test('real isolated buyer/seller/operator transaction, inventory and ownership',
       await expect(buyer.getByRole('link', { name: '구매하기' })).toHaveCount(0);
       expect((await post(buyer, '/api/v1/orders', { listingId: id, quantity: 1 })).status()).toBe(404);
       await seller.goto(`/seller/inventory/${id}`);
-      await expect(seller.getByText('현재 판매 가능: 0개 · 예약 중: 0개')).toBeVisible();
+      await expectInventorySummary(seller, 0, 0);
       await seller.getByRole('button', { name: '재고 1개 판매 시작' }).click();
       await expectStock(seller, id, 1, 0);
       return id;

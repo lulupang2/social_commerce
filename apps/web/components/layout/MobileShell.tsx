@@ -13,7 +13,7 @@ export function MobileShell({ children, title, showBack, hideNav = false }: Mobi
   return (
     <div className="app-viewport">
       <TopNav title={title} showBack={showBack} />
-      <main className="main-content">{children}</main>
+      <main className={`main-content${hideNav ? ' main-content-no-nav' : ''}`}>{children}</main>
       {!hideNav && <BottomNav />}
     </div>
   );

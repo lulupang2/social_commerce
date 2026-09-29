@@ -7,6 +7,7 @@ import { StatePanel } from '@/components/ui/StatePanel';
 import { MobileShell } from '@/components/layout/MobileShell';
 import { applyForSeller, getSellerStatus } from '@/lib/go-listings/seller';
 import type { SellerStatus } from '@icegear/domain';
+import styles from '@/components/seller/management.module.css';
 
 export default function SellerApplyPage() {
   const [status, setStatus] = useState<SellerStatus | null>(null);
@@ -31,22 +32,31 @@ export default function SellerApplyPage() {
     setBusy(false);
   };
   return <MobileShell title="판매자 신청">
-    <div className="container" style={{ padding: 16 }}>
+    <div className={`container ${styles.page}`}>
       {loading ? <StatePanel role="status" description="판매자 상태를 확인하고 있어요." /> : null}
-      {!loading && error ? <StatePanel role="alert" description={error} actions={errorStatus === 401 ? <Link className="btn-primary" href="/auth">로그인하기</Link> : errorStatus === 403 || errorStatus === 404 ? <Link href="/profile">마이페이지로</Link> : <button type="button" className="btn-outline" disabled={busy} onClick={() => { setLoading(true); void reload(); }}>다시 시도</button>} /> : null}
-      {status?.seller ? <section><h2>판매자 승인 완료</h2><p>{status.seller.displayName}</p>
-        <Link href="/my/listings">내 매물과 재고 관리</Link> · <Link href="/seller/orders">판매 주문 처리</Link></section> : null}
+      {!loading && error ? <StatePanel role="alert" description={error} actions={errorStatus === 401 ? <Link className="btn-primary" href="/auth">로그인하기</Link> : errorStatus === 403 || errorStatus === 404 ? <Link className="btn-outline" href="/profile">마이페이지로</Link> : <button type="button" className="btn-outline" disabled={busy} onClick={() => { setLoading(true); void reload(); }}>다시 시도</button>} /> : null}
+      {status?.seller ? <section className={styles.card}>
+        <div className={styles.heading}><h2>판매자 승인 완료</h2><p className={styles.description}>{status.seller.displayName}</p></div>
+        <div className={styles.actions}><Link className="btn-primary" href="/my/listings">내 매물과 재고 관리</Link><Link className="btn-outline" href="/seller/orders">판매 주문 처리</Link></div>
+      </section> : null}
       {!status?.seller && status?.application?.status === 'pending' ?
-        <p>판매자 신청을 검토 중입니다. 승인 전에는 판매 재고를 등록할 수 없어요.</p> : null}
+        <StatePanel role="status" title="판매자 신청 검토 중" description="승인 전에는 판매 재고를 등록할 수 없어요. 검토가 끝나면 이 화면에서 결과를 확인할 수 있습니다." actions={<Link className="btn-outline" href="/profile">마이페이지로</Link>} /> : null}
       {!status?.seller && status?.application?.status === 'rejected' ?
-        <p role="status">이전 신청이 반려되었습니다: {status.application.reason}</p> : null}
-      {status && !status.seller && status.application?.status !== 'pending' ? <form onSubmit={(event) => void submit(event)}>
-        <p>신청 후 운영자의 승인이 필요합니다. 실제 사업자 인증은 제공하지 않습니다.</p>
-        <label>판매 유형 <select value={type} onChange={(event) => setType(event.target.value as 'individual' | 'business')}>
-          <option value="individual">개인</option><option value="business">사업자</option>
-        </select></label>
-        <label>표시 이름 <input required maxLength={120} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
-        <button type="submit" className="btn-primary" disabled={busy || !displayName.trim()}>{busy ? '신청 중…' : '승인 신청'}</button>
+        <StatePanel role="status" title="이전 신청이 반려되었어요" description={`${status.application.reason || '반려 사유가 없습니다.'}\n아래 신청 정보를 확인한 뒤 다시 신청할 수 있어요.`} /> : null}
+      {status && !status.seller && status.application?.status !== 'pending' ? <form className={styles.card} aria-busy={busy} onSubmit={(event) => void submit(event)}>
+        <div className={styles.heading}><h2>판매자 정보</h2><p className={styles.description}>신청 후 운영자의 승인이 필요합니다. 실제 사업자 인증은 제공하지 않습니다.</p></div>
+        <div className={styles.field}>
+          <label className="form-label" htmlFor="seller-type">판매 유형</label>
+          <select id="seller-type" className="form-select" value={type} onChange={(event) => setType(event.target.value as 'individual' | 'business')}>
+            <option value="individual">개인</option><option value="business">사업자</option>
+          </select>
+        </div>
+        <div className={styles.field}>
+          <label className="form-label" htmlFor="seller-display-name">표시 이름</label>
+          <input id="seller-display-name" className="form-input" required maxLength={120} aria-describedby="seller-name-help" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+          <p id="seller-name-help" className={styles.description}>판매자로 표시할 이름을 120자 이내로 입력해 주세요.</p>
+        </div>
+        <div className={styles.actions}><button type="submit" className="btn-primary" disabled={busy || !displayName.trim()}>{busy ? '신청 중…' : '승인 신청'}</button></div>
       </form> : null}
     </div>
   </MobileShell>;
