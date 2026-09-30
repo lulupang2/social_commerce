@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 
 import { listRealtimeConversations } from '@/lib/chat/realtime';
 import { AUTH_SESSION_EVENT } from '@/lib/go-auth/client';
+import { defaultBackPath, loginCancelPath, previousPage } from '@/lib/go-auth/navigation';
 
 interface TopNavProps {
   title?: string;
@@ -51,6 +52,16 @@ export function TopNav({ title, showBack, storefront = false }: TopNavProps) {
   }, [pathname]);
 
   const shouldShowBack = showBack ?? TOP_LEVEL_PATHS[pathname] !== true;
+  const goBack = () => {
+    if (pathname === '/auth') {
+      const params = new URLSearchParams(window.location.search);
+      router.replace(loginCancelPath(params.get('next'), params.get('back')));
+    } else if (previousPage() && window.history.length > 1) {
+      router.back();
+    } else {
+      router.replace(defaultBackPath(pathname));
+    }
+  };
 
   return (
     <header className={'top-nav' + (storefront ? ' storefront-top-nav' : '')}>
@@ -59,7 +70,7 @@ export function TopNav({ title, showBack, storefront = false }: TopNavProps) {
           <button
             aria-label="뒤로가기"
             className="top-nav-back"
-            onClick={() => router.back()}
+            onClick={goBack}
             type="button"
           >
             <ArrowLeft aria-hidden="true" size={22} />

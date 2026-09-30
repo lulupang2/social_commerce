@@ -89,6 +89,12 @@ Supabase Auth와 이메일 OTP는 목표 인증에서 제외합니다. 소셜 �
 재시도로 안내한다. 상단 알림 같은 백그라운드 조회는 페이지 이동을 일으키지 않는다.
 API의 오류 코드와 상태는 유지하고 사용자에게 표시할 한국어 문구는 웹에서 결정한다.
 
+로그인 이동은 접근 불가 화면을 history에 남기지 않도록 `replace`를 사용한다. `next`는
+로그인 성공 후 목적지, `back`은 취소 시 돌아갈 공개 화면이다. `back`이 없거나 외부·인증 필요
+경로이면 상품 목록·커뮤니티 목록 등 공개 상위 화면으로 복귀한다. 일반 상세 화면은 확인된
+앱 내 이전 기록이 있을 때 브라우저 뒤로가기로 필터와 화면 위치를 복원하며, 직접 접속처럼
+이전 기록을 확인할 수 없으면 해당 메뉴의 상위 화면으로 이동한다.
+
 실제 네이버·카카오 키 연결 전 개발을 막지 않기 위해 테스트 환경에서만 `POST /api/v1/auth/dev-login`을 사용할 수 있습니다. `AUTH_DEV_LOGIN_ENABLED=true`일 때만 경로를 등록하며 `fixture` 또는 `supabase-test` DB 대상에서만 허용합니다. 같은 출처 `Origin`을 확인하고 일반 로그인과 같은 `auth_sessions` 레코드와 HttpOnly 서비스 세션 쿠키를 발급합니다. 요청 바디가 없는 기존 임시 로그인은 그대로 유지하며 가짜 네이버·카카오 identity를 만들지 않습니다.
 
 격리 `fixture` DB에서 `APP_ENV=test`와 `AUTH_DEV_LOGIN_ENABLED=true`를 모두 만족하면 `GET /api/v1/auth/fixture-roles`가 구매자 A/B·판매자 A/B·검토자 역할을 반환합니다. 이때만 `POST /api/v1/auth/dev-login`의 `{ "role": "buyer_a" | "buyer_b" | "seller_a" | "seller_b" | "reviewer" }` 요청이 허용됩니다. 검토자 로그인만으로 권한을 부여하지 않으며 DB의 `listing_reviewers` 등록도 필요합니다. 서버가 고정한 회원 ID만 사용하며 재로그인해도 개인 설정을 덮어쓰지 않습니다. `supabase-test`를 포함한 공유 preview에서는 역할 선택 경로와 역할 바디를 제공하지 않습니다. 기존 독립 구매자 로그인 정책도 유지합니다.

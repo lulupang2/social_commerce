@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getGoSession } from './client';
-import { isProtectedPage, loginUrl, redirectIfUnauthorized, safeReturnPath } from './navigation';
+import {
+  defaultBackPath,
+  isProtectedPage,
+  loginCancelPath,
+  loginUrl,
+  recordPage,
+  previousPage,
+  redirectIfUnauthorized,
+  safeReturnPath,
+} from './navigation';
 import { requestJson } from '../api/json-request';
 import { z } from 'zod';
 
@@ -47,13 +56,57 @@ test('browsing is public while personal, transaction and edit pages require logi
     assert.equal(isProtectedPage(path), true, path);
 });
 
+test('login cancel uses a public origin independently of the successful login destination', () => {
+  assert.equal(loginCancelPath('/community/create', null), '/community');
+  assert.equal(loginCancelPath('/community/create', '/'), '/');
+  assert.equal(loginCancelPath('/community/create', '/community/create'), '/community');
+  assert.equal(loginCancelPath('/community/create', '//evil.test'), '/community');
+  assert.equal(loginCancelPath('/orders', null), '/');
+  assert.equal(loginCancelPath('/order/new/123', null), '/market/123');
+  assert.equal(loginCancelPath('/market?sport=surf', null), '/market?sport=surf');
+  assert.equal(defaultBackPath('/market/123'), '/market');
+  assert.equal(defaultBackPath('/community/123'), '/community');
+  const url = new URL(loginUrl('/community/create', '/community'), 'https://example.test');
+  assert.equal(url.searchParams.get('next'), '/community/create');
+  assert.equal(url.searchParams.get('back'), '/community');
+});
+
+test('per-entry back metadata preserves filters, framework state and restored history entries', (t) => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const history = {
+    state: { framework: 'preserved' } as Record<string, unknown>,
+    replaceState(state: Record<string, unknown>) {
+      this.state = state;
+    },
+  };
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { history } });
+  t.after(() => {
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
+  });
+  recordPage('/market', null);
+  assert.equal(previousPage(), null);
+  recordPage('/market?sport=surf', '/market');
+  recordPage('/market/123', '/market?sport=surf');
+  assert.equal(previousPage(), '/market?sport=surf');
+  assert.equal(history.state.framework, 'preserved');
+  recordPage('/market/123', '/community');
+  assert.equal(
+    previousPage(),
+    '/market?sport=surf',
+    'reload/popstate must not rewrite previous page',
+  );
+  recordPage('/market/456', '/auth?next=/market/456');
+  assert.equal(previousPage(), null, 'the auth screen is never a back target');
+});
+
 test('passive session checks stay on public pages; required actions redirect only on 401', async (t) => {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
   const destinations: string[] = [];
   const location = {
     pathname: '/market',
     search: '?sport=tennis',
-    assign: (url: string) => destinations.push(url),
+    replace: (url: string) => destinations.push(url),
   };
   Object.defineProperty(globalThis, 'window', { configurable: true, value: { location } });
   t.after(() => {

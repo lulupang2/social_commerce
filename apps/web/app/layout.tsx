@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
+import { Suspense } from 'react';
 import { LoginGate } from '@/components/layout/LoginGate';
+import { NavigationHistory } from '@/components/layout/NavigationHistory';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -21,7 +23,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body><LoginGate>{children}</LoginGate></body>
+      <body><Suspense fallback={null}><NavigationHistory /></Suspense><LoginGate>{children}</LoginGate></body>
     </html>
   );
 }

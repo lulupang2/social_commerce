@@ -70,7 +70,7 @@ test('protected pages redirect only for missing login, while service and permiss
   await expect(page).toHaveURL(/\/orders$/);
   status = 401;
   await page.getByRole('button', { name: '다시 시도' }).click();
-  await expect(page).toHaveURL(/\/auth\?next=%2Forders$/);
+  await expect(page).toHaveURL(/\/auth\?next=%2Forders&back=%2F$/);
   await expect(page.getByRole('button', { name: '임시 계정으로 계속하기' })).toBeVisible();
   expect(protectedRequests).toBe(0);
 });
