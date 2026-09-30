@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 import { getGoSession } from '../go-auth/client';
+import { apiErrorMessage } from '../api/error-message';
 
 export const GO_LISTING_IMAGE_MAX_COUNT = 12;
 export const GO_LISTING_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -108,7 +109,7 @@ async function responseFailure(
     ok: false as const,
     status: response.status,
     code,
-    message: body.success && body.data.message ? body.data.message : fallback,
+    message: apiErrorMessage(response.status, body.success ? body.data : null, fallback),
   };
   return { ...failure, message: imageApiErrorMessage(failure) };
 }

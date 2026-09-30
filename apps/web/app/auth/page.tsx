@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 
 import { MobileShell } from '@/components/layout/MobileShell';
 import { devSignIn, fixtureRoles } from '@/lib/go-auth/client';
+import { safeReturnPath } from '@/lib/go-auth/navigation';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
 
 export default function AuthPage() {
@@ -30,7 +31,7 @@ export default function AuthPage() {
     }
 
     triggerNativeHaptic('success');
-    router.replace('/profile');
+    router.replace(safeReturnPath(new URLSearchParams(window.location.search).get('next')));
     router.refresh();
   };
 

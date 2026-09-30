@@ -11,6 +11,7 @@ import {
 import { z } from 'zod';
 
 import { getGoSession } from '../go-auth/client';
+import { apiErrorMessage } from '../api/error-message';
 import type { MarketListing } from '../listings/types';
 import type { MutationResult } from '../supabase/mutations';
 import { signedImageSchema } from './images';
@@ -241,7 +242,7 @@ export async function createGoListing(
       return {
         ok: false,
         reason: response.status >= 500 ? 'unavailable' : 'request_failed',
-        message: data?.message || '판매글을 저장하지 못했어요.',
+        message: apiErrorMessage(response.status, data, '판매글을 저장하지 못했어요.'),
       };
     }
     return { ok: true, data: { id: data.id, status: 'pending_review' } };

@@ -1,5 +1,8 @@
 'use client';
 
+import { apiErrorMessage } from '../api/error-message';
+import { redirectIfUnauthorized } from './navigation';
+
 export interface GoAuthMember {
   id: string;
   displayName: string | null;
@@ -32,7 +35,7 @@ export function notifyGoSessionChanged() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(AUTH_SESSION_EVENT));
 }
 
-export async function getGoSession(): Promise<GoSessionResult> {
+export async function getGoSession(options: { required?: boolean } = {}): Promise<GoSessionResult> {
   try {
     const response = await fetch('/api/v1/auth/session', {
       credentials: 'same-origin',
@@ -42,11 +45,12 @@ export async function getGoSession(): Promise<GoSessionResult> {
     const data = (await response.json().catch(() => null)) as GoAuthSessionView | GoAuthError | null;
     if (!response.ok) {
       const error = data as GoAuthError | null;
+      if (options.required) redirectIfUnauthorized(response.status, true);
       return {
         ok: false,
         code: error?.code,
         status: response.status,
-        message: error?.message || '로그인 상태를 확인하지 못했어요.',
+        message: apiErrorMessage(response.status, error, '로그인 상태를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.'),
       };
     }
     const session = data as GoAuthSessionView | null;
@@ -55,7 +59,7 @@ export async function getGoSession(): Promise<GoSessionResult> {
     }
     return { ok: true, session };
   } catch {
-    return { ok: false, message: 'Go API에 연결하지 못했어요.' };
+    return { ok: false, message: '서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.' };
   }
 }
 
@@ -81,7 +85,7 @@ export async function devSignIn(role?: 'buyer_a' | 'buyer_b' | 'seller_a' | 'sel
       return {
         ok: false,
         code: error?.code,
-        message: error?.message || '임시 로그인에 실패했어요.',
+        message: apiErrorMessage(response.status, error, '임시 로그인에 실패했어요. 잠시 후 다시 시도해 주세요.'),
       };
     }
 
@@ -94,7 +98,7 @@ export async function devSignIn(role?: 'buyer_a' | 'buyer_b' | 'seller_a' | 'sel
   } catch {
     return {
       ok: false,
-      message: 'Go API에 연결하지 못했어요. 웹 API 프록시와 서버 실행 상태를 확인해 주세요.',
+      message: '로그인 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.',
     };
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { z } from 'zod';
 import { getGoSession } from './client';
+import { apiErrorMessage } from '../api/error-message';
 
 type PushResult = { ok: true } | { ok: false; message: string };
 
@@ -16,8 +16,7 @@ async function requestPush(method: 'POST' | 'DELETE', token: string, platform: '
     });
     if (response.ok) return { ok: true };
     const payload: unknown = await response.json().catch(() => null);
-    const parsed = z.object({ message: z.string() }).safeParse(payload);
-    return { ok: false, message: parsed.success ? parsed.data.message : '알림 기기 상태를 저장하지 못했어요.' };
+    return { ok: false, message: apiErrorMessage(response.status, payload, '알림 기기 상태를 저장하지 못했어요.') };
   } catch { return { ok: false, message: '알림 서버에 연결하지 못했어요.' }; }
 }
 export function registerGoPushDevice(token: string, platform: 'ios' | 'android') {

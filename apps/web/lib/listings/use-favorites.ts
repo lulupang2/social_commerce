@@ -77,7 +77,7 @@ export function useFavorites() {
   const updateFavorite = useCallback(async (id: string, favorite: boolean) => {
     setError('');
     if (id.startsWith('go:')) {
-      const session = await getGoSession();
+      const session = await getGoSession({ required: true });
       if (!session.ok || session.session.member.id !== memberIdRef.current) {
         setError(session.ok ? '계정이 변경됐어요. 다시 로그인해 주세요.' : session.message);
         return false;

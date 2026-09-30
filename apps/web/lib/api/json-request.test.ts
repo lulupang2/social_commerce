@@ -92,7 +92,7 @@ test('failed session and switched identity stop mutations before the resource re
     requests++;
     return Response.json({ message: 'Login required' }, { status: 401 });
   });
-  assert.deepEqual(await requestJson('/resource', schema, { method: 'POST', messages }), { ok: false, status: 401, message: 'Login required' });
+  assert.deepEqual(await requestJson('/resource', schema, { method: 'POST', messages }), { ok: false, status: 401, message: '로그인이 필요해요. 로그인 후 다시 이용해 주세요.' });
   mocked.mock.mockImplementation(async () => { requests++; return Response.json(session); });
   assert.deepEqual(await requestJson('/resource', schema, {
     method: 'DELETE', messages, identity: { memberId: 'other', changedMessage: 'Account changed' },
@@ -121,7 +121,7 @@ test('HTTP, malformed JSON, schema and network failures retain separate outcomes
     if (!response) throw new Error('Lost response');
     return response;
   });
-  for (const [status, message] of [[403, 'Forbidden'], [503, messages.http], [200, messages.invalid], [200, messages.invalid], [0, messages.network]]) {
+  for (const [status, message] of [[403, '이 작업을 수행할 권한이 없어요.'], [503, messages.http], [200, messages.invalid], [200, messages.invalid], [0, messages.network]]) {
     assert.deepEqual(await requestJson('/resource', schema, { messages }), { ok: false, status, message });
   }
   assert.equal(requests, 5);
@@ -139,6 +139,6 @@ test('feature adapters keep bodyless review, community and favorite mutations in
   const results = await Promise.all([
     decideReview(id, 'approve'), resubmitListing(id), resubmitPost(id), changeLike(id, false), setGoFavorite(id, false, id),
   ]);
-  for (const result of results) assert.deepEqual(result, { ok: false, status: 409, message: 'Fixture conflict' });
+  for (const result of results) { assert.ok(!result.ok); assert.equal(result.status, 409); assert.match(result.message, /[가-힣]/); assert.doesNotMatch(result.message, /Fixture conflict/); }
   assert.deepEqual(calls.map((call) => call.method), ['POST', 'POST', 'POST', 'DELETE', 'DELETE']);
 });

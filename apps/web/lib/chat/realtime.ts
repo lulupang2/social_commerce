@@ -19,9 +19,9 @@ export type RealtimeConversationResult =
   | { ok: false; reason: 'invalid_id' | 'unauthenticated' | 'not_found' | 'request_failed'; message: string };
 
 type Result<T> = { ok: true; data: T } | { ok: false; status: number; message: string };
-async function request<T>(path: string, schema: z.ZodType<T>, method = 'GET', body?: unknown, memberId?: string): Promise<Result<T>> {
+async function request<T>(path: string, schema: z.ZodType<T>, method = 'GET', body?: unknown, memberId?: string, background = false): Promise<Result<T>> {
   const result = await requestJson(path, schema, {
-    method, body, allowNoContent: true,
+    method, body, background, allowNoContent: true,
     identity: memberId ? { memberId, changedMessage: '로그인 계정이 변경됐어요. 채팅 목록에서 다시 열어 주세요.' } : undefined,
     messages: {
       http: '채팅 서버 요청에 실패했어요.',
@@ -126,10 +126,10 @@ export async function connectRealtimeConversation(id: string): Promise<RealtimeC
   } };
 }
 
-export async function listRealtimeConversations(): Promise<
+export async function listRealtimeConversations(options: { background?: boolean } = {}): Promise<
   { ok: true; conversations: RealtimeConversationSummary[] } | { ok: false; message: string }
 > {
-  const result = await request('/api/v1/conversations', summariesSchema);
+  const result = await request('/api/v1/conversations', summariesSchema, 'GET', undefined, undefined, options.background);
   if (!result.ok) return { ok: false, message: result.message };
   return { ok: true, conversations: result.data.items.map((item) => ({ ...item,
     lastMessageTime: item.lastMessageTime ? new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(item.lastMessageTime)) : '',

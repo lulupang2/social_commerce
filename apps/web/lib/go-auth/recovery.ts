@@ -3,6 +3,8 @@
 import { paymentRecoveryRequestSchema, recoveryDashboardSchema } from '@icegear/domain';
 import { z } from 'zod';
 import { getGoSession } from './client';
+import { apiErrorMessage } from '../api/error-message';
+import { redirectIfUnauthorized } from './navigation';
 
 async function request<T>(url: string, schema: z.ZodType<T>, reason?: string): Promise<
   { ok: true; data: T } | { ok: false; message: string }
@@ -19,8 +21,8 @@ async function request<T>(url: string, schema: z.ZodType<T>, reason?: string): P
       cache: 'no-store', headers, ...(reason === undefined ? {} : { body: JSON.stringify({ reason }) }) });
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      const failure = z.object({ message: z.string() }).safeParse(payload);
-      return { ok: false, message: failure.success ? failure.data.message : '복구 현황을 확인하지 못했어요.' };
+      redirectIfUnauthorized(response.status);
+      return { ok: false, message: apiErrorMessage(response.status, payload, '복구 현황을 확인하지 못했어요.') };
     }
     const parsed = schema.safeParse(payload);
     if (!parsed.success) return { ok: false, message: '복구 현황 응답이 올바르지 않아요.' };

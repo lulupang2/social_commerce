@@ -360,10 +360,12 @@ test('real empty orders, failed read retry and logged-out state', async ({ brows
     await page.getByRole('button', { name: '로그아웃' }).click();
     await expect.poll(async () => (await page.request.get('/api/v1/auth/session')).status()).toBe(401);
     await page.goto('/orders');
-    await expect(page.getByRole('link', { name: '로그인하기' })).toBeVisible();
+    await expect(page).toHaveURL(/\/auth\?next=%2Forders$/);
+    await expect(page.getByRole('button', { name: '임시 계정으로 계속하기' })).toBeVisible();
     const guestPage = await guest.newPage();
     await guestPage.goto('/orders');
-    await expect(guestPage.getByRole('link', { name: '로그인하기' })).toBeVisible();
+    await expect(guestPage).toHaveURL(/\/auth\?next=%2Forders$/);
+    await expect(guestPage.getByRole('button', { name: '임시 계정으로 계속하기' })).toBeVisible();
     expect((await guestPage.request.get('/api/v1/orders')).status()).toBe(401);
   } finally {
     await Promise.all([context.close(), guest.close()]);

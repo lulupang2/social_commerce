@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { LoginGate } from '@/components/layout/LoginGate';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -20,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body><LoginGate>{children}</LoginGate></body>
     </html>
   );
 }

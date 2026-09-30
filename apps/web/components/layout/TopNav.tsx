@@ -30,7 +30,7 @@ export function TopNav({ title, showBack, storefront = false }: TopNavProps) {
   useEffect(() => {
     let active = true;
     const refresh = () => {
-      void listRealtimeConversations().then((result) => {
+      void listRealtimeConversations({ background: true }).then((result) => {
         if (active) {
           setUnread(
             result.ok

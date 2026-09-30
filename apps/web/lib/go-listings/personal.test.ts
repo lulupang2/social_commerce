@@ -12,7 +12,7 @@ test('profile and favorites reject invalid response and failed writes rather tha
     return Response.json({ code: 'MEMBER_DATA_UNAVAILABLE', message: 'fixture failure' }, { status: 503 });
   });
   const save = await setGoFavorite(id, true, id);
-  assert.deepEqual(save, { ok: false, status: 503, message: 'fixture failure' });
+  assert.deepEqual(save, { ok: false, status: 503, message: '회원 요청을 처리하지 못했어요.' });
   const update = await updateMemberProfile({ displayName: 'Buyer A', surfSkill: 'expert', tennisSkill: 'beginner', preferredSport: 'surf', maxBudgetKrw: 200000, preferredRegion: '양양' }, id);
   assert.equal(update.ok, false);
   mocked.mock.mockImplementation(async () => Response.json({ id, displayName: 'Buyer A', surfSkill: 'expert', tennisSkill: 'beginner', preferredSport: 'surf', maxBudgetKrw: 200000, preferredRegion: '양양', savedCount: 'one', transactionCount: 0 }));

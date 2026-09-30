@@ -22,6 +22,7 @@ import { startListingConversation } from '@/lib/chat/realtime';
 import { storefrontFixtureImage, storefrontListingImages } from '@/lib/data/storefront-fixture-images';
 import { SUMMER_CHAT_ROOMS } from '@/lib/data/summer-mock-data';
 import { getGoSession } from '@/lib/go-auth/client';
+import { redirectToLogin } from '@/lib/go-auth/navigation';
 import { getEditableGoListing, toMarketListing } from '@/lib/go-listings/client';
 import { listGoListingImages } from '@/lib/go-listings/images';
 import { listingAvailability, type ListingAvailability } from '@/lib/go-listings/reviews';
@@ -175,7 +176,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
       return;
     }
     if (listing.dataSource !== 'go' && !listing.sellerId) {
-      router.push('/auth');
+      redirectToLogin();
       return;
     }
 
@@ -187,7 +188,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
       return;
     }
     if (result.reason === 'unauthenticated') {
-      router.push('/auth');
+      redirectToLogin();
       return;
     }
     setActionMessage(result.message);
