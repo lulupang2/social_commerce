@@ -12,9 +12,11 @@ import { MobileShell } from '@/components/layout/MobileShell';
 import {
   Bell,
   ChevronRight,
+  ClipboardList,
   FileText,
   Heart,
   LoaderCircle,
+  LogOut,
   Package,
   ShoppingBag,
   Settings,
@@ -395,7 +397,16 @@ export default function ProfilePage() {
           </Link>
 
           {source === 'go' ? (
-            <Link href="/seller/orders" style={{ display: 'block', padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>{translate('판매 주문 처리')}</Link>
+            <Link
+              href="/seller/orders"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--border)', textDecoration: 'none' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.92rem', fontWeight: 600 }}>
+                <ClipboardList size={18} color="var(--text-muted)" />
+                <span>{translate('판매 주문 처리')}</span>
+              </div>
+              <ChevronRight size={16} color="var(--text-subtle)" />
+            </Link>
           ) : null}
           {source === 'go' && isReviewer ? (
             <Link href="/reviews" style={{ display: 'block', padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>{translate('매물 검토')}</Link>
@@ -500,9 +511,19 @@ export default function ProfilePage() {
             <ChevronRight size={16} color="var(--text-subtle)" />
           </Link>
           {memberId ? (
-            <div style={{ padding: 16 }}>
-              <button className="btn-outline" type="button" onClick={() => void signOut().then((result) => { if (!result.ok) setSignOutError(result.message); })}>{translate('로그아웃')}</button>
-              {signOutError ? <p className="form-error" role="alert">{translate(signOutError)}</p> : null}
+            <div>
+              <button
+                type="button"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '14px 16px', background: 'var(--surface)', border: 0, borderTop: '1px solid var(--border)', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}
+                onClick={() => void signOut().then((result) => { if (!result.ok) setSignOutError(result.message); })}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.92rem', fontWeight: 600 }}>
+                  <LogOut size={18} color="var(--text-muted)" />
+                  <span>{translate('로그아웃')}</span>
+                </span>
+                <ChevronRight size={16} color="var(--text-subtle)" />
+              </button>
+              {signOutError ? <p className="form-error" role="alert" style={{ padding: '0 16px 14px' }}>{translate(signOutError)}</p> : null}
             </div>
           ) : null}
         </div>
