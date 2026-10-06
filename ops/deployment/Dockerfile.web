@@ -21,8 +21,8 @@ ARG NEXT_PUBLIC_SUPABASE_URL=""
 ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=""
 ENV NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
 ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
-# Set packaging only inside the image build; application-owned Next config stays unchanged.
-RUN node -e "const fs=require('fs'); const p='apps/web/next.config.ts'; const s=fs.readFileSync(p,'utf8'); if(!s.includes('export default nextConfig;')) throw Error('Review Next packaging config'); fs.writeFileSync(p,s.replace('export default nextConfig;', \"nextConfig.output = 'standalone'; nextConfig.outputFileTracingRoot = '/workspace'; export default nextConfig;\"))" && \
+# Set packaging on the config object inside the build, preserving plugin wrappers.
+RUN node -e "const fs=require('fs'); const p='apps/web/next.config.ts'; const s=fs.readFileSync(p,'utf8'); const marker='const nextConfig: NextConfig = {'; if(s.split(marker).length !== 2) throw Error('Review Next packaging config'); fs.writeFileSync(p,s.replace(marker, \"const nextConfig: NextConfig = { output: 'standalone', outputFileTracingRoot: '/workspace',\"))" && \
     pnpm --filter @icegear/domain build && pnpm --filter @icegear/web build && mkdir -p apps/web/public
 
 FROM node:22.13.0-bookworm-slim AS web
