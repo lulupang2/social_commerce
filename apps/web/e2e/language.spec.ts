@@ -18,7 +18,7 @@ test('language selection survives reload, navigation, and sign-in return without
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/market?sport=surf&minPrice=50000');
-  await page.getByRole('combobox', { name: '언어', exact: true }).selectOption('en');
+  await page.getByRole('button', { name: '언어 변경', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expect(page.getByRole('textbox', { name: 'Minimum price', exact: true })).toHaveValue('50000');
   await expect(page.getByRole('heading', { name: listing.title })).toBeVisible();
@@ -34,7 +34,7 @@ test('language selection survives reload, navigation, and sign-in return without
   await page.getByRole('button', { name: 'Continue with a temporary account' }).click();
   await expect(page).toHaveURL(/\/market\?sport=surf&minPrice=50000$/);
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await page.getByRole('button', { name: 'Change language', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
   await expect(page.getByRole('button', { name: '찜하기', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
@@ -78,10 +78,10 @@ test('switching language preserves an unfinished listing and updates validation 
   await page.getByLabel('제목', { exact: true }).fill('A');
   await page.getByRole('button', { name: '다음 단계', exact: true }).click();
   await expect(page.getByText('제목을 4자 이상 입력해 주세요.', { exact: true })).toBeVisible();
-  await page.getByRole('combobox', { name: '언어', exact: true }).selectOption('en');
+  await page.getByRole('button', { name: '언어 변경', exact: true }).click();
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('A');
   await expect(page.getByText('Enter a title with at least 4 characters.', { exact: true })).toBeVisible();
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await page.getByRole('button', { name: 'Change language', exact: true }).click();
   await expect(page.getByLabel('제목', { exact: true })).toHaveValue('A');
   await expect(page.getByText('제목을 4자 이상 입력해 주세요.', { exact: true })).toBeVisible();
 });
