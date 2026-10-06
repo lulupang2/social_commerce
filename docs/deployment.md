@@ -1,5 +1,10 @@
 # nhn-rocky 배포·테스트 환경
 
+현재 `sg.jisung.lol` preview의 **웹 자동배포**는 [GitHub Actions 웹 배포 안내](../ops/deployment/WEB-DEPLOY.md)를 따른다.
+`main`의 Keyless Linux CI 성공 후 GHCR 이미지 게시 → SSH 웹 교체를 수행한다.
+SSH 최초 설정과 `WEB_DEPLOY_ENABLED=true`가 필요하다. 아래 hosted Supabase 배포 절차와 별개이며,
+preview의 API/worker/DB/migration은 웹 자동배포에서 변경하지 않는다.
+
 상태: 키 없는 Linux CI·역할별 이미지·테스트 배포 Compose 추가, 실제 배포 전 · 기준일: 2026-09-21
 
 실행 명령, 환경변수 경계, 기동·종료와 백업/롤백은 [배포·CI 실행 안내](../ops/deployment/README.md)를 따른다. 검증 결과와 미해결 항목은 [D 검증 기록](../ops/deployment/VERIFICATION.md)에 기록한다. `compose.deploy.yml`은 Supabase 테스트 전용이며 운영 차단 가드를 유지한다.

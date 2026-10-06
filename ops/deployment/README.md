@@ -5,6 +5,8 @@ APP_ENV=test, DB_TARGET=fixture/supabase-test 가드를 유지한다.
 운영 환경을 test로 위장하지 않는다.
 
 외부 브라우저에서 보는 키 없는 테스트 사이트는 [공개 미리보기 안내](PREVIEW.md)를 따른다.
+기존 preview의 웹 자동배포와 최초 SSH 설정은 [웹 자동배포 안내](WEB-DEPLOY.md)를 따른다.
+`Keyless Linux CI` 성공 후 별도 `Publish and deploy web` workflow가 GHCR 게시와 선택적 SSH 배포를 수행한다.
 
 ## 구성
 

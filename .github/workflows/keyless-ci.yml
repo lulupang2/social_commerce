@@ -16,6 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - name: Web deployment script checks without a server
+        run: |
+          bash -n ops/deployment/deploy-web.sh ops/deployment/deploy-web-ssh.sh
+          python3 ops/deployment/test_deploy_web.py
       - name: Compose contracts without secrets
         run: |
           docker compose -f ops/deployment/compose.ci.yml config --quiet

@@ -1,5 +1,9 @@
 # 공개 테스트 미리보기
 
+현재 웹 업데이트는 [GitHub Actions 웹 자동배포](WEB-DEPLOY.md)를 사용할 수 있다.
+아래 과거 배포 이미지 태그보다 서버의 `~/.local/state/summergear/web-deploy/current-image.env`가
+있으면 그 이미지 기록을 우선 사용한다.
+
 이미 빌드한 `summergear-{web,api,worker,migration}:deployment-ci` 이미지를
 `compose.ci.yml` + `compose.preview.yml`로 지속 실행한다.
 구조는 브라우저 HTTPS → 호스트 Caddy → loopback gateway → Next.js / Go API다.
