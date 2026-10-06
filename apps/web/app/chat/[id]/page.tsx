@@ -1,5 +1,9 @@
 'use client';
 
+import { useLocale } from 'next-intl';
+import { formatWon } from '@/lib/display-format';
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import type { ChatMessage } from '@icegear/domain';
 import { ChevronRight, LoaderCircle, Send, Shield } from 'lucide-react';
 import Image from 'next/image';
@@ -19,25 +23,27 @@ interface DisplayMessage {
   time: string;
 }
 
-function displayTime(timestamp: string): string {
+function displayTime(timestamp: string, locale: string): string {
   const date = new Date(timestamp);
   if (!Number.isFinite(date.getTime())) return '';
-  return new Intl.DateTimeFormat('ko-KR', {
+  return new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'ko-KR', {
     hour: 'numeric',
     minute: '2-digit',
   }).format(date);
 }
 
-function toDisplayMessage(message: ChatMessage, currentUserId: string): DisplayMessage {
+function toDisplayMessage(message: ChatMessage, currentUserId: string, locale: string): DisplayMessage {
   return {
     id: message.id,
     sender: message.senderId === currentUserId ? 'me' : 'other',
     text: message.body,
-    time: displayTime(message.createdAt),
+    time: displayTime(message.createdAt, locale),
   };
 }
 
 export default function ChatRoomPage({ params }: { params: Promise<{ id: string }> }) {
+  const translate = useTranslate();
+  const locale = useLocale();
   const { id } = use(params);
   const demoChat = SUMMER_CHAT_ROOMS.find((chat) => chat.id === id) ?? null;
   const [session, setSession] = useState<RealtimeConversationSession | null>(null);
@@ -83,13 +89,13 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
       acknowledged.current = null;
       setMessages(
         result.session.model.messages.map((message) =>
-          toDisplayMessage(message, result.session.model.currentUserId),
+          toDisplayMessage(message, result.session.model.currentUserId, locale),
         ),
       );
       // Read receipts are sent only after a visible render, below.
       unsubscribe = result.session.subscribe((message) => {
         if (!active) return;
-        const displayMessage = toDisplayMessage(message, result.session.model.currentUserId);
+        const displayMessage = toDisplayMessage(message, result.session.model.currentUserId, locale);
         setMessages((current) =>
           current.some((item) => item.id === displayMessage.id)
             ? current
@@ -98,7 +104,7 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
         if (displayMessage.sender === 'other') {
           triggerNativeHaptic('selection');
           if (document.hidden) {
-            showNativeLocalNotification('새 거래 메시지', displayMessage.text, `/chat/${id}`);
+            showNativeLocalNotification(translate('새 거래 메시지'), displayMessage.text, `/chat/${id}`);
           }
         }
       }, (message) => { if (active) setError(message); }, () => {
@@ -106,7 +112,7 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
         setMessages([]);
         setSession(null);
         setConnectionFailure(null);
-        setError('로그인 계정이 변경됐어요. 채팅 목록에서 다시 열어 주세요.');
+        setError(translate('로그인 계정이 변경됐어요. 채팅 목록에서 다시 열어 주세요.'));
       });
     });
 
@@ -114,7 +120,7 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
       active = false;
       unsubscribe?.();
     };
-  }, [demoChat, id, connectionGeneration]);
+  }, [demoChat, id, connectionGeneration, locale, translate]);
 
   useEffect(() => {
     const latest = messages.at(-1)?.id ?? null;
@@ -129,9 +135,9 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
     acknowledged.current = latestInbound.id;
     void session.markRead(latestInbound.id).catch(() => {
       if (acknowledged.current === latestInbound.id) acknowledged.current = null;
-      setError('읽음 상태를 저장하지 못했어요.');
+      setError(translate('읽음 상태를 저장하지 못했어요.'));
     });
-  }, [session, messages, visibleGeneration]);
+  }, [session, messages, visibleGeneration, translate]);
 
   const loadOlder = async () => {
     if (!session || isLoadingOlder) return;
@@ -139,12 +145,12 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
     try {
       const page = await session.loadOlder();
       setMessages((current) => [
-        ...page.messages.map((message) => toDisplayMessage(message, session.model.currentUserId)),
+        ...page.messages.map((message) => toDisplayMessage(message, session.model.currentUserId, locale)),
         ...current,
       ]);
       setHasOlder(page.hasMore);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '이전 메시지를 불러오지 못했어요.');
+      setError(cause instanceof Error ? cause.message : translate('이전 메시지를 불러오지 못했어요.'));
     } finally { setIsLoadingOlder(false); }
   };
 
@@ -163,32 +169,32 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
             id: `local-message-${Date.now()}`,
             sender: 'me',
             text: body,
-            time: '방금',
+            time: translate('방금'),
           },
         ]);
       } else if (session) {
         const message = await session.send(body);
-        const displayMessage = toDisplayMessage(message, session.model.currentUserId);
+        const displayMessage = toDisplayMessage(message, session.model.currentUserId, locale);
         setMessages((current) =>
           current.some((item) => item.id === displayMessage.id)
             ? current
             : [...current, displayMessage],
         );
       } else {
-        setError('채팅 연결이 완료된 뒤 다시 보내주세요.');
+        setError(translate('채팅 연결이 완료된 뒤 다시 보내주세요.'));
         return;
       }
       setInputText('');
       triggerNativeHaptic('success');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '메시지를 보내지 못했어요. 연결을 확인해 주세요.');
+      setError(cause instanceof Error ? cause.message : translate('메시지를 보내지 못했어요. 연결을 확인해 주세요.'));
       triggerNativeHaptic('error');
     } finally {
       setIsSending(false);
     }
   };
 
-  const otherUserName = demoChat?.otherUser.name ?? session?.model.otherUserName ?? '거래 채팅';
+  const otherUserName = demoChat?.otherUser.name ?? session?.model.otherUserName ?? translate('거래 채팅');
   const listing = demoChat
     ? {
         id: demoChat.listingId,
@@ -202,20 +208,20 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
 
   if (isConnecting) {
     return (
-      <MobileShell title="채팅 연결 중" showBack hideNav>
-        <StatePanel role="status" icon={<LoaderCircle className="spin" size={28} />} description="대화를 불러오고 있어요." />
+      <MobileShell title={translate('채팅 연결 중')} showBack hideNav>
+        <StatePanel role="status" icon={<LoaderCircle className="spin" size={28} />} description={translate('대화를 불러오고 있어요.')} />
       </MobileShell>
     );
   }
 
   if (!demoChat && !session) {
     return (
-      <MobileShell title="채팅을 열 수 없어요" showBack hideNav>
-        <StatePanel role="alert" description={error || '대화방이 없거나 접근할 수 없어요.'} actions={<>
-          {connectionFailure === 'unauthenticated' ? <Link className="btn-primary" href="/auth">로그인하기</Link> :
-            connectionFailure === 'request_failed' ? <button type="button" className="btn-outline" onClick={() => { setIsConnecting(true); setConnectionGeneration((value) => value + 1); }}>다시 시도</button> : null}
+      <MobileShell title={translate('채팅을 열 수 없어요')} showBack hideNav>
+        <StatePanel role="alert" description={translate(error) || translate('대화방이 없거나 접근할 수 없어요.')} actions={<>
+          {connectionFailure === 'unauthenticated' ? <Link className="btn-primary" href="/auth">{translate('로그인하기')}</Link> :
+            connectionFailure === 'request_failed' ? <button type="button" className="btn-outline" onClick={() => { setIsConnecting(true); setConnectionGeneration((value) => value + 1); }}>{translate('다시 시도')}</button> : null}
           <Link className="btn-primary" href="/chats">
-            채팅 목록으로 돌아가기
+            {translate('채팅 목록으로 돌아가기')}
           </Link>
         </>} />
       </MobileShell>
@@ -234,7 +240,7 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
             )}
             <div>
               <strong>{listing.title}</strong>
-              <span>{listing.price.toLocaleString()}원</span>
+              <span>{formatWon(listing.price, locale)}</span>
             </div>
             <ChevronRight size={16} />
           </Link>
@@ -242,12 +248,12 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
 
         <div className="chat-safety">
           <Shield size={14} />
-          <span>앱 밖 결제 유도와 선입금 요청을 주의하세요.</span>
+          <span>{translate('앱 밖 결제 유도와 선입금 요청을 주의하세요.')}</span>
         </div>
 
         <div aria-live="polite" className="chat-message-list">
           {hasOlder ? <button type="button" className="btn-outline" disabled={isLoadingOlder} onClick={() => void loadOlder()}>
-            {isLoadingOlder ? '이전 메시지를 불러오는 중…' : '이전 메시지 보기'}
+            {isLoadingOlder ? translate('이전 메시지를 불러오는 중…') : translate('이전 메시지 보기')}
           </button> : null}
           {messages.map((message) => (
             <div className={`chat-message ${message.sender}`} key={message.id}>
@@ -262,23 +268,23 @@ export default function ChatRoomPage({ params }: { params: Promise<{ id: string 
 
         {error ? (
           <p className="chat-error" role="alert">
-            {error}
+            {translate(error)}
           </p>
         ) : null}
         <form className="chat-composer" onSubmit={(event) => void sendMessage(event)}>
           <label className="visually-hidden" htmlFor="chat-message">
-            메시지
+            {translate('메시지')}
           </label>
           <input
             className="form-input"
             id="chat-message"
             maxLength={5000}
             onChange={(event) => setInputText(event.target.value)}
-            placeholder="메시지를 입력하세요"
+            placeholder={translate('메시지를 입력하세요')}
             value={inputText}
           />
           <button
-            aria-label="메시지 보내기"
+            aria-label={translate('메시지 보내기')}
             className="btn-primary"
             disabled={isSending || !inputText.trim()}
             type="submit"

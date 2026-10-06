@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <rect width="640" height="480" fill="#eaf3f6"/>
+  <circle cx="320" cy="218" r="76" fill="#dcebee"/>
+  <g fill="none" stroke="#71959f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="277" y="181" width="86" height="70" rx="12"/>
+    <circle cx="338" cy="202" r="7"/>
+    <path d="m279 237 24-26 23 23 12-12 23 25"/>
+  </g>
+  <text x="320" y="326" text-anchor="middle" fill="#527581" font-size="23" font-family="Arial, sans-serif" font-weight="600">No image</text>
+  <text x="320" y="357" text-anchor="middle" fill="#77949d" font-size="14" font-family="Arial, sans-serif" letter-spacing="3">SUMMERGEAR</text>
+</svg>

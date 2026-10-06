@@ -1,5 +1,8 @@
 'use client';
 
+import { useTranslate } from '@/lib/i18n/use-translate';
+import { LanguageSwitcher } from './LanguageSwitcher';
+
 import { ArrowLeft, MessageCircle, Waves } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -24,6 +27,7 @@ const TOP_LEVEL_PATHS: Record<string, true> = {
 };
 
 export function TopNav({ title, showBack, storefront = false }: TopNavProps) {
+  const translate = useTranslate();
   const router = useRouter();
   const pathname = usePathname();
   const [unread, setUnread] = useState<number | null>(null);
@@ -68,7 +72,7 @@ export function TopNav({ title, showBack, storefront = false }: TopNavProps) {
       <div className="top-nav-leading">
         {shouldShowBack ? (
           <button
-            aria-label="뒤로가기"
+            aria-label={translate("뒤로가기")}
             className="top-nav-back"
             onClick={goBack}
             type="button"
@@ -82,23 +86,20 @@ export function TopNav({ title, showBack, storefront = false }: TopNavProps) {
           </Link>
         )}
 
-        {title ? <span className="top-nav-title">{title}</span> : null}
+        {title ? <span className="top-nav-title">{translate(title)}</span> : null}
       </div>
 
       {storefront ? (
-        <nav aria-label="주요 메뉴" className="storefront-desktop-nav">
+        <nav aria-label={translate("주요 메뉴")} className="storefront-desktop-nav">
           <Link aria-current={pathname.startsWith('/market') ? 'page' : undefined} href="/market">
-            마켓
-          </Link>
+            {translate("마켓")}</Link>
           <Link aria-current={pathname.startsWith('/sell') ? 'page' : undefined} href="/sell">
-            판매하기
-          </Link>
+            {translate("판매하기")}</Link>
           <Link
             aria-current={pathname.startsWith('/community') ? 'page' : undefined}
             href="/community"
           >
-            커뮤니티
-          </Link>
+            {translate("커뮤니티")}</Link>
           <Link aria-current={pathname.startsWith('/profile') ? 'page' : undefined} href="/profile">
             MY
           </Link>
@@ -106,11 +107,12 @@ export function TopNav({ title, showBack, storefront = false }: TopNavProps) {
       ) : null}
 
       <div className="top-nav-actions">
-        <Link aria-label="채팅 목록" className="top-nav-chat" href="/chats">
+        <LanguageSwitcher />
+        <Link aria-label={translate("채팅 목록")} className="top-nav-chat" href="/chats">
           <MessageCircle aria-hidden="true" size={22} />
           {unread !== null && unread > 0 ? (
             <span
-              aria-label={'읽지 않은 채팅 ' + unread + '개'}
+              aria-label={translate("읽지 않은 채팅 ") + unread + translate("개")}
               className="chat-nav-unread"
             >
               {Math.min(unread, 99)}

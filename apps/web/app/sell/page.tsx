@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import type { CreateListing, ListingCategory, ListingCondition } from '@icegear/domain';
 import { ArrowRight, CheckCircle2, LoaderCircle, Trophy, Waves } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -82,6 +84,7 @@ const INITIAL_FORM: SellFormData = {
 };
 
 export default function SellPage() {
+  const translate = useTranslate();
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [sport, setSport] = useState<Sport>('surf');
@@ -108,10 +111,10 @@ export default function SellPage() {
 
   const validateBasicInfo = () => {
     const price = Number(formData.price);
-    if (formData.title.trim().length < 4) return '제목을 4자 이상 입력해 주세요.';
-    if (formData.title.trim().length > 120) return '제목은 120자까지 입력할 수 있어요.';
-    if (!Number.isFinite(price) || price < 0) return '판매 가격을 정확히 입력해 주세요.';
-    if (formData.location.trim().length === 0) return '희망 거래 장소를 입력해 주세요.';
+    if (formData.title.trim().length < 4) return translate('제목을 4자 이상 입력해 주세요.');
+    if (formData.title.trim().length > 120) return translate('제목은 120자까지 입력할 수 있어요.');
+    if (!Number.isFinite(price) || price < 0) return translate('판매 가격을 정확히 입력해 주세요.');
+    if (formData.location.trim().length === 0) return translate('희망 거래 장소를 입력해 주세요.');
     return '';
   };
 
@@ -190,7 +193,7 @@ export default function SellPage() {
       actual.length !== expected.length ||
       actual.some((id) => !expected.includes(id))
     ) {
-      return '서버에 저장된 사진 순서가 화면과 일치하지 않아요. 다시 확인해 주세요.';
+      return translate('서버에 저장된 사진 순서가 화면과 일치하지 않아요. 다시 확인해 주세요.');
     }
     return '';
   };
@@ -201,10 +204,15 @@ export default function SellPage() {
     onlyId?: string,
   ): Promise<{ items: SelectedMedia[]; error: string }> => {
     let next = items.slice();
-    const used = new Set(next.flatMap((item) => item.sortOrder === undefined ? [] : [item.sortOrder]));
+    const used = new Set(
+      next.flatMap((item) => (item.sortOrder === undefined ? [] : [item.sortOrder])),
+    );
     next = next.map((item) => {
       if (item.sortOrder !== undefined) return item;
-      const sortOrder = Array.from({ length: GO_LISTING_IMAGE_MAX_COUNT }, (_, order) => order).find((order) => !used.has(order));
+      const sortOrder = Array.from(
+        { length: GO_LISTING_IMAGE_MAX_COUNT },
+        (_, order) => order,
+      ).find((order) => !used.has(order));
       if (sortOrder !== undefined) used.add(sortOrder);
       return { ...item, sortOrder };
     });
@@ -220,7 +228,7 @@ export default function SellPage() {
       try {
         file = await selectedMediaToFile(item);
       } catch {
-        const message = '선택한 사진을 읽지 못했어요.';
+        const message = translate('선택한 사진을 읽지 못했어요.');
         next = next.map((entry) =>
           entry.id === item.id ? { ...entry, uploadState: 'failed', uploadError: message } : entry,
         );
@@ -232,12 +240,19 @@ export default function SellPage() {
         sortOrder: item.sortOrder,
         pendingImageId: item.pendingImageId,
         uploadPhase: item.uploadPhase,
-        altText: `${formData.title.trim()} 사진 ${index + 1}`,
+        altText: translate(`${formData.title.trim()} 사진 ${index + 1}`),
       });
       if (!result.ok) {
         next = next.map((entry) =>
           entry.id === item.id
-            ? { ...entry, uploadState: 'failed', uploadError: result.message, uploadErrorCode: result.code, pendingImageId: result.pendingImageId, uploadPhase: result.uploadPhase }
+            ? {
+                ...entry,
+                uploadState: 'failed',
+                uploadError: result.message,
+                uploadErrorCode: result.code,
+                pendingImageId: result.pendingImageId,
+                uploadPhase: result.uploadPhase,
+              }
             : entry,
         );
         setMedia(next);
@@ -405,7 +420,7 @@ export default function SellPage() {
     }
 
     if (formData.description.trim().length < 10) {
-      setFormError('상태와 사용 이력을 알 수 있도록 설명을 10자 이상 입력해 주세요.');
+      setFormError(translate('상태와 사용 이력을 알 수 있도록 설명을 10자 이상 입력해 주세요.'));
       triggerNativeHaptic('error');
       return;
     }
@@ -434,7 +449,7 @@ export default function SellPage() {
       if (goResult && !goResult.ok) {
         setFormError(
           goResult.reason === 'unauthenticated'
-            ? '실제 판매글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.'
+            ? translate('실제 판매글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.')
             : goResult.message,
         );
         triggerNativeHaptic('error');
@@ -442,7 +457,7 @@ export default function SellPage() {
       }
 
       if (files.length > 10) {
-        setFormError('기존 백엔드 경로에서는 사진을 최대 10장까지 저장할 수 있어요.');
+        setFormError(translate('기존 백엔드 경로에서는 사진을 최대 10장까지 저장할 수 있어요.'));
         triggerNativeHaptic('error');
         return;
       }
@@ -461,7 +476,7 @@ export default function SellPage() {
       ) {
         const listingId = saveDemoListing();
         if (!listingId) {
-          setFormError('브라우저 저장 공간이 부족해 데모 매물을 저장하지 못했어요.');
+          setFormError(translate('브라우저 저장 공간이 부족해 데모 매물을 저장하지 못했어요.'));
           triggerNativeHaptic('error');
           return;
         }
@@ -472,12 +487,14 @@ export default function SellPage() {
 
       setFormError(
         result.reason === 'unauthenticated'
-          ? '실제 판매글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.'
+          ? translate('실제 판매글 등록은 로그인이 필요해요. 로그인 후 다시 시도해 주세요.')
           : result.message,
       );
       triggerNativeHaptic('error');
     } catch {
-      setFormError('사진을 처리하지 못했어요. 다른 사진을 선택하거나 다시 시도해 주세요.');
+      setFormError(
+        translate('사진을 처리하지 못했어요. 다른 사진을 선택하거나 다시 시도해 주세요.'),
+      );
       triggerNativeHaptic('error');
     } finally {
       setIsSubmitting(false);
@@ -486,32 +503,42 @@ export default function SellPage() {
 
   if (submission) {
     return (
-      <MobileShell title="판매 등록 완료" hideNav>
+      <MobileShell title={translate('판매 등록 완료')} hideNav>
         <div className="completion-state">
           <div className="completion-icon">
             <CheckCircle2 size={44} />
           </div>
           <p className="completion-kicker">
             {submission.mode === 'go'
-              ? 'Go API 검토 요청 완료'
+              ? translate('Go API 검토 요청 완료')
               : submission.mode === 'supabase'
-                ? '기존 검토 요청 완료'
-                : '기기 데모 저장 완료'}
+                ? translate('기존 검토 요청 완료')
+                : translate('기기 데모 저장 완료')}
           </p>
-          <h1>장비 등록을 마쳤어요</h1>
+          <h1>{translate('장비 등록을 마쳤어요')}</h1>
           <p>
             {submission.mode === 'go'
-              ? 'Go 서비스 세션 소유자로 매물과 사진을 저장했어요. 운영자 검토 후 공개돼요.'
+              ? translate(
+                  'Go 서비스 세션 소유자로 매물과 사진을 저장했어요. 운영자 검토 후 공개돼요.',
+                )
               : submission.mode === 'supabase'
-                ? '운영자 검토 후 마켓에 공개돼요. MY에서 진행 상태를 확인할 수 있어요.'
-                : '백엔드에 연결되면 실제 등록을 사용할 수 있어요. 지금은 이 브라우저의 마켓에서 확인할 수 있어요.'}
+                ? translate('운영자 검토 후 마켓에 공개돼요. MY에서 진행 상태를 확인할 수 있어요.')
+                : translate(
+                    '백엔드에 연결되면 실제 등록을 사용할 수 있어요. 지금은 이 브라우저의 마켓에서 확인할 수 있어요.',
+                  )}
           </p>
           <button
             className="btn-primary"
-            onClick={() => router.push(submission.mode === 'local' ? `/market/${submission.listingId}?source=local` : `/market/${submission.listingId}?source=${submission.mode}`)}
+            onClick={() =>
+              router.push(
+                submission.mode === 'local'
+                  ? `/market/${submission.listingId}?source=local`
+                  : `/market/${submission.listingId}?source=${submission.mode}`,
+              )
+            }
             type="button"
           >
-            등록한 장비 보기
+            {translate('등록한 장비 보기')}
           </button>
         </div>
       </MobileShell>
@@ -520,28 +547,32 @@ export default function SellPage() {
 
   if (pendingGoListingId) {
     return (
-      <MobileShell title="사진 업로드 마무리" showBack hideNav>
+      <MobileShell title={translate('사진 업로드 마무리')} showBack hideNav>
         <div className="sell-form-content">
           <section>
             <p className="form-step-description">
-              매물 기본 정보는 이미 저장됐어요. 실패한 사진만 다시 올리며 새 매물을 만들지 않아요.
+              {translate(
+                '매물 기본 정보는 이미 저장됐어요. 실패한 사진만 다시 올리며 새 매물을 만들지 않아요.',
+              )}
             </p>
-            <h1 className="form-step-title">사진 업로드를 마무리해 주세요</h1>
+            <h1 className="form-step-title">{translate('사진 업로드를 마무리해 주세요')}</h1>
             <div className="form-group">
               <MediaPicker
                 allowReorder={false}
                 disabled={isSubmitting}
-                label="장비 사진"
+                label={translate('장비 사진')}
                 maxCount={GO_LISTING_IMAGE_MAX_COUNT}
                 onChange={removeCreatedMedia}
                 onRetry={(id) => void retryGoMedia(id)}
                 value={media}
               />
             </div>
-            <a href="/auth" target="_blank" rel="noreferrer">새 창에서 다시 로그인</a>
+            <a href="/auth" target="_blank" rel="noreferrer">
+              {translate('새 창에서 다시 로그인')}
+            </a>
             {formError ? (
               <p className="form-error form-submit-error" role="alert">
-                {formError}
+                {translate(formError)}
               </p>
             ) : null}
           </section>
@@ -554,7 +585,9 @@ export default function SellPage() {
             type="button"
           >
             {isSubmitting ? <LoaderCircle className="spin" size={18} /> : null}
-            <span>{isSubmitting ? '확인 중' : '실패한 사진 다시 업로드'}</span>
+            <span>
+              {isSubmitting ? translate('확인 중') : translate('실패한 사진 다시 업로드')}
+            </span>
           </button>
         </div>
       </MobileShell>
@@ -562,10 +595,10 @@ export default function SellPage() {
   }
 
   return (
-    <MobileShell title="내 장비 판매하기" showBack hideNav>
+    <MobileShell title={translate('내 장비 판매하기')} showBack hideNav>
       <form onSubmit={(event) => void handleAdvance(event)}>
         <div className="sell-form-content">
-          <div aria-label={`판매 등록 ${step}/3단계`} className="form-progress">
+          <div aria-label={translate(`판매 등록 ${step}/3단계`)} className="form-progress">
             {[1, 2, 3].map((item) => (
               <span className={item <= step ? 'active' : ''} key={item} />
             ))}
@@ -573,9 +606,9 @@ export default function SellPage() {
 
           {step === 1 ? (
             <section>
-              <h1 className="form-step-title">어떤 하계 스포츠 장비인가요?</h1>
+              <h1 className="form-step-title">{translate('어떤 하계 스포츠 장비인가요?')}</h1>
               <p className="form-step-description">
-                종목에 맞는 상세 스펙만 골라서 입력할 수 있어요.
+                {translate('종목에 맞는 상세 스펙만 골라서 입력할 수 있어요.')}
               </p>
               <div className="sport-choice-list">
                 <button
@@ -588,8 +621,8 @@ export default function SellPage() {
                     <Waves size={24} />
                   </span>
                   <span>
-                    <strong>서핑</strong>
-                    <small>숏보드, 롱보드, 웻슈트, 핀, 리시</small>
+                    <strong>{translate('서핑')}</strong>
+                    <small>{translate('숏보드, 롱보드, 웻슈트, 핀, 리시')}</small>
                   </span>
                 </button>
                 <button
@@ -602,8 +635,8 @@ export default function SellPage() {
                     <Trophy size={24} />
                   </span>
                   <span>
-                    <strong>테니스</strong>
-                    <small>라켓, 테니스화, 가방, 스트링, 그립</small>
+                    <strong>{translate('테니스')}</strong>
+                    <small>{translate('라켓, 테니스화, 가방, 스트링, 그립')}</small>
                   </span>
                 </button>
               </div>
@@ -612,14 +645,14 @@ export default function SellPage() {
 
           {step === 2 ? (
             <section>
-              <h1 className="form-step-title">사진과 기본 정보를 알려주세요</h1>
+              <h1 className="form-step-title">{translate('사진과 기본 정보를 알려주세요')}</h1>
               <p className="form-step-description">
-                구매자가 한눈에 상태를 알 수 있는 사진과 제목이 좋아요.
+                {translate('구매자가 한눈에 상태를 알 수 있는 사진과 제목이 좋아요.')}
               </p>
 
               <div className="form-group">
                 <MediaPicker
-                  label="장비 사진"
+                  label={translate('장비 사진')}
                   maxCount={GO_LISTING_IMAGE_MAX_COUNT}
                   onChange={setMedia}
                   value={media}
@@ -627,7 +660,7 @@ export default function SellPage() {
               </div>
               <div className="form-group">
                 <label className="form-label" htmlFor="listing-title">
-                  제목
+                  {translate('제목')}
                 </label>
                 <input
                   className="form-input"
@@ -636,8 +669,8 @@ export default function SellPage() {
                   onChange={(event) => update('title', event.target.value)}
                   placeholder={
                     sport === 'surf'
-                      ? "예: Channel Islands Happy Everyday 5'11 숏보드"
-                      : '예: Wilson Pro Staff 97 v14 315g G2'
+                      ? translate("예: Channel Islands Happy Everyday 5'11 숏보드")
+                      : translate('예: Wilson Pro Staff 97 v14 315g G2')
                   }
                   value={formData.title}
                 />
@@ -645,7 +678,7 @@ export default function SellPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label" htmlFor="listing-brand">
-                    브랜드
+                    {translate('브랜드')}
                   </label>
                   <input
                     className="form-input"
@@ -657,13 +690,13 @@ export default function SellPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label" htmlFor="listing-model">
-                    모델명
+                    {translate('모델명')}
                   </label>
                   <input
                     className="form-input"
                     id="listing-model"
                     onChange={(event) => update('model', event.target.value)}
-                    placeholder="모델명"
+                    placeholder={translate('모델명')}
                     value={formData.model}
                   />
                 </div>
@@ -671,7 +704,7 @@ export default function SellPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label" htmlFor="listing-category">
-                    카테고리
+                    {translate('카테고리')}
                   </label>
                   <select
                     className="form-select"
@@ -681,14 +714,14 @@ export default function SellPage() {
                   >
                     {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
                       <option key={value} value={value}>
-                        {label}
+                        {translate(label)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="form-group">
                   <label className="form-label" htmlFor="listing-condition">
-                    상태
+                    {translate('상태')}
                   </label>
                   <select
                     className="form-select"
@@ -700,7 +733,7 @@ export default function SellPage() {
                   >
                     {Object.entries(CONDITION_LABELS).map(([value, label]) => (
                       <option key={value} value={value}>
-                        {label}
+                        {translate(label)}
                       </option>
                     ))}
                   </select>
@@ -709,7 +742,7 @@ export default function SellPage() {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label" htmlFor="listing-price">
-                    판매 가격
+                    {translate('판매 가격')}
                   </label>
                   <div className="input-with-suffix">
                     <input
@@ -722,18 +755,20 @@ export default function SellPage() {
                       type="number"
                       value={formData.price}
                     />
-                    <span>원</span>
+                    <span>{translate('원')}</span>
                   </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label" htmlFor="listing-location">
-                    거래 장소
+                    {translate('거래 장소')}
                   </label>
                   <input
                     className="form-input"
                     id="listing-location"
                     onChange={(event) => update('location', event.target.value)}
-                    placeholder={sport === 'surf' ? '양양 죽도' : '서울 송파구'}
+                    placeholder={
+                      sport === 'surf' ? translate('양양 죽도') : translate('서울 송파구')
+                    }
                     value={formData.location}
                   />
                 </div>
@@ -744,17 +779,17 @@ export default function SellPage() {
           {step === 3 ? (
             <section>
               <h1 className="form-step-title">
-                {sport === 'surf' ? '서핑' : '테니스'} 스펙을 확인해 주세요
+                {translate(`${sport === 'surf' ? '서핑' : '테니스'} 스펙을 확인해 주세요`)}
               </h1>
               <p className="form-step-description">
-                정확한 스펙은 맞춤 추천과 빠른 거래에 활용돼요.
+                {translate('정확한 스펙은 맞춤 추천과 빠른 거래에 활용돼요.')}
               </p>
 
               {sport === 'surf' ? (
                 <>
                   <div className="form-group">
                     <label className="form-label" htmlFor="surf-discipline">
-                      보드 종류
+                      {translate('보드 종류')}
                     </label>
                     <select
                       className="form-select"
@@ -767,17 +802,17 @@ export default function SellPage() {
                       }
                       value={formData.surfDiscipline}
                     >
-                      <option value="shortboard">숏보드</option>
-                      <option value="longboard">롱보드</option>
-                      <option value="funboard">펀보드 / 미드렝스</option>
-                      <option value="fish">피쉬보드</option>
-                      <option value="sup">SUP / 패들보드</option>
+                      <option value="shortboard">{translate('숏보드')}</option>
+                      <option value="longboard">{translate('롱보드')}</option>
+                      <option value="funboard">{translate('펀보드 / 미드렝스')}</option>
+                      <option value="fish">{translate('피쉬보드')}</option>
+                      <option value="sup">{translate('SUP / 패들보드')}</option>
                     </select>
                   </div>
                   <div className="form-row">
                     <div className="form-group">
                       <label className="form-label" htmlFor="board-length">
-                        길이 (ft)
+                        {translate('길이 (ft)')}
                       </label>
                       <input
                         className="form-input"
@@ -789,7 +824,7 @@ export default function SellPage() {
                     </div>
                     <div className="form-group">
                       <label className="form-label" htmlFor="board-volume">
-                        부력 (L)
+                        {translate('부력 (L)')}
                       </label>
                       <input
                         className="form-input"
@@ -802,7 +837,7 @@ export default function SellPage() {
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="fin-system">
-                      핀 시스템
+                      {translate('핀 시스템')}
                     </label>
                     <select
                       className="form-select"
@@ -824,7 +859,7 @@ export default function SellPage() {
                   <div className="form-row">
                     <div className="form-group">
                       <label className="form-label" htmlFor="head-size">
-                        헤드 (sq.in)
+                        {translate('헤드 (sq.in)')}
                       </label>
                       <input
                         className="form-input"
@@ -836,7 +871,7 @@ export default function SellPage() {
                     </div>
                     <div className="form-group">
                       <label className="form-label" htmlFor="racket-weight">
-                        무게 (g)
+                        {translate('무게 (g)')}
                       </label>
                       <input
                         className="form-input"
@@ -850,7 +885,7 @@ export default function SellPage() {
                   <div className="form-row">
                     <div className="form-group">
                       <label className="form-label" htmlFor="grip-size">
-                        그립
+                        {translate('그립')}
                       </label>
                       <select
                         className="form-select"
@@ -867,7 +902,7 @@ export default function SellPage() {
                     </div>
                     <div className="form-group">
                       <label className="form-label" htmlFor="play-style">
-                        플레이 스타일
+                        {translate('플레이 스타일')}
                       </label>
                       <select
                         className="form-select"
@@ -877,9 +912,11 @@ export default function SellPage() {
                         }
                         value={formData.playStyle}
                       >
-                        <option value="all_court">올라운드</option>
-                        <option value="baseline_aggressive">공격형 베이스라인</option>
-                        <option value="serve_volley">서브 & 발리</option>
+                        <option value="all_court">{translate('올라운드')}</option>
+                        <option value="baseline_aggressive">
+                          {translate('공격형 베이스라인')}
+                        </option>
+                        <option value="serve_volley">{translate('서브 & 발리')}</option>
                       </select>
                     </div>
                   </div>
@@ -888,14 +925,16 @@ export default function SellPage() {
 
               <div className="form-group">
                 <label className="form-label" htmlFor="listing-description">
-                  상세 설명
+                  {translate('상세 설명')}
                 </label>
                 <textarea
                   className="form-textarea"
                   id="listing-description"
                   maxLength={5000}
                   onChange={(event) => update('description', event.target.value)}
-                  placeholder="구입 시기, 사용 횟수, 파손이나 수리 내역, 포함 구성품을 알려주세요."
+                  placeholder={translate(
+                    '구입 시기, 사용 횟수, 파손이나 수리 내역, 포함 구성품을 알려주세요.',
+                  )}
                   rows={5}
                   value={formData.description}
                 />
@@ -905,7 +944,7 @@ export default function SellPage() {
 
           {formError ? (
             <p className="form-error form-submit-error" role="alert">
-              {formError}
+              {translate(formError)}
             </p>
           ) : null}
         </div>
@@ -918,12 +957,18 @@ export default function SellPage() {
               onClick={() => setStep(step - 1)}
               type="button"
             >
-              이전
+              {translate('이전')}
             </button>
           ) : null}
           <button className="btn-primary" disabled={isSubmitting} type="submit">
             {isSubmitting ? <LoaderCircle className="spin" size={18} /> : null}
-            <span>{step === 3 ? (isSubmitting ? '등록 중' : '검토 요청하기') : '다음 단계'}</span>
+            <span>
+              {step === 3
+                ? isSubmitting
+                  ? translate('등록 중')
+                  : translate('검토 요청하기')
+                : translate('다음 단계')}
+            </span>
             {!isSubmitting ? <ArrowRight size={18} /> : null}
           </button>
         </div>

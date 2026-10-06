@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import { CalendarDays, Search, ShoppingBag, Waves } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -20,6 +22,7 @@ function readFilters(): CatalogFilters {
 }
 
 export default function MarketPage() {
+  const translate = useTranslate();
   const { favorites, updateFavorite, error: favoriteError } = useFavorites();
   const [mode, setMode] = useState<MarketMode>('gear');
   const [filters, setFilters] = useState<CatalogFilters>(emptyCatalogFilters);
@@ -53,8 +56,8 @@ export default function MarketPage() {
   const resetFilters = () => updateFilters(emptyCatalogFilters);
 
   return (
-    <MobileShell storefront title="마켓">
-      <div className="vertical-mode-tabs" role="tablist" aria-label="마켓 보기">
+    <MobileShell storefront title={translate("마켓")}>
+      <div className="vertical-mode-tabs" role="tablist" aria-label={translate("마켓 보기")}>
         <button
           aria-selected={mode === 'gear'}
           className={mode === 'gear' ? 'active' : ''}
@@ -63,7 +66,7 @@ export default function MarketPage() {
           type="button"
         >
           <ShoppingBag size={17} />
-          <span>장비</span>
+          <span>{translate("장비")}</span>
         </button>
         <button
           aria-selected={mode === 'waves'}
@@ -73,7 +76,7 @@ export default function MarketPage() {
           type="button"
         >
           <Waves size={17} />
-          <span>파도</span>
+          <span>{translate("파도")}</span>
         </button>
         <button
           aria-selected={mode === 'courts'}
@@ -83,7 +86,7 @@ export default function MarketPage() {
           type="button"
         >
           <CalendarDays size={17} />
-          <span>코트 양도</span>
+          <span>{translate("코트 양도")}</span>
         </button>
       </div>
 
@@ -96,92 +99,87 @@ export default function MarketPage() {
             <div className="search-input-wrapper">
               <Search className="search-icon" size={18} />
               <label className="visually-hidden" htmlFor="market-search">
-                장비 검색
-              </label>
+                {translate("장비 검색")}</label>
               <input
                 className="search-input"
                 id="market-search"
                 onChange={(event) => updateFilters({ search: event.target.value }, true)}
-                placeholder="상품명·설명·거래 지역 검색"
+                placeholder={translate("상품명·설명·거래 지역 검색")}
                 type="search"
                 value={filters.search}
               />
             </div>
           </div>
 
-          <div className="sport-tabs" role="group" aria-label="스포츠 필터">
+          <div className="sport-tabs" role="group" aria-label={translate("스포츠 필터")}>
             <button
               aria-pressed={filters.sport === ''}
               className={`sport-tab ${filters.sport === '' ? 'active' : ''}`}
               onClick={() => updateFilters({ sport: '' })}
               type="button"
             >
-              전체
-            </button>
+              {translate("전체")}</button>
             <button
               aria-pressed={filters.sport === 'surf'}
               className={`sport-tab ${filters.sport === 'surf' ? 'active' : ''}`}
               onClick={() => updateFilters({ sport: 'surf' })}
               type="button"
             >
-              서핑
-            </button>
+              {translate("서핑")}</button>
             <button
               aria-pressed={filters.sport === 'tennis'}
               className={`sport-tab ${filters.sport === 'tennis' ? 'active' : ''}`}
               onClick={() => updateFilters({ sport: 'tennis' })}
               type="button"
             >
-              테니스
-            </button>
+              {translate("테니스")}</button>
           </div>
 
           <div className="market-filter-bar">
             <p>
-              현재 불러온 장비 · {' '}
-              {isLoading ? '불러오는 중' : error && allListings.length === 0 ? '조회 실패' : <><strong>{allListings.length}</strong>개</>}
+              {translate("현재 불러온 장비 ·")}{' '}
+              {isLoading ? translate("불러오는 중") : error && allListings.length === 0 ? translate("조회 실패") : <><strong>{allListings.length}</strong>{translate("개")}</>}
             </p>
             <label className="visually-hidden" htmlFor="category-filter">
-              카테고리
-            </label>
+              {translate("카테고리")}</label>
             <select
               id="category-filter"
               onChange={(event) => updateFilters({ category: event.target.value })}
               value={filters.category}
             >
-              <option value="">전체 카테고리</option>
-              <option value="equipment">보드 / 라켓 / 장비</option>
-              <option value="apparel">의류 / 웻슈트</option>
-              <option value="footwear">신발</option>
-              <option value="accessories">액세서리</option>
-              <option value="protective">보호 장비</option>
-              <option value="other">기타</option>
+              <option value="">{translate("전체 카테고리")}</option>
+              <option value="equipment">{translate("보드 / 라켓 / 장비")}</option>
+              <option value="apparel">{translate("의류 / 웻슈트")}</option>
+              <option value="footwear">{translate("신발")}</option>
+              <option value="accessories">{translate("액세서리")}</option>
+              <option value="protective">{translate("보호 장비")}</option>
+              <option value="other">{translate("기타")}</option>
             </select>
           </div>
           <div className="market-filter-bar market-filter-fields">
-            <label>지역 <input className="form-input" aria-label="지역" placeholder="예: 양양군" value={filters.location} maxLength={160} onChange={(event) => updateFilters({ location: event.target.value }, true)} /></label>
-            <label>최저 가격 <input className="form-input" aria-label="최저 가격" placeholder="최저 금액 (원)" inputMode="numeric" value={filters.minPrice} onChange={(event) => updateFilters({ minPrice: event.target.value }, true)} /></label>
-            <label>최고 가격 <input className="form-input" aria-label="최고 가격" placeholder="최고 금액 (원)" inputMode="numeric" value={filters.maxPrice} onChange={(event) => updateFilters({ maxPrice: event.target.value }, true)} /></label>
-            <label>정렬 <select className="form-select" aria-label="정렬" value={filters.sort} onChange={(event) => updateFilters({ sort: event.target.value })}>
-              <option value="recent">최신순</option><option value="price_asc">낮은 가격순</option><option value="price_desc">높은 가격순</option>
+            <label>{translate("지역")}<input className="form-input" aria-label={translate("지역")} placeholder={translate("예: 양양군")} value={filters.location} maxLength={160} onChange={(event) => updateFilters({ location: event.target.value }, true)} /></label>
+            <label>{translate("최저 가격")}<input className="form-input" aria-label={translate("최저 가격")} placeholder={translate("최저 금액 (원)")} inputMode="numeric" value={filters.minPrice} onChange={(event) => updateFilters({ minPrice: event.target.value }, true)} /></label>
+            <label>{translate("최고 가격")}<input className="form-input" aria-label={translate("최고 가격")} placeholder={translate("최고 금액 (원)")} inputMode="numeric" value={filters.maxPrice} onChange={(event) => updateFilters({ maxPrice: event.target.value }, true)} /></label>
+            <label>{translate("정렬")}<select className="form-select" aria-label={translate("정렬")} value={filters.sort} onChange={(event) => updateFilters({ sort: event.target.value })}>
+              <option value="recent">{translate("최신순")}</option><option value="price_asc">{translate("낮은 가격순")}</option><option value="price_desc">{translate("높은 가격순")}</option>
             </select></label>
           </div>
-          {favoriteError ? <p className="form-error" role="alert">{favoriteError}</p> : null}
+          {favoriteError ? <p className="form-error" role="alert">{translate(favoriteError)}</p> : null}
 
           {isLoading && allListings.length === 0 ? (
-            <div className="empty-state compact" role="status">매물을 불러오고 있어요.</div>
+            <div className="empty-state compact" role="status">{translate("매물을 불러오고 있어요.")}</div>
           ) : (
             <>
               {error ? (
                 <div className="empty-state compact" role="alert">
-                  <p>{error}</p>
-                  <button className="btn-outline" onClick={retry} type="button">다시 시도</button>
+                  <p>{translate(error)}</p>
+                  <button className="btn-outline" onClick={retry} type="button">{translate("다시 시도")}</button>
                 </div>
               ) : null}
               {allListings.length === 0 && !error && !isLoading ? (
                 <div className="empty-state compact">
-                  <p>{allListings.length === 0 ? '현재 공개된 장비가 없어요.' : '조건에 맞는 장비가 없어요. 검색어나 필터를 바꿔 보세요.'}</p>
-                  {allListings.length > 0 ? <button className="btn-outline" onClick={resetFilters} type="button">필터 초기화</button> : null}
+                  <p>{allListings.length === 0 ? translate("현재 공개된 장비가 없어요.") : translate("조건에 맞는 장비가 없어요. 검색어나 필터를 바꿔 보세요.")}</p>
+                  {allListings.length > 0 ? <button className="btn-outline" onClick={resetFilters} type="button">{translate("필터 초기화")}</button> : null}
                 </div>
               ) : (
                 <div className="product-grid">
@@ -195,7 +193,7 @@ export default function MarketPage() {
                   ))}
                 </div>
               )}
-              {catalog.nextCursor ? <button className="btn-outline" type="button" disabled={isLoading} onClick={() => void catalog.loadMore()}>{isLoading ? '다음 상품 불러오는 중' : '상품 더 보기'}</button> : null}
+              {catalog.nextCursor ? <button className="btn-outline" type="button" disabled={isLoading} onClick={() => void catalog.loadMore()}>{isLoading ? translate("다음 상품 불러오는 중") : translate("상품 더 보기")}</button> : null}
             </>
           )}
         </>

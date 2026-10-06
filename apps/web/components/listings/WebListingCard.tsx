@@ -1,5 +1,9 @@
 'use client';
 
+import { useLocale } from 'next-intl';
+import { formatWon } from '@/lib/display-format';
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import { Heart, MapPin } from 'lucide-react';
 import Link from 'next/link';
 
@@ -14,13 +18,15 @@ interface WebListingCardProps {
 }
 
 export function WebListingCard({ listing, favorite, onFavorite }: WebListingCardProps) {
+  const translate = useTranslate();
+  const locale = useLocale();
   const favoriteId = listing.dataSource === 'go' ? 'go:' + listing.id : listing.id;
   const isSample = !listing.dataSource;
 
   return (
     <article className="product-card">
       <div className="product-card-img-wrapper">
-        <Link aria-label={listing.title + ' 상세 보기'} href={listingHref(listing)}>
+        <Link aria-label={listing.title + translate(" 상세 보기")} href={listingHref(listing)}>
           <ListingImage
             alt={listing.title}
             className="product-card-img"
@@ -31,7 +37,7 @@ export function WebListingCard({ listing, favorite, onFavorite }: WebListingCard
           />
         </Link>
         <button
-          aria-label={favorite ? '찜 해제' : '찜하기'}
+          aria-label={favorite ? translate("찜 해제") : translate("찜하기")}
           aria-pressed={favorite}
           className="favorite-btn"
           onClick={() => onFavorite(favoriteId, !favorite)}
@@ -46,14 +52,14 @@ export function WebListingCard({ listing, favorite, onFavorite }: WebListingCard
 
       <div className="product-card-info">
         <div className="product-sport-tag">
-          <span>{listing.sportLabel}</span>
-          <span>{listing.conditionLabel}</span>
-          {isSample ? <span>시연용</span> : null}
+          <span>{translate(listing.sportLabel)}</span>
+          <span>{translate(listing.conditionLabel)}</span>
+          {isSample ? <span>{translate("시연용")}</span> : null}
         </div>
         <h3 className="product-title">
           <Link href={listingHref(listing)}>{listing.title}</Link>
         </h3>
-        <div className="product-price">{listing.price.toLocaleString('ko-KR')}원</div>
+        <div className="product-price">{formatWon(listing.price, locale)}</div>
         <div className="product-spec-row">
           <MapPin aria-hidden="true" size={13} />
           <span>{listing.location}</span>

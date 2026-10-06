@@ -1,5 +1,8 @@
 'use client';
 
+import { useLocale } from 'next-intl';
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import { Heart, LoaderCircle, Send, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDateTime } from '@/lib/display-format';
@@ -11,6 +14,8 @@ import { getGoSession } from '@/lib/go-auth/client';
 import styles from '../community.module.css';
 
 export default function CommunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const translate = useTranslate();
+  const locale = useLocale();
   const { id } = use(params);
   const [post, setPost] = useState<CommunityPost | null>(null);
   const [comments, setComments] = useState<CommunityComment[]>([]);
@@ -31,13 +36,13 @@ export default function CommunityDetailPage({ params }: { params: Promise<{ id: 
         if (session.ok) setMemberId(session.session.member.id);
       } else {
         const failure = !postResult.ok ? postResult : !commentResult.ok ? commentResult : null;
-        setError(failure?.message ?? '게시글을 불러올 수 없어요.');
+        setError(failure?.message ?? translate('게시글을 불러올 수 없어요.'));
         setErrorStatus(failure?.status ?? 0);
       }
       setLoading(false);
     });
     return () => { active = false; };
-  }, [id, generation]);
+  }, [id, generation, translate]);
   const toggle = async () => {
     if (!post || busy) return;
     setBusy(true);
@@ -57,21 +62,21 @@ export default function CommunityDetailPage({ params }: { params: Promise<{ id: 
   };
   const share = async () => {
     try { if (navigator.share) await navigator.share({ title: post?.title, url: window.location.href }); else await navigator.clipboard.writeText(window.location.href); }
-    catch (cause) { if (!(cause instanceof DOMException && cause.name === 'AbortError')) setActionError('게시글을 공유하지 못했어요.'); }
+    catch (cause) { if (!(cause instanceof DOMException && cause.name === 'AbortError')) setActionError(translate('게시글을 공유하지 못했어요.')); }
   };
-  if (loading) return <MobileShell title="게시글 불러오는 중" showBack hideNav><StatePanel role="status" icon={<LoaderCircle className="spin" size={24} />} description="게시글을 불러오는 중이에요." /></MobileShell>;
-  if (error || !post) return <MobileShell title="게시글을 열 수 없어요" showBack hideNav><StatePanel role="alert" description={error || '공개되지 않았거나 존재하지 않는 게시글이에요.'} actions={<>
-    {errorStatus === 401 ? <Link className="btn-primary" href="/auth">로그인하기</Link> : errorStatus !== 403 && errorStatus !== 404 ? <button className="btn-outline" type="button" onClick={() => { setLoading(true); setGeneration((n) => n + 1); }}>다시 시도</button> : null}<Link href="/community">커뮤니티로</Link>
+  if (loading) return <MobileShell title={translate('게시글 불러오는 중')} showBack hideNav><StatePanel role="status" icon={<LoaderCircle className="spin" size={24} />} description={translate('게시글을 불러오는 중이에요.')} /></MobileShell>;
+  if (error || !post) return <MobileShell title={translate('게시글을 열 수 없어요')} showBack hideNav><StatePanel role="alert" description={translate(error) || translate('공개되지 않았거나 존재하지 않는 게시글이에요.')} actions={<>
+    {errorStatus === 401 ? <Link className="btn-primary" href="/auth">{translate('로그인하기')}</Link> : errorStatus !== 403 && errorStatus !== 404 ? <button className="btn-outline" type="button" onClick={() => { setLoading(true); setGeneration((n) => n + 1); }}>{translate('다시 시도')}</button> : null}<Link href="/community">{translate('커뮤니티로')}</Link>
   </>} /></MobileShell>;
-  return <MobileShell title="커뮤니티 게시글" showBack hideNav><div className={styles.detail}>
+  return <MobileShell title={translate('커뮤니티 게시글')} showBack hideNav><div className={styles.detail}>
     <article className="community-detail">
-      <header className="community-author-row"><div className="chat-avatar">{post.authorName.slice(0, 1)}</div><div><strong>{post.authorName}</strong><span>{formatDateTime(post.createdAt)}</span></div><b>{post.sport === 'surf' ? '서핑' : '테니스'}</b></header>
+      <header className="community-author-row"><div className="chat-avatar">{post.authorName.slice(0, 1)}</div><div><strong>{post.authorName}</strong><span>{formatDateTime(post.createdAt, locale)}</span></div><b>{post.sport === 'surf' ? translate('서핑') : translate('테니스')}</b></header>
       <h1>{post.title}</h1><p className="community-post-body">{post.body}</p>
-      {post.authorId === memberId && post.status !== 'active' ? <Link href={`/community/${id}/edit`}>게시글 수정 · 검토 상태</Link> : null}
-      <div className="community-action-row"><button type="button" disabled={busy || post.status !== 'active'} aria-pressed={post.liked} className={post.liked ? 'liked' : ''} onClick={() => void toggle()}><Heart size={17} fill={post.liked ? 'currentColor' : 'none'} />좋아요 {post.likes}</button><button type="button" onClick={() => void share()}><Share2 size={17} />공유</button></div>
+      {post.authorId === memberId && post.status !== 'active' ? <Link href={`/community/${id}/edit`}>{translate('게시글 수정 · 검토 상태')}</Link> : null}
+      <div className="community-action-row"><button type="button" disabled={busy || post.status !== 'active'} aria-pressed={post.liked} className={post.liked ? 'liked' : ''} onClick={() => void toggle()}><Heart size={17} fill={post.liked ? 'currentColor' : 'none'} />{translate('좋아요')} {post.likes}</button><button type="button" onClick={() => void share()}><Share2 size={17} />{translate('공유')}</button></div>
     </article>
-    <section className="comment-section"><h2>댓글 <strong>{comments.length}</strong></h2>{comments.length === 0 ? <p className="comment-empty">아직 댓글이 없어요. 첫 의견을 남겨보세요.</p> : null}<div className="comment-list">{comments.map((item) => <article key={item.id}><div className="chat-avatar">{item.author.slice(0, 1)}</div><div><header><strong>{item.author}</strong><time dateTime={item.createdAt}>{formatDateTime(item.createdAt)}</time></header><p>{item.body}</p></div></article>)}</div></section>
-    {actionError ? <p className="chat-error community-error" role="alert">{actionError}</p> : null}
-    <form className="sticky-bottom-action comment-composer" onSubmit={(event) => void comment(event)}><label className="visually-hidden" htmlFor="comment-input">댓글</label><input id="comment-input" className="form-input" value={input} maxLength={5000} onChange={(event) => setInput(event.target.value)} placeholder="댓글을 입력하세요" /><button className="btn-primary" type="submit" aria-label="댓글 작성" disabled={busy || !input.trim()}><Send size={18} /></button></form>
+    <section className="comment-section"><h2>{translate('댓글')} <strong>{comments.length}</strong></h2>{comments.length === 0 ? <p className="comment-empty">{translate('아직 댓글이 없어요. 첫 의견을 남겨보세요.')}</p> : null}<div className="comment-list">{comments.map((item) => <article key={item.id}><div className="chat-avatar">{item.author.slice(0, 1)}</div><div><header><strong>{item.author}</strong><time dateTime={item.createdAt}>{formatDateTime(item.createdAt, locale)}</time></header><p>{item.body}</p></div></article>)}</div></section>
+    {actionError ? <p className="chat-error community-error" role="alert">{translate(actionError)}</p> : null}
+    <form className="sticky-bottom-action comment-composer" onSubmit={(event) => void comment(event)}><label className="visually-hidden" htmlFor="comment-input">{translate('댓글')}</label><input id="comment-input" className="form-input" value={input} maxLength={5000} onChange={(event) => setInput(event.target.value)} placeholder={translate('댓글을 입력하세요')} /><button className="btn-primary" type="submit" aria-label={translate('댓글 작성')} disabled={busy || !input.trim()}><Send size={18} /></button></form>
   </div></MobileShell>;
 }

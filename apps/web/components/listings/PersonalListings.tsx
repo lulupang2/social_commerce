@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import Link from 'next/link';
 import { CircleUserRound, PackageSearch } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -19,6 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function PersonalListings({ kind }: { kind: 'listings' | 'favorites' }) {
+  const translate = useTranslate();
   const [items, setItems] = useState<GoListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -36,7 +39,7 @@ export function PersonalListings({ kind }: { kind: 'listings' | 'favorites' }) {
     void (async () => {
       const session = await getGoSession();
       if (!active) return;
-      if (!session.ok) { setError(session.status === 401 ? '로그인이 필요합니다.' : session.message); setErrorStatus(session.status ?? 0); setLoading(false); return; }
+      if (!session.ok) { setError(session.status === 401 ? translate('로그인이 필요합니다.') : session.message); setErrorStatus(session.status ?? 0); setLoading(false); return; }
       const result = await listPersonalListings(kind);
       if (!active) return;
       if (result.ok) { setItems(result.data); setError(''); }
@@ -44,29 +47,29 @@ export function PersonalListings({ kind }: { kind: 'listings' | 'favorites' }) {
       setLoading(false);
     })();
     return () => { active = false; };
-  }, [kind, refresh]);
-  const title = kind === 'listings' ? '내 판매 내역' : '찜한 장비';
+  }, [kind, refresh, translate]);
+  const title = kind === 'listings' ? translate('내 판매 내역') : translate('찜한 장비');
   return (
     <MobileShell title={title} showBack>
       <div className="account-page">
         <h1 className="account-page-title">{title}</h1>
-        <nav className="account-page-links" aria-label="내 매물 탐색">
-          <Link href="/profile">← 마이페이지</Link>
-          {kind === 'listings' ? <Link href="/seller/apply">판매자 신청·상태 확인</Link> : null}
+        <nav className="account-page-links" aria-label={translate("내 매물 탐색")}>
+          <Link href="/profile">{translate("← 마이페이지")}</Link>
+          {kind === 'listings' ? <Link href="/seller/apply">{translate("판매자 신청·상태 확인")}</Link> : null}
         </nav>
-        {loading ? <StatePanel role="status" description="내 매물을 불러오고 있어요." /> : error ? (
+        {loading ? <StatePanel role="status" description={translate("내 매물을 불러오고 있어요.")} /> : error ? (
           <StatePanel
             role="alert"
             icon={<CircleUserRound size={28} />}
-            description={error}
-            actions={errorStatus === 401 ? <Link className="btn-primary" href="/auth">로그인하기</Link> : errorStatus === 403 ? <Link href="/profile">마이페이지로</Link> : <button className="btn-outline" type="button" onClick={() => { setLoading(true); setRefresh((value) => value + 1); }}>다시 시도</button>}
+            description={translate(error)}
+            actions={errorStatus === 401 ? <Link className="btn-primary" href="/auth">{translate("로그인하기")}</Link> : errorStatus === 403 ? <Link href="/profile">{translate("마이페이지로")}</Link> : <button className="btn-outline" type="button" onClick={() => { setLoading(true); setRefresh((value) => value + 1); }}>{translate("다시 시도")}</button>}
           />
         ) : items.length === 0 ? (
           <StatePanel
             icon={<PackageSearch size={28} />}
-            title={`아직 ${kind === 'listings' ? '등록한 매물' : '찜한 공개 매물'}이 없어요.`}
-            description={kind === 'listings' ? '사용하지 않는 장비를 새로운 주인에게 연결해 보세요.' : '마음에 드는 장비를 찜하고 여기서 모아보세요.'}
-            actions={<Link className="btn-primary" href={kind === 'listings' ? '/sell' : '/market'}>{kind === 'listings' ? '장비 판매하기' : '마켓으로 가기'}</Link>}
+            title={kind === 'listings' ? translate('아직 등록한 매물이 없어요.') : translate('아직 찜한 공개 매물이 없어요.')}
+            description={kind === 'listings' ? translate('사용하지 않는 장비를 새로운 주인에게 연결해 보세요.') : translate('마음에 드는 장비를 찜하고 여기서 모아보세요.')}
+            actions={<Link className="btn-primary" href={kind === 'listings' ? '/sell' : '/market'}>{kind === 'listings' ? translate('장비 판매하기') : translate('마켓으로 가기')}</Link>}
           />
         ) : (
           <div className="product-grid">
@@ -75,8 +78,8 @@ export function PersonalListings({ kind }: { kind: 'listings' | 'favorites' }) {
               const listing = marketListing ? toMockListing(marketListing, 'go') : null;
               if (!listing) return null;
               return <div key={item.id}>
-                {kind === 'listings' ? <p>{STATUS_LABELS[item.status]}</p> : null}
-                {kind === 'listings' && item.status === 'active' ? <p><Link href={`/seller/inventory/${item.id}`}>판매 재고 설정</Link></p> : null}
+                {kind === 'listings' ? <p>{translate(STATUS_LABELS[item.status])}</p> : null}
+                {kind === 'listings' && item.status === 'active' ? <p><Link href={`/seller/inventory/${item.id}`}>{translate("판매 재고 설정")}</Link></p> : null}
                 {kind === 'listings' && (item.status === 'rejected' || item.status === 'pending_review') ? <ReviewPanel item={item} onUpdated={() => setRefresh((value) => value + 1)} /> : null}
                 <WebListingCard listing={listing} favorite={favorites[`go:${item.id}`] ?? false} onFavorite={async (id, favorite) => {
                   const saved = await updateFavorite(id, favorite);
@@ -86,13 +89,14 @@ export function PersonalListings({ kind }: { kind: 'listings' | 'favorites' }) {
             })}
           </div>
         )}
-        {favoriteError ? <p className="form-error" role="alert">{favoriteError}</p> : null}
+        {favoriteError ? <p className="form-error" role="alert">{translate(favoriteError)}</p> : null}
       </div>
     </MobileShell>
   );
 }
 
 function ReviewPanel({ item, onUpdated }: { item: GoListing; onUpdated: () => void }) {
+  const translate = useTranslate();
   const [events, setEvents] = useState<ReviewEvent[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -114,11 +118,11 @@ function ReviewPanel({ item, onUpdated }: { item: GoListing; onUpdated: () => vo
     setBusy(false);
   };
   return <div>
-    {rejected?.reason ? <p role="status">반려 사유: {rejected.reason}</p> : null}
-    {error ? <p role="alert" className="form-error">{error}</p> : null}
+    {rejected?.reason ? <p role="status">{translate("반려 사유:")}{' '}{rejected.reason}</p> : null}
+    {error ? <p role="alert" className="form-error">{translate(error)}</p> : null}
     {item.status === 'rejected' ? <>
-      <Link href={`/market/${item.id}/edit`}>반려 매물 수정하기</Link>
-      <button className="btn-outline" type="button" disabled={busy} onClick={() => void resubmit()}>다시 검토 요청</button>
+      <Link href={`/market/${item.id}/edit`}>{translate("반려 매물 수정하기")}</Link>
+      <button className="btn-outline" type="button" disabled={busy} onClick={() => void resubmit()}>{translate("다시 검토 요청")}</button>
     </> : null}
   </div>;
 }

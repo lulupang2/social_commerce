@@ -1,5 +1,9 @@
 'use client';
 
+import { useLocale } from 'next-intl';
+import { formatWon } from '@/lib/display-format';
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import {
   Heart,
   LoaderCircle,
@@ -31,6 +35,8 @@ import { toMockListing, useListings } from '@/lib/listings/use-listings';
 import { triggerNativeHaptic } from '@/lib/native-bridge';
 
 export default function ListingDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ source?: string }> }) {
+  const translate = useTranslate();
+  const locale = useLocale();
   const { id } = use(params);
   const { source } = use(searchParams);
   const router = useRouter();
@@ -120,10 +126,10 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
 
   if (!listing && isLoading) {
     return (
-      <MobileShell storefront title="장비 불러오는 중" showBack hideNav>
+      <MobileShell storefront title={translate("장비 불러오는 중")} showBack hideNav>
         <div className="empty-state">
           <LoaderCircle className="spin" size={28} />
-          <p>매물 정보를 확인하고 있어요.</p>
+          <p>{translate("매물 정보를 확인하고 있어요.")}</p>
         </div>
       </MobileShell>
     );
@@ -131,11 +137,11 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
 
   if (!listing) {
     return (
-      <MobileShell storefront title="장비를 찾을 수 없어요" showBack hideNav>
+      <MobileShell storefront title={translate("장비를 찾을 수 없어요")} showBack hideNav>
         <div className="empty-state">
-          <p>{feedError && source !== 'demo' && source !== 'local' ? feedError : '판매가 종료됐거나 존재하지 않는 매물이에요.'}</p>
-          {feedError ? <button className="btn-outline" type="button" onClick={retry}>다시 시도</button> : null}
-          <Link className="btn-primary" href="/market">마켓으로 돌아가기</Link>
+          <p>{feedError && source !== 'demo' && source !== 'local' ? translate(feedError) : translate("판매가 종료됐거나 존재하지 않는 매물이에요.")}</p>
+          {feedError ? <button className="btn-outline" type="button" onClick={retry}>{translate("다시 시도")}</button> : null}
+          <Link className="btn-primary" href="/market">{translate("마켓으로 돌아가기")}</Link>
         </div>
       </MobileShell>
     );
@@ -149,7 +155,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
   const shareListing = async () => {
     const shareData = {
       title: listing.title,
-      text: `${listing.title} · ${listing.price.toLocaleString()}원`,
+      text: `${listing.title} · ${formatWon(listing.price, locale)}`,
       url: window.location.href,
     };
     const nativeShare = (navigator as Navigator & { share?: (data: ShareData) => Promise<void> })
@@ -209,7 +215,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
               style={isFixtureImage ? { objectFit: 'contain' } : undefined}
               onError={() => {
                 if (usesGoImages) {
-                  setImageError('사진 링크가 만료되었거나 불러올 수 없어요. 사진을 갱신해 주세요.');
+                  setImageError(translate("사진 링크가 만료되었거나 불러올 수 없어요. 사진을 갱신해 주세요."));
                   setImageNeedsLogin(false);
                 }
               }}
@@ -223,17 +229,17 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
         </div>
         {usesGoImages && imageError ? (
           <div className="image-load-error" role="alert">
-            <p>{imageError}</p>
-            <button className="btn-outline" type="button" onClick={() => setImageRefresh((value) => value + 1)}>사진 갱신</button>
-            {imageNeedsLogin ? <a href="/auth" target="_blank" rel="noreferrer">다시 로그인</a> : null}
+            <p>{translate(imageError)}</p>
+            <button className="btn-outline" type="button" onClick={() => setImageRefresh((value) => value + 1)}>{translate("사진 갱신")}</button>
+            {imageNeedsLogin ? <a href="/auth" target="_blank" rel="noreferrer">{translate("다시 로그인")}</a> : null}
           </div>
         ) : null}
 
         {listing.images.length > 1 ? (
-          <div className="thumbnail-strip" aria-label="상품 사진 선택">
+          <div className="thumbnail-strip" aria-label={translate("상품 사진 선택")}>
             {listing.images.map((image, index) => (
               <button
-                aria-label={`${index + 1}번째 사진 보기`}
+                aria-label={translate(`${index + 1}번째 사진 보기`)}
                 aria-pressed={activeImageIndex === index}
                 className={activeImageIndex === index ? 'active' : ''}
                 key={image}
@@ -248,25 +254,25 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
 
         <div className="detail-body">
           {isFixtureImage ? (
-            <p className="demo-mode-banner">상품 이해를 위한 예시 사진입니다.</p>
+            <p className="demo-mode-banner">{translate("상품 이해를 위한 예시 사진입니다.")}</p>
           ) : (
-            <p className="demo-mode-banner">{listing.dataSource === 'go' ? '실제 등록 상품 · 구매 가능 여부는 주문 단계에서 확인합니다.' : listing.dataSource === 'supabase' ? '기존 등록 상품 · 현재 구매 흐름과 연결되지 않은 상품입니다.' : '시연용 상품 · 실제 구매 가능한 재고가 아닙니다.'}</p>
+            <p className="demo-mode-banner">{listing.dataSource === 'go' ? translate("실제 등록 상품 · 구매 가능 여부는 주문 단계에서 확인합니다.") : listing.dataSource === 'supabase' ? translate("기존 등록 상품 · 현재 구매 흐름과 연결되지 않은 상품입니다.") : translate("시연용 상품 · 실제 구매 가능한 재고가 아닙니다.")}</p>
           )}
           {listing.recommendationReason ? (
             <div className="rec-reason-badge detail-recommendation">
               <Sparkles size={13} />
-              <span>{listing.recommendationReason}</span>
+              <span>{translate(listing.recommendationReason)}</span>
             </div>
           ) : null}
           <div className="detail-meta">
-            <strong>{listing.sportLabel}</strong>
+            <strong>{translate(listing.sportLabel)}</strong>
             <span>·</span>
-            <span>{listing.conditionLabel}</span>
+            <span>{translate(listing.conditionLabel)}</span>
             <span>·</span>
-            <span>{listing.createdAt}</span>
+            <span>{translate(listing.createdAt)}</span>
           </div>
           <h1>{listing.title}</h1>
-          <div className="detail-price">{listing.price.toLocaleString()}원</div>
+          <div className="detail-price">{formatWon(listing.price, locale)}</div>
 
           <section className="detail-seller-card">
             <Image
@@ -280,51 +286,49 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
               <strong>{listing.seller.name}</strong>
               <span>
                 {!listing.dataSource ? null : <Star fill="#f59e0b" size={12} />}
-                {!listing.dataSource ? '시연용 판매자 정보' : listing.seller.rating + ' · 거래 ' + listing.seller.transactionCount + '회'}
+                {!listing.dataSource ? translate("시연용 판매자 정보") : listing.seller.rating + translate(" · 거래 ") + listing.seller.transactionCount + translate("회")}
               </span>
             </div>
             <p>
               {!listing.dataSource ? null : <ShieldCheck size={16} />}
-              {!listing.dataSource ? '판매자 정보' : '본인인증'}
+              {!listing.dataSource ? translate("판매자 정보") : translate("본인인증")}
             </p>
           </section>
 
           <section className="detail-section">
-            <h2>{listing.sportLabel} 장비 스펙</h2>
+            <h2>{translate(listing.sportLabel)} {translate("장비 스펙")}</h2>
             <div className="spec-grid">
               {Object.entries(listing.specs).map(([key, value]) => (
                 <div className="spec-item" key={key}>
-                  <span className="spec-label">{key}</span>
-                  <span className="spec-val">{value}</span>
+                  <span className="spec-label">{translate(key)}</span>
+                  <span className="spec-val">{typeof value === 'string' ? translate(value) : value}</span>
                 </div>
               ))}
             </div>
           </section>
 
           <section className="detail-section">
-            <h2>상품 설명</h2>
+            <h2>{translate("상품 설명")}</h2>
             <p className="detail-description">{listing.description}</p>
           </section>
           <div className="detail-location">
             <MapPin size={16} />
             <span>
-              희망 거래 장소 <strong>{listing.location}</strong>
+              {translate("희망 거래 장소")}<strong>{listing.location}</strong>
             </span>
           </div>
           <div className="detail-share-actions">
             <button className="detail-share" onClick={() => void shareListing()} type="button">
-              <Share2 size={16} />이 매물 공유하기
-            </button>
+              <Share2 size={16} />{translate("이 매물 공유하기")}</button>
             {currentMemberId && listing.sellerId === currentMemberId ? (
               <Link className="detail-share" href={`/market/${listing.id}/edit`}>
-                <Pencil size={16} />내 매물 수정하기
-              </Link>
+                <Pencil size={16} />{translate("내 매물 수정하기")}</Link>
             ) : null}
           </div>
-          {favoriteError ? <p className="form-error" role="alert">{favoriteError}</p> : null}
+          {favoriteError ? <p className="form-error" role="alert">{translate(favoriteError)}</p> : null}
           {actionMessage ? (
             <p className="form-error detail-action-message" role="status">
-              {actionMessage}
+              {translate(actionMessage)}
             </p>
           ) : null}
         </div>
@@ -333,7 +337,7 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
           {usesGoImages ? (
             <>
               <button
-                aria-label={isFavorite ? '찜 해제' : '찜하기'}
+                aria-label={isFavorite ? translate("찜 해제") : translate("찜하기")}
                 aria-pressed={isFavorite}
                 className="btn-outline detail-favorite"
                 onClick={() => updateFavorite(favoriteId, !isFavorite)}
@@ -345,16 +349,16 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
                   size={20}
                 />
               </button>
-              {listing.sellerId !== currentMemberId ? <button className="btn-outline" type="button" disabled={isOpeningChat} onClick={() => void openChat()}><MessageCircle size={18} />{isOpeningChat ? '연결 중' : '판매자 문의'}</button> : null}
+              {listing.sellerId !== currentMemberId ? <button className="btn-outline" type="button" disabled={isOpeningChat} onClick={() => void openChat()}><MessageCircle size={18} />{isOpeningChat ? translate("연결 중") : translate("판매자 문의")}</button> : null}
               {goReviewStatus === 'active' && availability?.id === id && availability.value?.purchasable ? (
-                <Link href={`/order/new/${listing.id}`} className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>구매하기</Link>
+                <Link href={`/order/new/${listing.id}`} className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{translate("구매하기")}</Link>
               ) : (
                 <div role="status" style={{ flex: 1 }}>
-                  {goReviewStatus && goReviewStatus !== 'active' ? '공개 전 매물이에요.'
-                    : goLookup?.id === id && !goReviewStatus ? '매물 상태를 확인할 수 없어요.'
-                      : availability?.id !== id ? '구매 가능 여부 확인 중' : availability.error || ({
+                  {goReviewStatus && goReviewStatus !== 'active' ? translate("공개 전 매물이에요.")
+                    : goLookup?.id === id && !goReviewStatus ? translate("매물 상태를 확인할 수 없어요.")
+                      : availability?.id !== id ? translate("구매 가능 여부 확인 중") : translate(availability.error || ({
                         not_public: '공개 전 매물이에요.', not_prepared: '판매 준비 중이에요.', sold_out: '재고가 없어요.', available: '',
-                      }[availability.value?.reason ?? 'not_prepared'])}
+                      }[availability.value?.reason ?? 'not_prepared']))}
                 </div>
               )}
             </>
@@ -372,8 +376,8 @@ export default function ListingDetailPage({ params, searchParams }: { params: Pr
               )}
               <span>
                 {listing.sellerId || SUMMER_CHAT_ROOMS.some((room) => room.listingId === listing.id)
-                  ? '채팅으로 거래하기'
-                  : '로그인하고 문의하기'}
+                  ? translate("채팅으로 거래하기")
+                  : translate("로그인하고 문의하기")}
               </span>
             </button>
           )}

@@ -1,4 +1,7 @@
-﻿'use client';
+'use client';
+
+import { useLocale } from 'next-intl';
+import { useTranslate } from '@/lib/i18n/use-translate';
 
 import Link from 'next/link';
 import { ShoppingBag, CircleAlert } from 'lucide-react';
@@ -11,6 +14,8 @@ import { getGoSession } from '@/lib/go-auth/client';
 import { formatOrderDate, orderActions, orderDeliveryLabel } from '@/lib/go-listings/order-display';
 
 export default function OrdersPage() {
+  const locale = useLocale();
+  const translate = useTranslate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,7 +31,7 @@ export default function OrdersPage() {
       if (!session.ok) {
         setLoginRequired(session.status === 401);
         setError(
-          session.status === 401 ? '로그인 후 내 주문 내역을 확인할 수 있어요.' : session.message,
+          session.status === 401 ? translate('로그인 후 내 주문 내역을 확인할 수 있어요.') : session.message,
         );
         setLoading(false);
         return;
@@ -44,7 +49,7 @@ export default function OrdersPage() {
     return () => {
       active = false;
     };
-  }, [attempt]);
+  }, [attempt, translate]);
 
   const retry = () => {
     setLoading(true);
@@ -56,70 +61,57 @@ export default function OrdersPage() {
   return (
     <OrderShell>
       {loading ? (
-        <StatePanel role="status" description="주문 내역을 불러오고 있어요." />
+        <StatePanel role="status" description={translate("주문 내역을 불러오고 있어요.")} />
       ) : error ? (
         <StatePanel
           role="alert"
           icon={<CircleAlert size={28} />}
-          title={loginRequired ? '로그인이 필요해요' : '주문 내역을 불러오지 못했어요'}
-          description={error}
+          title={loginRequired ? translate('로그인이 필요해요') : translate('주문 내역을 불러오지 못했어요')}
+          description={translate(error)}
           actions={
             loginRequired ? (
-              <Link href="/auth" className="btn-primary">
-                로그인하기
-              </Link>
+              <Link href="/auth" className="btn-primary">{translate("로그인하기")}</Link>
             ) : (
-              <button type="button" className="btn-primary" onClick={retry}>
-                다시 시도
-              </button>
+              <button type="button" className="btn-primary" onClick={retry}>{translate("다시 시도")}</button>
             )
           }
         />
       ) : orders.length === 0 ? (
         <StatePanel
           icon={<ShoppingBag size={28} />}
-          title="아직 주문 내역이 없어요"
-          description="마켓에서 나에게 맞는 장비를 찾아보세요."
+          title={translate("아직 주문 내역이 없어요")}
+          description={translate("마켓에서 나에게 맞는 장비를 찾아보세요.")}
           actions={
-            <Link href="/market" className="btn-primary">
-              마켓 둘러보기
-            </Link>
+            <Link href="/market" className="btn-primary">{translate("마켓 둘러보기")}</Link>
           }
         />
       ) : (
         <>
           <div className={styles.intro}>
-            <h2>최근 주문</h2>
-            <p>최근 주문 최대 50건을 최신순으로 보여드려요.</p>
+            <h2>{translate("최근 주문")}</h2>
+            <p>{translate("최근 주문 최대 50건을 최신순으로 보여드려요.")}</p>
           </div>
           <ul className={styles.list}>
             {orders.map((order) => {
               const actions = orderActions(order, viewerId);
               return (
                 <li key={order.id}>
-                  <article className={styles.card} aria-label={`${order.itemName} 주문`}>
+                  <article className={styles.card} aria-label={(order.itemName + translate(" 주문"))}>
                     <div className={styles.cardTop}>
                       <time dateTime={order.createdAt}>
-                        {formatOrderDate(order.createdAt)} 주문
-                      </time>
+                        {translate(`${formatOrderDate(order.createdAt, locale)} 주문`)}</time>
                       <OrderBadge order={order} />
                     </div>
                     <OrderProduct order={order} />
                     <p className={styles.delivery}>
-                      {orderDeliveryLabel(order)}
+                      {translate(orderDeliveryLabel(order))}
                     </p>
                     <div className={styles.actions}>
-                      <Link className="btn-outline" href={`/order/${order.id}`}>
-                        주문 상세
-                      </Link>
+                      <Link className="btn-outline" href={`/order/${order.id}`}>{translate("주문 상세")}</Link>
                       {actions.pay ? (
-                        <Link className="btn-primary" href={`/order/confirm/${order.id}`}>
-                          결제 계속하기
-                        </Link>
+                        <Link className="btn-primary" href={`/order/confirm/${order.id}`}>{translate("결제 계속하기")}</Link>
                       ) : actions.receive ? (
-                        <Link className="btn-primary" href={`/order/${order.id}#order-actions`}>
-                          수령 확인하기
-                        </Link>
+                        <Link className="btn-primary" href={`/order/${order.id}#order-actions`}>{translate("수령 확인하기")}</Link>
                       ) : null}
                     </div>
                   </article>

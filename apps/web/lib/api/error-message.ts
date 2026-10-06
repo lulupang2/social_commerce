@@ -1,3 +1,5 @@
+import { translate } from '@/lib/i18n/translate';
+
 const messages: Record<string, string> = {
   UNAUTHENTICATED: '로그인이 필요해요. 로그인 후 다시 이용해 주세요.',
   UNAUTHORIZED: '로그인이 필요해요. 로그인 후 다시 이용해 주세요.',
@@ -15,10 +17,10 @@ const messages: Record<string, string> = {
 
 /** API codes/statuses stay intact; server diagnostics are not UI copy. */
 export function apiErrorMessage(status: number, body: unknown, fallback: string): string {
-  if (status === 401) return messages.UNAUTHENTICATED;
+  if (status === 401) return translate(messages.UNAUTHENTICATED);
   const code = body && typeof body === 'object' && 'code' in body ? body.code : undefined;
-  if (typeof code === 'string' && Object.hasOwn(messages, code)) return messages[code];
-  if (status === 403) return '이 작업을 수행할 권한이 없어요.';
-  if (status === 429) return '요청이 많아요. 잠시 후 다시 시도해 주세요.';
-  return fallback;
+  if (typeof code === 'string' && Object.hasOwn(messages, code)) return translate(messages[code]);
+  if (status === 403) return translate('이 작업을 수행할 권한이 없어요.');
+  if (status === 429) return translate('요청이 많아요. 잠시 후 다시 시도해 주세요.');
+  return translate(fallback);
 }

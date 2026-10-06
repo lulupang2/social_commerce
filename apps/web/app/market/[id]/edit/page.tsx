@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import type { ListingCategory, ListingCondition } from '@icegear/domain';
 import { CheckCircle2, LoaderCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -106,6 +108,7 @@ function mediaFromServerImages(images: GoListingImage[]): SelectedMedia[] {
 }
 
 export default function EditListingPage({ params }: { params: Promise<{ id: string }> }) {
+  const translate = useTranslate();
   const { id } = use(params);
   const router = useRouter();
   const [listing, setListing] = useState<GoListing | null>(null);
@@ -147,7 +150,8 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   const editable = useMemo(
     () =>
       listing !== null &&
-      ownerId !== null && listing.seller.id === ownerId &&
+      ownerId !== null &&
+      listing.seller.id === ownerId &&
       (['draft', 'pending_review', 'rejected'] satisfies EditableStatus[]).includes(
         listing.status as EditableStatus,
       ),
@@ -169,23 +173,40 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     const pendingNew = pending.filter((item) => !item.serverId);
     setServerImages(result.data);
     const replacing = new Set(pendingNew.map((item) => item.replaceImageId).filter(Boolean));
-    setMedia([...mediaFromServerImages(result.data.filter((image) => !replacing.has(image.id))), ...pendingNew]);
+    setMedia([
+      ...mediaFromServerImages(result.data.filter((image) => !replacing.has(image.id))),
+      ...pendingNew,
+    ]);
     setImageLoadError('');
     return { ok: true as const, images: result.data };
   };
 
   const planNewImageSortOrders = (items: SelectedMedia[]) => {
-    const occupied = items.flatMap((item) => item.serverId || item.replaceImageId
-      ? serverImages.filter((image) => image.id === (item.serverId ?? item.replaceImageId)).map((image) => image.sortOrder)
-      : item.pendingImageId && item.sortOrder !== undefined ? [item.sortOrder] : []);
+    const occupied = items.flatMap((item) =>
+      item.serverId || item.replaceImageId
+        ? serverImages
+            .filter((image) => image.id === (item.serverId ?? item.replaceImageId))
+            .map((image) => image.sortOrder)
+        : item.pendingImageId && item.sortOrder !== undefined
+          ? [item.sortOrder]
+          : [],
+    );
     const used = new Set(occupied);
     const orders = new Map<string, number>();
     for (const item of items) {
       if (item.serverId) continue;
       const previous = serverImages.find((image) => image.id === item.replaceImageId);
-      const order = previous?.sortOrder ?? (item.pendingImageId ? item.sortOrder : undefined) ??
-        Array.from({ length: GO_LISTING_IMAGE_MAX_COUNT }, (_, index) => index).find((index) => !used.has(index));
-      if (order === undefined) return { ok: false as const, message: '사진은 최대 12장이에요. 기존 사진을 삭제하거나 교체해 주세요.' };
+      const order =
+        previous?.sortOrder ??
+        (item.pendingImageId ? item.sortOrder : undefined) ??
+        Array.from({ length: GO_LISTING_IMAGE_MAX_COUNT }, (_, index) => index).find(
+          (index) => !used.has(index),
+        );
+      if (order === undefined)
+        return {
+          ok: false as const,
+          message: translate('사진은 최대 12장이에요. 기존 사진을 삭제하거나 교체해 주세요.'),
+        };
       used.add(order);
       orders.set(item.id, order);
     }
@@ -193,14 +214,19 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   };
 
   const syncListingImages = async (items: SelectedMedia[], onlyId?: string) => {
-    if (!editable) return { ok: false as const, message: '이 매물의 사진을 변경할 권한이 없어요.' };
+    if (!editable)
+      return { ok: false as const, message: translate('이 매물의 사진을 변경할 권한이 없어요.') };
     if (imageLoadError) {
       return { ok: false as const, message: imageLoadError };
     }
     const plan = planNewImageSortOrders(items);
     if (!plan.ok) return plan;
 
-    const retainedIds = new Set(items.flatMap((item) => item.serverId || item.replaceImageId ? [item.serverId ?? item.replaceImageId!] : []));
+    const retainedIds = new Set(
+      items.flatMap((item) =>
+        item.serverId || item.replaceImageId ? [item.serverId ?? item.replaceImageId!] : [],
+      ),
+    );
     const removed = serverImages.filter((image) => !retainedIds.has(image.id));
     let next = items.slice();
 
@@ -218,7 +244,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       const sortOrder = plan.sortOrderByClientId.get(item.id);
       if (sortOrder === undefined) {
         await refreshImageState(next);
-        return { ok: false as const, message: '사진 순서를 계산하지 못했어요.' };
+        return { ok: false as const, message: translate('사진 순서를 계산하지 못했어요.') };
       }
 
       next = next.map((entry) =>
@@ -232,7 +258,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       try {
         file = await selectedMediaToFile(item);
       } catch {
-        const message = '선택한 사진을 읽지 못했어요.';
+        const message = translate('선택한 사진을 읽지 못했어요.');
         next = next.map((entry) =>
           entry.id === item.id ? { ...entry, uploadState: 'failed', uploadError: message } : entry,
         );
@@ -246,12 +272,22 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
         replaceImageId: item.replaceImageId,
         pendingImageId: item.pendingImageId,
         uploadPhase: item.uploadPhase,
-        altText: `${form?.title.trim() || listing?.title || '매물'} 사진 ${sortOrder + 1}`,
+        altText: translate(
+          `${form?.title.trim() || listing?.title || translate('매물')} 사진 ${sortOrder + 1}`,
+        ),
       });
       if (!result.ok) {
         next = next.map((entry) =>
           entry.id === item.id
-            ? { ...entry, sortOrder, uploadState: 'failed', uploadError: result.message, uploadErrorCode: result.code, pendingImageId: result.pendingImageId, uploadPhase: result.uploadPhase }
+            ? {
+                ...entry,
+                sortOrder,
+                uploadState: 'failed',
+                uploadError: result.message,
+                uploadErrorCode: result.code,
+                pendingImageId: result.pendingImageId,
+                uploadPhase: result.uploadPhase,
+              }
             : entry,
         );
         setMedia(next);
@@ -278,7 +314,10 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
     if (next.some((item) => !item.serverId)) {
       await refreshImageState(next);
-      return { ok: false as const, message: '아직 저장하지 못한 사진이 있어요. 해당 사진을 재시도해 주세요.' };
+      return {
+        ok: false as const,
+        message: translate('아직 저장하지 못한 사진이 있어요. 해당 사진을 재시도해 주세요.'),
+      };
     }
     const verified = await listGoListingImages(id);
     if (!verified.ok) {
@@ -294,7 +333,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       setMedia(mediaFromServerImages(verified.data));
       return {
         ok: false as const,
-        message: '서버에 저장된 사진 상태가 화면과 달라서 최신 상태로 다시 불러왔어요.',
+        message: translate('서버에 저장된 사진 상태가 화면과 달라서 최신 상태로 다시 불러왔어요.'),
       };
     }
 
@@ -340,19 +379,19 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
     const price = Number(form.price);
     if (form.title.trim().length < 1 || form.title.trim().length > 120) {
-      setError('제목은 1~120자로 입력해 주세요.');
+      setError(translate('제목은 1~120자로 입력해 주세요.'));
       return;
     }
     if (!Number.isSafeInteger(price) || price < 0) {
-      setError('가격은 0 이상의 정수로 입력해 주세요.');
+      setError(translate('가격은 0 이상의 정수로 입력해 주세요.'));
       return;
     }
     if (form.description.trim().length < 10) {
-      setError('상품 설명은 10자 이상 입력해 주세요.');
+      setError(translate('상품 설명은 10자 이상 입력해 주세요.'));
       return;
     }
     if (!form.location.trim()) {
-      setError('거래 장소를 입력해 주세요.');
+      setError(translate('거래 장소를 입력해 주세요.'));
       return;
     }
 
@@ -383,7 +422,11 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     }
 
     if (imageLoadError) {
-      setError('사진 상태를 확인하지 못해 저장을 중단했어요. 사진을 다시 불러온 뒤 시도해 주세요.');
+      setError(
+        translate(
+          '사진 상태를 확인하지 못해 저장을 중단했어요. 사진을 다시 불러온 뒤 시도해 주세요.',
+        ),
+      );
       return;
     }
 
@@ -407,7 +450,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
         details,
       });
       if (!updated) {
-        setError('매물을 수정하지 못했어요. 로그인 상태나 매물 상태를 확인해 주세요.');
+        setError(translate('매물을 수정하지 못했어요. 로그인 상태나 매물 상태를 확인해 주세요.'));
         triggerNativeHaptic('error');
         return;
       }
@@ -420,7 +463,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
         setError(
           !refreshedImages.ok
             ? refreshedImages.message
-            : '저장 후 매물 상태를 다시 확인하지 못했어요.',
+            : translate('저장 후 매물 상태를 다시 확인하지 못했어요.'),
         );
         triggerNativeHaptic('error');
         return;
@@ -441,10 +484,10 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
   if (isLoading) {
     return (
-      <MobileShell title="매물 수정" showBack hideNav>
+      <MobileShell title={translate('매물 수정')} showBack hideNav>
         <div className="empty-state">
           <LoaderCircle className="spin" size={28} />
-          <p>매물 정보를 불러오고 있어요.</p>
+          <p>{translate('매물 정보를 불러오고 있어요.')}</p>
         </div>
       </MobileShell>
     );
@@ -452,12 +495,16 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
   if (!listing || !form) {
     return (
-      <MobileShell title="매물 수정" showBack hideNav>
+      <MobileShell title={translate('매물 수정')} showBack hideNav>
         <div className="empty-state">
-          <p>매물을 찾지 못했거나 접근 권한이 없어요. 소유자 계정으로 로그인해 주세요.</p>
-          <a className="btn-outline" href="/auth" target="_blank" rel="noreferrer">다시 로그인</a>
+          <p>
+            {translate('매물을 찾지 못했거나 접근 권한이 없어요. 소유자 계정으로 로그인해 주세요.')}
+          </p>
+          <a className="btn-outline" href="/auth" target="_blank" rel="noreferrer">
+            {translate('다시 로그인')}
+          </a>
           <button className="btn-primary" onClick={() => router.push('/market')} type="button">
-            마켓으로 돌아가기
+            {translate('마켓으로 돌아가기')}
           </button>
         </div>
       </MobileShell>
@@ -466,15 +513,21 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
   if (!editable) {
     return (
-      <MobileShell title="매물 수정" showBack hideNav>
+      <MobileShell title={translate('매물 수정')} showBack hideNav>
         <div className="empty-state">
-          <p>{listing.seller.id !== ownerId ? '내 매물만 수정할 수 있어요.' : `현재 상태(${listing.status})의 매물은 사진을 수정할 수 없어요. draft/pending_review/rejected 상태에서만 변경할 수 있어요.`}</p>
+          <p>
+            {listing.seller.id !== ownerId
+              ? translate('내 매물만 수정할 수 있어요.')
+              : translate(
+                  `현재 상태(${listing.status})의 매물은 사진을 수정할 수 없어요. draft/pending_review/rejected 상태에서만 변경할 수 있어요.`,
+                )}
+          </p>
           <button
             className="btn-primary"
             onClick={() => router.push('/market/' + listing.id)}
             type="button"
           >
-            매물 보기
+            {translate('매물 보기')}
           </button>
         </div>
       </MobileShell>
@@ -482,14 +535,15 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   }
 
   return (
-    <MobileShell title="매물 수정" showBack hideNav>
+    <MobileShell title={translate('매물 수정')} showBack hideNav>
       <form onSubmit={(event) => void handleSubmit(event)}>
         <div className="sell-form-content">
           <section>
             <p className="form-step-description">
-              {listing.sport === 'surf' ? '서핑' : '테니스'} · {listing.status}
+              {listing.sport === 'surf' ? translate('서핑') : translate('테니스')} ·{' '}
+              {listing.status}
             </p>
-            <h1 className="form-step-title">등록한 정보를 수정해 주세요</h1>
+            <h1 className="form-step-title">{translate('등록한 정보를 수정해 주세요')}</h1>
 
             <div className="form-group">
               {imageLoadError ? (
@@ -501,7 +555,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                     onClick={() => void retryImageStateLoad()}
                     type="button"
                   >
-                    사진 다시 불러오기
+                    {translate('사진 다시 불러오기')}
                   </button>
                 </div>
               ) : (
@@ -510,7 +564,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                   allowReplace
                   onRefresh={() => void retryImageStateLoad()}
                   disabled={isSaving}
-                  label="장비 사진"
+                  label={translate('장비 사진')}
                   maxCount={GO_LISTING_IMAGE_MAX_COUNT}
                   onChange={handleMediaChange}
                   onRetry={(mediaId) => void retryImageUpload(mediaId)}
@@ -521,7 +575,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
             <div className="form-group">
               <label className="form-label" htmlFor="edit-title">
-                제목
+                {translate('제목')}
               </label>
               <input
                 className="form-input"
@@ -535,7 +589,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label" htmlFor="edit-category">
-                  카테고리
+                  {translate('카테고리')}
                 </label>
                 <select
                   className="form-select"
@@ -545,14 +599,14 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 >
                   {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
-                      {label}
+                      {translate(label)}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
                 <label className="form-label" htmlFor="edit-condition">
-                  상태
+                  {translate('상태')}
                 </label>
                 <select
                   className="form-select"
@@ -562,7 +616,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 >
                   {Object.entries(CONDITION_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
-                      {label}
+                      {translate(label)}
                     </option>
                   ))}
                 </select>
@@ -572,7 +626,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label" htmlFor="edit-brand">
-                  브랜드
+                  {translate('브랜드')}
                 </label>
                 <input
                   className="form-input"
@@ -583,7 +637,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
               </div>
               <div className="form-group">
                 <label className="form-label" htmlFor="edit-model">
-                  모델명
+                  {translate('모델명')}
                 </label>
                 <input
                   className="form-input"
@@ -597,7 +651,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label" htmlFor="edit-price">
-                  판매 가격
+                  {translate('판매 가격')}
                 </label>
                 <input
                   className="form-input"
@@ -611,7 +665,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
               </div>
               <div className="form-group">
                 <label className="form-label" htmlFor="edit-location">
-                  거래 장소
+                  {translate('거래 장소')}
                 </label>
                 <input
                   className="form-input"
@@ -627,7 +681,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 <div className="form-row">
                   <div className="form-group">
                     <label className="form-label" htmlFor="edit-discipline">
-                      보드 종류
+                      {translate('보드 종류')}
                     </label>
                     <select
                       className="form-select"
@@ -635,19 +689,19 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                       onChange={(event) => update('discipline', event.target.value)}
                       value={form.discipline}
                     >
-                      <option value="shortboard">숏보드</option>
-                      <option value="longboard">롱보드</option>
-                      <option value="funboard">펀보드 / 미드렝스</option>
-                      <option value="fish">피쉬</option>
+                      <option value="shortboard">{translate('숏보드')}</option>
+                      <option value="longboard">{translate('롱보드')}</option>
+                      <option value="funboard">{translate('펀보드 / 미드렝스')}</option>
+                      <option value="fish">{translate('피쉬')}</option>
                       <option value="sup">SUP</option>
-                      <option value="bodyboard">바디보드</option>
-                      <option value="foil">포일</option>
-                      <option value="other">기타</option>
+                      <option value="bodyboard">{translate('바디보드')}</option>
+                      <option value="foil">{translate('포일')}</option>
+                      <option value="other">{translate('기타')}</option>
                     </select>
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="edit-fin">
-                      핀 시스템
+                      {translate('핀 시스템')}
                     </label>
                     <select
                       className="form-select"
@@ -659,14 +713,14 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                       <option value="futures">Futures</option>
                       <option value="fcs">FCS</option>
                       <option value="single_box">Single Box</option>
-                      <option value="other">기타</option>
+                      <option value="other">{translate('기타')}</option>
                     </select>
                   </div>
                 </div>
                 <div className="form-row">
                   <div className="form-group">
                     <label className="form-label" htmlFor="edit-length">
-                      길이 (ft)
+                      {translate('길이 (ft)')}
                     </label>
                     <input
                       className="form-input"
@@ -678,7 +732,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="edit-volume">
-                      부력 (L)
+                      {translate('부력 (L)')}
                     </label>
                     <input
                       className="form-input"
@@ -695,7 +749,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 <div className="form-row">
                   <div className="form-group">
                     <label className="form-label" htmlFor="edit-head">
-                      헤드 (sq.in)
+                      {translate('헤드 (sq.in)')}
                     </label>
                     <input
                       className="form-input"
@@ -707,7 +761,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="edit-weight">
-                      무게 (g)
+                      {translate('무게 (g)')}
                     </label>
                     <input
                       className="form-input"
@@ -721,7 +775,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 <div className="form-row">
                   <div className="form-group">
                     <label className="form-label" htmlFor="edit-grip">
-                      그립
+                      {translate('그립')}
                     </label>
                     <select
                       className="form-select"
@@ -737,7 +791,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="edit-style">
-                      플레이 스타일
+                      {translate('플레이 스타일')}
                     </label>
                     <select
                       className="form-select"
@@ -745,11 +799,11 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                       onChange={(event) => update('playStyle', event.target.value)}
                       value={form.playStyle}
                     >
-                      <option value="all_court">올라운드</option>
-                      <option value="baseline_aggressive">공격형 베이스라인</option>
-                      <option value="serve_volley">서브 & 발리</option>
-                      <option value="recreational">레크리에이션</option>
-                      <option value="other">기타</option>
+                      <option value="all_court">{translate('올라운드')}</option>
+                      <option value="baseline_aggressive">{translate('공격형 베이스라인')}</option>
+                      <option value="serve_volley">{translate('서브 & 발리')}</option>
+                      <option value="recreational">{translate('레크리에이션')}</option>
+                      <option value="other">{translate('기타')}</option>
                     </select>
                   </div>
                 </div>
@@ -758,7 +812,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
             <div className="form-group">
               <label className="form-label" htmlFor="edit-description">
-                상세 설명
+                {translate('상세 설명')}
               </label>
               <textarea
                 className="form-textarea"
@@ -772,12 +826,13 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
             {saved ? (
               <p role="status" className="form-step-description">
-                <CheckCircle2 size={16} /> 수정 내용을 저장했어요.
+                <CheckCircle2 size={16} />
+                {translate('수정 내용을 저장했어요.')}
               </p>
             ) : null}
             {error ? (
               <p className="form-error form-submit-error" role="alert">
-                {error}
+                {translate(error)}
               </p>
             ) : null}
           </section>
@@ -790,11 +845,11 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
             onClick={() => router.push('/market/' + listing.id)}
             type="button"
           >
-            취소
+            {translate('취소')}
           </button>
           <button className="btn-primary" disabled={isSaving} type="submit">
             {isSaving ? <LoaderCircle className="spin" size={18} /> : null}
-            <span>{isSaving ? '저장 중' : '수정 내용 저장'}</span>
+            <span>{isSaving ? translate('저장 중') : translate('수정 내용 저장')}</span>
           </button>
         </div>
       </form>

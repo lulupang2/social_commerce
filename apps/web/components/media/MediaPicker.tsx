@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import Image from 'next/image';
 import {
   Camera,
@@ -80,6 +82,7 @@ export function MediaPicker({
   allowReplace = false,
   onRefresh,
 }: MediaPickerProps) {
+  const translate = useTranslate();
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const replacementInputRef = useRef<HTMLInputElement>(null);
@@ -102,22 +105,32 @@ export function MediaPicker({
     if (replacementInputRef.current) replacementInputRef.current.value = '';
     replacementIdRef.current = null;
     if (!target || !file || interactionDisabled || target.pendingImageId) return;
-    if (!ALLOWED_IMAGE_TYPES[file.type.toLowerCase()] || file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
-      setError('JPG, PNG, WebP · 장당 10MB 이하의 사진을 선택해 주세요.');
+    if (
+      !ALLOWED_IMAGE_TYPES[file.type.toLowerCase()] ||
+      file.size <= 0 ||
+      file.size > MAX_IMAGE_BYTES
+    ) {
+      setError(translate('JPG, PNG, WebP · 장당 10MB 이하의 사진을 선택해 주세요.'));
       return;
     }
     setError('');
     if (target.previewUrl.startsWith('blob:')) URL.revokeObjectURL(target.previewUrl);
-    onChange(value.map((media) => media.id === target.id ? {
-      id: media.id,
-      sortOrder: media.sortOrder,
-      replaceImageId: media.serverId ?? media.replaceImageId,
-      previewUrl: URL.createObjectURL(file),
-      fileName: file.name,
-      mimeType: file.type,
-      file,
-      uploadState: 'idle',
-    } : media));
+    onChange(
+      value.map((media) =>
+        media.id === target.id
+          ? {
+              id: media.id,
+              sortOrder: media.sortOrder,
+              replaceImageId: media.serverId ?? media.replaceImageId,
+              previewUrl: URL.createObjectURL(file),
+              fileName: file.name,
+              mimeType: file.type,
+              file,
+              uploadState: 'idle',
+            }
+          : media,
+      ),
+    );
   };
 
   const addNativeMedia = async (source: 'camera' | 'library') => {
@@ -139,7 +152,7 @@ export function MediaPicker({
           .slice(0, remainingCount)
           .filter((asset) => ALLOWED_IMAGE_TYPES[asset.mimeType.toLowerCase()] === true);
         if (accepted.length !== Math.min(assets.length, remainingCount)) {
-          setError('JPG, PNG, WebP 사진만 추가할 수 있어요.');
+          setError(translate('JPG, PNG, WebP 사진만 추가할 수 있어요.'));
         }
         if (accepted.length > 0) {
           onChange([
@@ -159,7 +172,7 @@ export function MediaPicker({
       setError(
         caught instanceof NativeBridgeError
           ? caught.message
-          : '사진을 불러오지 못했어요. 다시 시도해 주세요.',
+          : translate('사진을 불러오지 못했어요. 다시 시도해 주세요.'),
       );
     } finally {
       setIsPicking(false);
@@ -173,11 +186,11 @@ export function MediaPicker({
     const nextMedia: SelectedMedia[] = [];
     for (const file of Array.from(files).slice(0, remainingCount)) {
       if (ALLOWED_IMAGE_TYPES[file.type.toLowerCase()] !== true) {
-        setError('JPG, PNG, WebP 사진만 추가할 수 있어요.');
+        setError(translate('JPG, PNG, WebP 사진만 추가할 수 있어요.'));
         continue;
       }
       if (file.size > MAX_IMAGE_BYTES) {
-        setError('장당 10MB 이하의 사진을 선택해 주세요.');
+        setError(translate('장당 10MB 이하의 사진을 선택해 주세요.'));
         continue;
       }
 
@@ -220,10 +233,10 @@ export function MediaPicker({
 
   return (
     <fieldset className="media-picker" disabled={disabled}>
-      <legend className="form-label">{label}</legend>
+      <legend className="form-label">{translate(label)}</legend>
 
       {value.length > 0 ? (
-        <div className="media-preview-grid" aria-label={`선택한 사진 ${value.length}장`}>
+        <div className="media-preview-grid" aria-label={translate(`선택한 사진 ${value.length}장`)}>
           {value.map((media, index) => {
             const state = media.uploadState ?? (media.serverId ? 'uploaded' : 'idle');
             return (
@@ -233,24 +246,28 @@ export function MediaPicker({
                 key={media.id}
               >
                 <Image
-                  alt={`${label} ${index + 1}`}
+                  alt={`${translate(label)} ${index + 1}`}
                   className="media-preview-image"
                   height={92}
                   src={media.previewUrl}
                   unoptimized
-                  onError={() => setError('사진 링크가 만료되었거나 불러올 수 없어요. 사진을 갱신해 주세요.')}
+                  onError={() =>
+                    setError(
+                      translate('사진 링크가 만료되었거나 불러올 수 없어요. 사진을 갱신해 주세요.'),
+                    )
+                  }
                   width={92}
                 />
 
                 {state === 'uploading' ? (
                   <div className="media-upload-overlay" role="status">
                     <LoaderCircle className="spin" size={20} />
-                    <span>업로드 중</span>
+                    <span>{translate('업로드 중')}</span>
                   </div>
                 ) : null}
 
                 <button
-                  aria-label={`${index + 1}번째 사진 삭제`}
+                  aria-label={translate(`${index + 1}번째 사진 삭제`)}
                   className="media-remove-button"
                   disabled={interactionDisabled || state === 'uploading' || !!media.pendingImageId}
                   onClick={() => removeMedia(media.id)}
@@ -259,27 +276,31 @@ export function MediaPicker({
                   <X size={14} />
                 </button>
 
-                {media.id === coverId ? <span className="media-cover-badge">대표</span> : null}
+                {media.id === coverId ? (
+                  <span className="media-cover-badge">{translate('대표')}</span>
+                ) : null}
 
                 {allowReplace ? (
                   <button
-                    aria-label={`${index + 1}번째 사진 교체`}
+                    aria-label={translate(`${index + 1}번째 사진 교체`)}
                     className="media-replace-button"
-                    disabled={interactionDisabled || state === 'uploading' || !!media.pendingImageId}
+                    disabled={
+                      interactionDisabled || state === 'uploading' || !!media.pendingImageId
+                    }
                     onClick={() => {
                       replacementIdRef.current = media.id;
                       replacementInputRef.current?.click();
                     }}
                     type="button"
                   >
-                    교체
+                    {translate('교체')}
                   </button>
                 ) : null}
 
                 {allowReorder && value.length > 1 ? (
                   <div className="media-order-actions">
                     <button
-                      aria-label={`${index + 1}번째 사진을 앞으로 이동`}
+                      aria-label={translate(`${index + 1}번째 사진을 앞으로 이동`)}
                       disabled={disabled || state === 'uploading' || index === 0}
                       onClick={() => moveMedia(index, -1)}
                       type="button"
@@ -287,7 +308,7 @@ export function MediaPicker({
                       <ChevronLeft size={13} />
                     </button>
                     <button
-                      aria-label={`${index + 1}번째 사진을 뒤로 이동`}
+                      aria-label={translate(`${index + 1}번째 사진을 뒤로 이동`)}
                       disabled={disabled || state === 'uploading' || index === value.length - 1}
                       onClick={() => moveMedia(index, 1)}
                       type="button"
@@ -299,19 +320,21 @@ export function MediaPicker({
 
                 {state === 'failed' ? (
                   <div className="media-upload-failure" role="alert">
-                    <span>{media.uploadError || '업로드 실패'}</span>
+                    <span>{translate(media.uploadError || '업로드 실패')}</span>
                     {media.uploadErrorCode === 'UNAUTHENTICATED' ? (
-                      <a href="/auth" target="_blank" rel="noreferrer">다시 로그인</a>
+                      <a href="/auth" target="_blank" rel="noreferrer">
+                        {translate('다시 로그인')}
+                      </a>
                     ) : null}
                     {onRetry ? (
                       <button
-                        aria-label={`${index + 1}번째 사진 업로드 재시도`}
+                        aria-label={translate(`${index + 1}번째 사진 업로드 재시도`)}
                         disabled={disabled}
                         onClick={() => onRetry(media.id)}
                         type="button"
                       >
                         <RotateCcw size={12} />
-                        재시도
+                        {translate('재시도')}
                       </button>
                     ) : null}
                   </div>
@@ -331,7 +354,7 @@ export function MediaPicker({
             type="button"
           >
             {isPicking ? <LoaderCircle className="spin" size={20} /> : <Camera size={20} />}
-            <span>촬영</span>
+            <span>{translate('촬영')}</span>
           </button>
           <button
             className="media-picker-button"
@@ -340,14 +363,14 @@ export function MediaPicker({
             type="button"
           >
             <ImagePlus size={20} />
-            <span>앨범에서 선택</span>
+            <span>{translate('앨범에서 선택')}</span>
           </button>
         </div>
       ) : null}
 
       <input
         ref={replacementInputRef}
-        aria-label="교체할 사진 선택"
+        aria-label={translate('교체할 사진 선택')}
         accept="image/jpeg,image/png,image/webp"
         className="visually-hidden"
         disabled={disabled}
@@ -374,7 +397,7 @@ export function MediaPicker({
       />
 
       <div className="media-picker-meta">
-        <span>{helper}</span>
+        <span>{translate(helper)}</span>
         <strong>
           {value.length}/{maxCount}
         </strong>
@@ -383,17 +406,22 @@ export function MediaPicker({
         <button
           className="btn-outline"
           disabled={interactionDisabled}
-          onClick={() => { setError(''); onRefresh(); }}
+          onClick={() => {
+            setError('');
+            onRefresh();
+          }}
           type="button"
         >
-          {value.some((media) => media.expiresAt && isSignedImageExpired({ expiresAt: media.expiresAt }))
-            ? '만료된 사진 갱신'
-            : '사진 갱신'}
+          {value.some(
+            (media) => media.expiresAt && isSignedImageExpired({ expiresAt: media.expiresAt }),
+          )
+            ? translate('만료된 사진 갱신')
+            : translate('사진 갱신')}
         </button>
       ) : null}
       {error ? (
         <p className="form-error" role="alert">
-          {error}
+          {translate(error)}
         </p>
       ) : null}
     </fieldset>

@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import { Compass, Droplets, Wind } from 'lucide-react';
 import React, { useState } from 'react';
 
@@ -12,6 +14,7 @@ const QUALITY_COLOR: Record<'좋음' | '보통' | '주의', string> = {
 };
 
 export function WaveBriefing() {
+  const translate = useTranslate();
   const [selectedId, setSelectedId] = useState(SURF_BREAK_BRIEFINGS[0].id);
   const briefing =
     SURF_BREAK_BRIEFINGS.find((item) => item.id === selectedId) ?? SURF_BREAK_BRIEFINGS[0];
@@ -31,15 +34,14 @@ export function WaveBriefing() {
       <div className="vertical-intro">
         <div>
           <span className="vertical-eyebrow">SURF WINDOW · 8/24</span>
-          <h2>오늘 어느 피크가 열릴까?</h2>
+          <h2>{translate("오늘 어느 피크가 열릴까?")}</h2>
         </div>
-        <span className="demo-data-chip">데모 예보</span>
+        <span className="demo-data-chip">{translate("데모 예보")}</span>
       </div>
       <p className="vertical-description">
-        장비를 챙기기 전에 파고, 주기, 바람을 한 화면에서 비교해요.
-      </p>
+        {translate("장비를 챙기기 전에 파고, 주기, 바람을 한 화면에서 비교해요.")}</p>
 
-      <div className="break-selector" role="tablist" aria-label="서핑 스팟">
+      <div className="break-selector" role="tablist" aria-label={translate("서핑 스팟")}>
         {SURF_BREAK_BRIEFINGS.map((item) => (
           <button
             aria-selected={item.id === briefing.id}
@@ -49,8 +51,8 @@ export function WaveBriefing() {
             role="tab"
             type="button"
           >
-            <strong>{item.name}</strong>
-            <span>{item.region}</span>
+            <strong>{translate(item.name)}</strong>
+            <span>{translate(item.region)}</span>
           </button>
         ))}
       </div>
@@ -58,21 +60,20 @@ export function WaveBriefing() {
       <article className="wave-card">
         <div className="wave-card-heading">
           <div>
-            <span>지금 파고</span>
+            <span>{translate("지금 파고")}</span>
             <strong>
               {briefing.nowHeightM.toFixed(1)}
               <small>m</small>
             </strong>
           </div>
           <p>
-            <b>{briefing.bestWindow}</b> 추천
-            <br />
-            {briefing.periodSeconds}초 주기 · {briefing.tide}
+            <b>{briefing.bestWindow}</b> {translate("추천")}<br />
+            {briefing.periodSeconds}{translate("초 주기 ·")}{translate(briefing.tide)}
           </p>
         </div>
 
         <div className="wave-chart">
-          <svg aria-label={`${briefing.name} 시간대별 파고 차트`} role="img" viewBox="0 0 320 120">
+          <svg aria-label={translate(`${translate(briefing.name)} 시간대별 파고 차트`)} role="img" viewBox="0 0 320 120">
             <defs>
               <linearGradient id="wave-area" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0" stopColor="#38bdf8" stopOpacity="0.38" />
@@ -102,8 +103,7 @@ export function WaveBriefing() {
                   {point.heightM.toFixed(1)}
                 </text>
                 <text className="wave-time" textAnchor="middle" x={point.x} y="116">
-                  {point.time}시
-                </text>
+                  {point.time}{translate("시")}</text>
               </g>
             ))}
           </svg>
@@ -112,26 +112,25 @@ export function WaveBriefing() {
         <div className="condition-strip">
           <span>
             <Wind size={16} />
-            <b>바람</b>
-            {briefing.wind}
+            <b>{translate("바람")}</b>
+            {translate(briefing.wind)}
           </span>
           <span>
             <Droplets size={16} />
-            <b>수온</b>
+            <b>{translate("수온")}</b>
             {briefing.waterTemperatureC}℃
           </span>
           <span>
             <Compass size={16} />
-            <b>추천</b>
+            <b>{translate("추천")}</b>
             {briefing.bestWindow}
           </span>
         </div>
-        <p className="wave-note">{briefing.note}</p>
+        <p className="wave-note">{translate(briefing.note)}</p>
       </article>
 
       <p className="data-disclaimer">
-        입수 전 기상청·해양 관측과 현장 안전요원의 안내를 다시 확인하세요.
-      </p>
+        {translate("입수 전 기상청·해양 관측과 현장 안전요원의 안내를 다시 확인하세요.")}</p>
     </section>
   );
 }

@@ -3251,3 +3251,15 @@ textarea {
     transform: none;
   }
 }
+/* Compact enough for the mobile navigation header in both languages. */
+.language-switcher {
+  max-width: 100px;
+  min-height: 36px;
+  padding: 5px 3px;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text-main);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}

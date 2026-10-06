@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslate } from '@/lib/i18n/use-translate';
+
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { getGoSession } from '@/lib/go-auth/client';
@@ -15,6 +17,7 @@ export function LoginGate({ children }: { children: ReactNode }) {
 }
 
 function ProtectedPage({ children }: { children: ReactNode }) {
+  const translate = useTranslate();
   const [checked, setChecked] = useState<{ error: string } | null>(null);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
@@ -38,7 +41,7 @@ function ProtectedPage({ children }: { children: ReactNode }) {
     <div className="app-viewport">
       <main className="main-content">
         <div className="empty-state" role={error ? 'alert' : 'status'}>
-          <p>{error || '로그인 상태를 확인하고 있어요.'}</p>
+          <p>{error || translate("로그인 상태를 확인하고 있어요.")}</p>
           {error ? (
             <button
               className="btn-outline"
@@ -48,8 +51,7 @@ function ProtectedPage({ children }: { children: ReactNode }) {
                 setRetry((value) => value + 1);
               }}
             >
-              다시 시도
-            </button>
+              {translate("다시 시도")}</button>
           ) : null}
         </div>
       </main>
