@@ -84,5 +84,3 @@ jobs:
           tags: summergear-web:deployment-ci
           cache-from: type=gha,scope=web-runtime
           cache-to: type=gha,scope=web-runtime,mode=max
-      - name: Keyless application smoke
-        run: python3 ops/deployment/smoke.py

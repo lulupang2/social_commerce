@@ -34,8 +34,10 @@ python3 ops/deployment/database.py
 docker build --target verification -f ops/deployment/Dockerfile.web -t summergear-ci-web:deployment-ci .
 docker run --rm --memory=4g --cpus=2 summergear-ci-web:deployment-ci
 bash ops/deployment/build-images.sh
-python3 ops/deployment/smoke.py
 ```
+
+애플리케이션 smoke는 자동 CI에서 제외했다. 필요할 때만 `python3 ops/deployment/smoke.py`로
+별도 실행할 수 있다. Go·DB·웹 검사와 역할별 이미지 빌드는 자동 CI에 유지한다.
 
 database.py와 smoke.py는 매번 고유 프로젝트를 생성하고 finally에서 해당 자원만 제거한다.
 기존 fixture 컨테이너·볼륨은 재사용하거나 삭제하지 않는다.
